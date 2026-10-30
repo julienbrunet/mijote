@@ -35,3 +35,7 @@ Mijote is a self-hosted family weekly menu planner (native Android app in Kotlin
 
 ## Prototypes
 - `prototypes/theme-playground/`: throwaway Compose app used to tune the theme.
+
+## Backend
+- `backend/`: Go module (Go 1.24, pgx v5). Schema changes = new file in `backend/internal/migrate/migrations/` (ADR 0001).
+- PostgreSQL 16 binaries are in `/usr/lib/postgresql/16/bin`; run them as the `postgres` user with a data dir outside the scratchpad (e.g. `/var/tmp`), then set `MIJOTE_TEST_DATABASE_URL`.

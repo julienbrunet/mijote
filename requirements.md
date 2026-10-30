@@ -1,6 +1,6 @@
 # Mijote — Requirements
 
-Status: draft v0.1 (specification only, no code yet).
+Status: draft v0.1. Backend skeleton in `backend/` (migrations, initial schema).
 
 Priorities: **Must** (required for v1), **Should** (expected in v1, can slip), **Could** (nice to have).
 
