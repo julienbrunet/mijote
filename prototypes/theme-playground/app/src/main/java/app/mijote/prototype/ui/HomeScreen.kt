@@ -53,8 +53,9 @@ fun HomeScreen() {
         bottomBar = { BottomBar(tab) { tab = it } },
     ) { padding ->
         LazyColumn(
-            Modifier.fillMaxSize().padding(padding),
-            contentPadding = PaddingValues(horizontal = 20.dp, vertical = 16.dp),
+            Modifier.fillMaxSize().padding(top = padding.calculateTopPadding()),
+            // Content scrolls behind the floating bottom bar; the bottom padding keeps the last item reachable.
+            contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 16.dp, bottom = padding.calculateBottomPadding() + 16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             item {
