@@ -75,6 +75,7 @@ Planning a family's weekly menus is repetitive: finding recipes, avoiding repeat
 | FR-REC-18 | Recipes have an ordered list of steps, extracted from `recipeInstructions` (split into steps when given as one block) and editable. | Must |
 | FR-REC-19 | Recipes have free-form tags shared by the family (e.g. salad, summer, hot dish, oven), with autocompletion; recipes are searchable by title and tags. | Must |
 | FR-REC-20 | Recipes store servings, the meals they suit (lunch, dinner or both) and personal notes. | Should |
+| FR-REC-21 | Ingredients are stored as structured lines (quantity, unit, name), parsed on the device from the extracted text and editable before saving. | Must |
 | FR-REC-16 | Suggest tags automatically from extracted data (e.g. keywords, category). | Could |
 | FR-REC-17 | Image stored as original URL or a compressed thumbnail on disk, never in the database. | Must |
 
@@ -266,9 +267,13 @@ Conceptual model for PostgreSQL. Names are indicative; the exact schema is defin
 |---|---|---|
 | recipe_id | → recipe | |
 | position | int | Display order |
-| raw_text | text | Line as extracted ("200 g de farine") |
+| raw_text | text | Line as extracted ("200 g de farine"); kept for display and re-parsing |
+| quantity | numeric, nullable | e.g. `200`, `0.5`; null for "une pincée de sel" |
+| unit | text, nullable | e.g. `g`, `ml`, `c. à soupe`; null for countable items ("3 œufs") |
+| name | text | Ingredient name, e.g. `farine` |
+| note | text, nullable | Preparation detail, e.g. "finement haché" |
 
-Structured fields (quantity, unit, name) are deferred to the shopping list / portions features (OQ-4).
+Quantity, unit and name are parsed **on the device** from `raw_text` at import time, shown in the preview and editable. The list of accepted units and their normalization (g / gramme…) is to be defined.
 
 ### recipe_step
 | Field | Type | Notes |
