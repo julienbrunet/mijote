@@ -1,4 +1,4 @@
-// Command mijote runs the Mijote backend: it migrates the database, then
+// Mijote server runs the Mijote backend: it migrates the database, then
 // serves the REST API.
 package main
 
@@ -14,10 +14,13 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/julienbrunet/mijote/backend/internal/config"
-	"github.com/julienbrunet/mijote/backend/internal/migrate"
-	"github.com/julienbrunet/mijote/backend/internal/server"
+	"github.com/julienbrunet/mijote/server/internal/config"
+	"github.com/julienbrunet/mijote/server/internal/migrate"
+	"github.com/julienbrunet/mijote/server/internal/server"
 )
+
+// version is set at build time with -X main.version.
+var version = "dev"
 
 func main() {
 	if err := run(); err != nil {
@@ -27,6 +30,7 @@ func main() {
 }
 
 func run() error {
+	slog.Info("starting mijote server", "version", version)
 	cfg, err := config.Load()
 	if err != nil {
 		return err

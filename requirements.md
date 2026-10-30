@@ -1,6 +1,6 @@
 # Mijote — Requirements
 
-Status: draft v0.1. Backend skeleton in `backend/` (migrations, initial schema).
+Status: draft v0.1. Server skeleton in `server/` (migrations, initial schema).
 
 Priorities: **Must** (required for v1), **Should** (expected in v1, can slip), **Could** (nice to have).
 
@@ -374,3 +374,10 @@ Exact weights are tuned during implementation and kept in code constants.
 - **Writes** (online only): sent immediately with the version the app knows. The UI updates optimistically and rolls back if the request fails.
 - **Generation and swap**: server-side, online only.
 - **Conflicts**: **last write wins**. When the server version was newer than the one sent, the write is still applied, and the app shows the other user a notice on their next sync (e.g. "Mardi dîner modifié par Julien").
+
+## 12. Database migrations (decided)
+
+- Run automatically at startup (NFR-17). Driver `github.com/jackc/pgx/v5`, the server's only external dependency (Go has no PostgreSQL driver).
+- Plain, forward-only SQL files `NNNN_description.sql` in `server/internal/migrate/migrations/`, embedded in the binary; a small in-house runner applies them in order, one transaction each, records them in `schema_migrations`, and holds a PostgreSQL advisory lock so two instances never migrate at once.
+- Applied files are never edited; fixes go into a new migration.
+- No down migrations: a binary older than the schema refuses to start; rollback = restore a backup, so back up before upgrading.

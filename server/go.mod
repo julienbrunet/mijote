@@ -1,4 +1,4 @@
-module github.com/julienbrunet/mijote/backend
+module github.com/julienbrunet/mijote/server
 
 go 1.25.0
 

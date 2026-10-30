@@ -12,7 +12,7 @@ Mijote is a self-hosted family weekly menu planner (native Android app in Kotlin
 
 ## Scope and decisions
 - `requirements.md` is the source of truth for scope. Check it before implementing a feature; update it when a decision changes.
-- Record each significant technical decision as a short ADR in `docs/adr/` (`NNNN-title.md`: Context, Decision, Consequences).
+- Record significant technical decisions in `requirements.md` (or here for dev rules). **Never create ADR files or other standalone decision docs**: either write code or document in `requirements.md`.
 - Never treat undecided points as decided. Ask the user first.
 
 ## Constraints
@@ -36,6 +36,12 @@ Mijote is a self-hosted family weekly menu planner (native Android app in Kotlin
 ## Prototypes
 - `prototypes/theme-playground/`: throwaway Compose app used to tune the theme.
 
+## CI/CD and releases
+- GitHub Actions: `.github/workflows/android.yml` (`android/`) and `server.yml` (`server/`, API + web admin). Each runs only when its directory changes; in-progress runs are cancelled; caches enabled.
+- Independent SemVer per deliverable via tags `android-vX.Y.Z` / `server-vX.Y.Z`; a tag publishes a public GitHub release with checksums.
+- Android: Gradle reads `-PversionName` / `-PversionCode` (`MAJOR*10000+MINOR*100+PATCH`); release signing from env `MIJOTE_KEYSTORE`, `MIJOTE_KEYSTORE_PASSWORD`, `MIJOTE_KEY_ALIAS`, `MIJOTE_KEY_PASSWORD` (repo secrets `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`).
+- Server: static binaries for linux amd64, arm64, armv7; `main` declares `var version = "dev"` (set via `-X main.version`). Docker image not built yet.
+
 ## Backend
-- `backend/`: Go module (Go 1.24, pgx v5). Schema changes = new file in `backend/internal/migrate/migrations/` (ADR 0001).
+- `server/`: Go module (Go 1.24, pgx v5), `main` package at its root. Schema changes = new file in `server/internal/migrate/migrations/` (see `requirements.md` §12).
 - PostgreSQL 16 binaries are in `/usr/lib/postgresql/16/bin`; run them as the `postgres` user with a data dir outside the scratchpad (e.g. `/var/tmp`), then set `MIJOTE_TEST_DATABASE_URL`.

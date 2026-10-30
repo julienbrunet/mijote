@@ -1,6 +1,6 @@
-# Mijote backend
+# Mijote server
 
-Go backend: REST API, database migrations at startup.
+Go server: REST API, database migrations at startup.
 
 ## Configuration (environment variables)
 | Variable | Default | Description |
@@ -11,12 +11,12 @@ Go backend: REST API, database migrations at startup.
 
 ## Run
 ```bash
-MIJOTE_DATABASE_URL=postgres://... go run ./cmd/mijote
+MIJOTE_DATABASE_URL=postgres://... go run .
 ```
 Endpoints so far: `GET /healthz`, `GET /api/versions`.
 
 ## Database migrations
-See `docs/adr/0001-database-migrations.md`. To change the schema, add
+To change the schema, add
 `internal/migrate/migrations/NNNN_description.sql` with the next number; never edit
 an applied file. Migrations run automatically on startup.
 
