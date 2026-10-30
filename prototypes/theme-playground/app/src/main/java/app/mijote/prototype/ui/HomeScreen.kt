@@ -12,6 +12,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
@@ -66,9 +67,15 @@ fun HomeScreen() {
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             item(span = { GridItemSpan(maxLineSpan) }) {
-                Column {
-                    Text("ÇA MIJOTE", fontSize = 26.sp, letterSpacing = 4.sp, fontWeight = FontWeight.Light, color = MaterialTheme.colorScheme.onBackground)
-                    Text("2 → 8 novembre · 11 repas", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("ÇA MIJOTE", fontSize = 26.sp, letterSpacing = 4.sp, fontWeight = FontWeight.Light, color = MaterialTheme.colorScheme.onBackground)
+                        Text("2 → 8 novembre · 11 repas", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp)
+                    }
+                    IconButton(
+                        onClick = {},
+                        modifier = Modifier.size(44.dp).background(Calm.Card, CircleShape),
+                    ) { Icon(Icons.Filled.Person, contentDescription = "Utilisateur", tint = Calm.Sage) }
                 }
             }
             sampleDays.forEach { day ->
