@@ -10,6 +10,10 @@ Mijote is a self-hosted family weekly menu planner (native Android app in Kotlin
 ## Commits
 - Use Conventional Commits: `feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:`, `build:`, `ci:`…
 
+## Branches
+- Name each new branch after the change in progress, e.g. `feat/recipe-import`, `fix/menu-swap`, `docs/sync-policy`.
+- Once a branch is merged into `main`, delete it (locally and on the remote).
+
 ## Scope and decisions
 - `requirements.md` is the source of truth for scope. Check it before implementing a feature; update it when a decision changes.
 - Record each significant technical decision as a short ADR in `docs/adr/` (`NNNN-title.md`: Context, Decision, Consequences).
