@@ -273,7 +273,7 @@ Conceptual model for PostgreSQL. Names are indicative; the exact schema is defin
 | name | text | Ingredient name, e.g. `farine` |
 | note | text, nullable | Preparation detail, e.g. "finement haché" |
 
-Quantity, unit and name are parsed **on the device** from `raw_text` at import time, shown in the preview and editable. The list of accepted units and their normalization (g / gramme…) is to be defined.
+Quantity, unit and name are parsed **on the device** from `raw_text` at import time, shown in the preview and editable. Units come from the closed list in §9.1.
 
 ### recipe_step
 | Field | Type | Notes |
@@ -281,6 +281,41 @@ Quantity, unit and name are parsed **on the device** from `raw_text` at import t
 | recipe_id | → recipe | |
 | position | int | Order |
 | text | text | |
+
+### 9.1 Units (closed list)
+
+`unit` stores a code from this closed list, or null. The family cannot add units. Codes are English; labels are localized (French for now). Aliases are recognized case-insensitively at import, singular and plural.
+
+| Family | Code | Label (fr) | Recognized aliases | Base conversion |
+|---|---|---|---|---|
+| Mass | `g` | g | g, gr, gramme(s) | 1 g |
+| Mass | `kg` | kg | kg, kilo(s), kilogramme(s) | 1000 g |
+| Volume | `ml` | ml | ml, millilitre(s) | 1 ml |
+| Volume | `cl` | cl | cl, centilitre(s) | 10 ml |
+| Volume | `dl` | dl | dl, décilitre(s) | 100 ml |
+| Volume | `l` | l | l, litre(s) | 1000 ml |
+| Volume | `tbsp` | c. à soupe | c. à soupe, càs, cs, cuillère(s) à soupe, tbsp | 15 ml |
+| Volume | `tsp` | c. à café | c. à café, càc, cc, cuillère(s) à café, tsp | 5 ml |
+| Small amount | `pinch` | pincée | pincée(s) | — |
+| Small amount | `dash` | trait | trait(s), filet(s) | — |
+| Small amount | `handful` | poignée | poignée(s) | — |
+| Count | `piece` | (none) | no unit, e.g. "3 œufs" | — |
+| Count | `clove` | gousse | gousse(s) | — |
+| Count | `slice` | tranche | tranche(s) | — |
+| Count | `bunch` | botte | botte(s), bouquet(s) | — |
+| Count | `sprig` | brin | brin(s) | — |
+| Count | `leaf` | feuille | feuille(s) | — |
+| Count | `can` | boîte | boîte(s), conserve(s) | — |
+| Count | `pack` | sachet | sachet(s), paquet(s) | — |
+| Count | `jar` | pot | pot(s) | — |
+
+Parsing rules:
+- Unknown unit: keep the quantity, set `unit` to null; `raw_text` keeps the information; the user can fix it in the preview.
+- No quantity ("sel, poivre", "quelques feuilles de basilic"): `quantity` and `unit` are null.
+- Ranges ("2 à 3 tomates"): keep the upper value.
+- Fractions ("½", "1/2"): stored as decimals (`0.5`).
+
+Aggregation (shopping list): quantities are summed only for the same ingredient name within the same family — mass with mass (in g), volume with volume (in ml), other units only with the same unit. Mass and volume are never mixed (density unknown).
 
 ### tag / recipe_tag
 - `tag`: id, name (unique, case-insensitive). Free-form, shared by the family.
