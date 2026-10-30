@@ -184,3 +184,53 @@ Where logic runs:
 | OQ-4 | Scope of later features? | Shopping list generated from menus; portion management; leftovers reused the next day. |
 
 Smaller points to clarify (not blocking): member permission to delete recipes, minimum recipe count for generation (FR-GEN-02), conflict resolution policy (FR-SHR-03, NFR-06).
+
+## 8. Visual design (decided)
+
+Validated on the theme prototype (`prototypes/theme-playground/`). Theme name: **Calm Kit** — light, soft and calm.
+
+### Theme
+- **Light mode only** for now. A dark variant is out of scope until requested.
+- Edge-to-edge display: content scrolls behind the system bars and the bottom navigation.
+
+### Color palette
+| Token | Hex | Usage |
+|---|---|---|
+| Sage | `#6B7F6E` | Primary: main actions, selected navigation item, active toggles, lock icon |
+| Moss | `#A7B8A7` | Secondary accents |
+| Mist | `#D9E1D9` | Light containers, vegetarian tag background |
+| Ivory | `#F4EFE8` | Surface variant |
+| Sand | `#C9BDAF` | Outlines, favorite star |
+| Background | `#EFEAE3` | Screen background |
+| Card | `#F7F4EF` | Cards, bottom navigation, round buttons |
+| Ink | `#2E3530` | Main text |
+| Ink soft | `#7D847F` | Secondary text, unselected navigation items |
+| Track | `#DDD8D1` | Inactive tracks, dividers |
+| On primary | `#FFFFFF` | Text and icons on Sage |
+
+Dish type tags (background / text):
+| Dish type | Background | Text |
+|---|---|---|
+| Meat | `#EBDDD6` | `#7E5A4E` |
+| Fish | `#DDE4E8` | `#4F6573` |
+| Vegetarian | `#D9E1D9` | `#4F6552` |
+
+Status colors (success, error, warning, info) are not defined yet; they must stay within the same soft, desaturated tone.
+
+### Typography
+- Font: **Inter** (Light 300, Regular 400, Medium 500, SemiBold 600), bundled with the app.
+- Screen title: uppercase, Light, ~26 sp, wide letter spacing (~4 sp).
+- Section headers (days): Medium ~17 sp, followed by the date in secondary text.
+- Card labels (meal slot): uppercase ~11 sp, letter spacing ~1 sp, secondary text.
+- Recipe titles: Medium ~15 sp, max 2 lines with ellipsis.
+
+### Shapes and elevation
+- Cards: 18 dp corner radius, soft shadow (~2 dp).
+- Bottom navigation: floating card, 24 dp radius, ~4 dp shadow, 16 dp side margins.
+- Tags: 8 dp radius pills. Round icon buttons and badges: circles.
+
+### Home screen layout
+- Header: title **"ÇA MIJOTE"** with the period summary below (e.g. "2 → 8 novembre · 11 repas"); round **user button** on the top right.
+- Upcoming days listed in order, each with a header (e.g. "Aujourd'hui", "Demain", weekday) and its planned meals.
+- Meals shown as **cards in a 2-column grid**: recipe image on top (aspect ~1.4:1), meal slot, recipe title, dish type tag and prep time. Favorite (star, Sand) or locked (lock, Sage) shown as a round badge on the image's top-right corner.
+- **Bottom navigation** with 3 items (icon + label), selected item in Sage with a small dot below, unselected in Ink soft; no background behind the floating bar.
