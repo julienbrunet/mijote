@@ -4,7 +4,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
@@ -19,6 +22,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
@@ -52,26 +56,30 @@ fun HomeScreen() {
         containerColor = MaterialTheme.colorScheme.background,
         bottomBar = { BottomBar(tab) { tab = it } },
     ) { padding ->
-        LazyColumn(
-            Modifier.fillMaxSize().padding(top = padding.calculateTopPadding()),
+        // Two meal cards per row, grouped by day; day headers span the full width.
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(2),
+            modifier = Modifier.fillMaxSize().padding(top = padding.calculateTopPadding()),
             // Content scrolls behind the floating bottom bar; the bottom padding keeps the last item reachable.
             contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 16.dp, bottom = padding.calculateBottomPadding() + 16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            item {
-                Text("ÇA MIJOTE", fontSize = 26.sp, letterSpacing = 4.sp, fontWeight = FontWeight.Light, color = MaterialTheme.colorScheme.onBackground)
-                Text("2 → 8 novembre · 11 repas", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp)
-                Spacer(Modifier.height(6.dp))
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                Column {
+                    Text("ÇA MIJOTE", fontSize = 26.sp, letterSpacing = 4.sp, fontWeight = FontWeight.Light, color = MaterialTheme.colorScheme.onBackground)
+                    Text("2 → 8 novembre · 11 repas", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp)
+                }
             }
             sampleDays.forEach { day ->
-                item {
-                    Row(Modifier.padding(top = 10.dp), verticalAlignment = Alignment.Bottom) {
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    Row(Modifier.padding(top = 8.dp), verticalAlignment = Alignment.Bottom) {
                         Text(day.name, fontWeight = FontWeight.Medium, fontSize = 17.sp, color = MaterialTheme.colorScheme.onBackground)
                         Spacer(Modifier.width(8.dp))
                         Text(day.date, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
-                day.meals.forEach { meal -> item { MealCard(meal) } }
+                items(day.meals) { meal -> MealCard(meal) }
             }
         }
     }
@@ -89,25 +97,31 @@ private fun MealCard(meal: Meal) {
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
     ) {
-        Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+        Box {
             // Placeholder for the recipe thumbnail.
-            Box(Modifier.size(56.dp).background(Brush.linearGradient(listOf(tagBg, tagFg.copy(alpha = 0.5f))), RoundedCornerShape(12.dp)))
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Text(meal.slot.uppercase(), fontSize = 11.sp, letterSpacing = 1.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(meal.title, fontSize = 16.sp, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurface)
-                Spacer(Modifier.height(4.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(meal.dish.label, fontSize = 12.sp, color = tagFg,
-                        modifier = Modifier.background(tagBg, RoundedCornerShape(8.dp)).padding(horizontal = 8.dp, vertical = 2.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text(meal.time, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
+            Box(Modifier.fillMaxWidth().aspectRatio(1.4f).background(Brush.linearGradient(listOf(tagBg, tagFg.copy(alpha = 0.5f)))))
+            val badge = when {
+                meal.locked -> Icons.Filled.Lock to MaterialTheme.colorScheme.primary
+                meal.favorite -> Icons.Filled.Star to Calm.Sand
+                else -> null
             }
-            when {
-                meal.locked -> Icon(Icons.Filled.Lock, "Verrouillé", tint = MaterialTheme.colorScheme.primary)
-                meal.favorite -> Icon(Icons.Filled.Star, "Favori", tint = Calm.Sand)
-                else -> Spacer(Modifier.size(0.dp).background(Color.Transparent))
+            badge?.let { (icon, tint) ->
+                Box(
+                    Modifier.align(Alignment.TopEnd).padding(8.dp).size(30.dp).background(Calm.Card.copy(alpha = 0.9f), CircleShape),
+                    contentAlignment = Alignment.Center,
+                ) { Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(18.dp)) }
+            }
+        }
+        Column(Modifier.padding(12.dp)) {
+            Text(meal.slot.uppercase(), fontSize = 11.sp, letterSpacing = 1.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(meal.title, fontSize = 15.sp, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurface,
+                minLines = 2, maxLines = 2, overflow = TextOverflow.Ellipsis, lineHeight = 19.sp)
+            Spacer(Modifier.height(6.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(meal.dish.label, fontSize = 11.sp, color = tagFg,
+                    modifier = Modifier.background(tagBg, RoundedCornerShape(8.dp)).padding(horizontal = 7.dp, vertical = 2.dp))
+                Spacer(Modifier.width(6.dp))
+                Text(meal.time, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
             }
         }
     }
