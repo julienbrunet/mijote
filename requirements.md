@@ -113,7 +113,7 @@ Planning a family's weekly menus is repetitive: finding recipes, avoiding repeat
 |---|---|---|
 | FR-SHR-01 | One shared recipe base and one shared menu per instance. | Must |
 | FR-SHR-02 | Clients refresh on app open and on pull-to-refresh (no real-time). | Must |
-| FR-SHR-03 | Concurrent edits are detected (e.g. version / updated_at) and the user is informed; resolution strategy to define. | Should |
+| FR-SHR-03 | Concurrent edits: last write wins and the overwritten user is informed (see §11). | Must |
 
 ### 4.7 Onboarding and invitations (ONB)
 | ID | Requirement | Priority |
@@ -143,7 +143,7 @@ Planning a family's weekly menus is repetitive: finding recipes, avoiding repeat
 | NFR-03 | Resources | Simple REST API; no WebSockets or long-lived connections. |
 | NFR-04 | Resources | Images stored as original URL or compressed thumbnail on disk; never in the database. |
 | NFR-05 | Offline | Recipes and current menus readable offline from local cache. |
-| NFR-06 | Offline | Edits made offline are queued and synced when the server is reachable (Should; conflict policy to define). |
+| NFR-06 | Offline | Offline mode is **read-only**: edit actions are disabled with a clear message until the server is reachable. |
 | NFR-07 | Perceived performance | Screens render from local cache immediately; network refresh happens in background. |
 | NFR-08 | Perceived performance | Gestures (swap, drag and drop, lock) respond without waiting for the network. |
 | NFR-09 | Security | Passwords hashed with a modern algorithm (e.g. argon2id / bcrypt). |
@@ -187,7 +187,7 @@ Where logic runs:
 | OQ-3 | Mobile stack | **Native Android (Kotlin / Jetpack Compose)**. No iPhone app for now. |
 | OQ-4 | Later features | **None in v1**: shopping list, portions and leftovers stay out of scope. |
 
-Remaining open points: none blocking. To define during design: sync / conflict policy.
+Remaining open points: none.
 
 ## 8. Visual design (decided)
 
@@ -344,7 +344,7 @@ id, code_hash (single-use, never stored in clear), created_by, created_at, expir
 - timezone.
 
 ### menu_slot
-id, date, meal (`lunch` / `dinner`), recipe_id (nullable = empty slot), locked, updated_by, updated_at, version. Unique on (date, meal).
+id, date, meal (`lunch` / `dinner`), recipe_id (nullable = empty slot), locked, updated_by, updated_at, version, deleted_at (nullable, so deletions reach other devices). Unique on (date, meal).
 - One-off changes (e.g. away on Tuesday lunch) are done by adding or removing a slot; no dedicated table.
 - Moving a meal swaps the recipes of two slots.
 - Past slots are kept: they are the history used to avoid recent recipes.
@@ -366,3 +366,11 @@ Runs on the server. Input: a period, the family settings, the existing slots.
 **Swap** (FR-ADJ-01) runs steps 2–5 for one slot, excluding its current recipe.
 **Regenerate** re-fills every non-locked slot of the period.
 Exact weights are tuned during implementation and kept in code constants.
+
+## 11. Sync and conflicts (decided)
+
+- **Pull**: on app open and pull-to-refresh, the app asks for changes since its last sync (`GET …/changes?since=<cursor>`); the server returns created / updated / deleted items (recipes, tags, menu slots, settings) and a new cursor. Deletions are sent as soft deletes (`archived_at`, `deleted_at`).
+- **Offline**: read-only, from the local cache. No offline write queue.
+- **Writes** (online only): sent immediately with the version the app knows. The UI updates optimistically and rolls back if the request fails.
+- **Generation and swap**: server-side, online only.
+- **Conflicts**: **last write wins**. When the server version was newer than the one sent, the write is still applied, and the app shows the other user a notice on their next sync (e.g. "Mardi dîner modifié par Julien").
