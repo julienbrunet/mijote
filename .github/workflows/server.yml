@@ -3,7 +3,7 @@ name: Server (API + web admin)
 # Builds only when the backend changes; publishes a GitHub release on `server-vX.Y.Z` tags.
 on:
   push:
-    branches: [main]
+    branches: [main, "claude/**"]
     paths: ["server/**", ".github/workflows/server.yml"]
     tags: ["server-v*"]
   pull_request:

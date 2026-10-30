@@ -25,7 +25,7 @@ import (
 var embedded embed.FS
 
 // lockID is an arbitrary key for pg_advisory_lock, unique to Mijote.
-const lockID = 0x6d696a6f7465 // "mijote"
+const lockID int64 = 0x6d696a6f7465 // "mijote"
 
 // Migration is one versioned SQL script.
 type Migration struct {
