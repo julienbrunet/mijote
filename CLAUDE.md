@@ -1,6 +1,6 @@
 # Mijote — Project rules
 
-Mijote is a self-hosted family weekly menu planner (mobile app + Go-favored backend + PostgreSQL). See `requirements.md`.
+Mijote is a self-hosted family weekly menu planner (native Android app in Kotlin/Compose + Go backend + PostgreSQL, target: Raspberry Pi 3B+ with 1 GB RAM). See `requirements.md`.
 
 ## Language
 - All code, code comments, documentation and commit messages are written in **English**.
@@ -13,7 +13,7 @@ Mijote is a self-hosted family weekly menu planner (mobile app + Go-favored back
 ## Scope and decisions
 - `requirements.md` is the source of truth for scope. Check it before implementing a feature; update it when a decision changes.
 - Record each significant technical decision as a short ADR in `docs/adr/` (`NNNN-title.md`: Context, Decision, Consequences).
-- Never treat open questions (requirements.md §7) as decided. Ask the user first.
+- Never treat undecided points as decided. Ask the user first.
 
 ## Constraints
 - Low resources: justify any new dependency or service; prefer the standard library when reasonable.
@@ -34,4 +34,4 @@ Mijote is a self-hosted family weekly menu planner (mobile app + Go-favored back
 - Fonts: Google Fonts GitHub raw URLs are blocked; static TTFs are available from `cdn.jsdelivr.net/fontsource/fonts/<family>@latest/latin-<weight>-normal.ttf`.
 
 ## Prototypes
-- `prototypes/theme-playground/`: throwaway Compose app used to tune the theme. It does not decide OQ-3 (mobile stack).
+- `prototypes/theme-playground/`: throwaway Compose app used to tune the theme.

@@ -36,8 +36,8 @@ Planning a family's weekly menus is repetitive: finding recipes, avoiding repeat
 - Real-time sync (WebSockets, push).
 - Server-side scraping of web pages.
 - Third-party sync (Google Drive, Firebase, P2P) — rejected.
-- Shopping list, portion management, leftovers — see Open questions (OQ-4).
-- iOS support — depends on OQ-3.
+- Shopping list, portion management, leftovers (decided: not in v1).
+- iOS app (decided: Android only for now).
 
 ## 3. Roles and permissions
 
@@ -138,7 +138,7 @@ Planning a family's weekly menus is repetitive: finding recipes, avoiding repeat
 
 | ID | Area | Requirement |
 |---|---|---|
-| NFR-01 | Resources | Backend uses a lightweight runtime with a small memory footprint (target to set once OQ-1 is answered). |
+| NFR-01 | Resources | The whole stack (Go backend + PostgreSQL) runs comfortably on a Raspberry Pi 3B+ with 1 GB RAM alongside the OS; target backend memory < 50 MB. |
 | NFR-02 | Resources | PostgreSQL tuned for low memory: small `shared_buffers`, low `max_connections` and `work_mem`; config shipped with the compose file. |
 | NFR-03 | Resources | Simple REST API; no WebSockets or long-lived connections. |
 | NFR-04 | Resources | Images stored as original URL or compressed thumbnail on disk; never in the database. |
@@ -152,7 +152,7 @@ Planning a family's weekly menus is repetitive: finding recipes, avoiding repeat
 | NFR-12 | Security | Invitation codes single-use, random, time-limited. |
 | NFR-13 | API versioning | API is versioned (e.g. `/api/v1`); server exposes its supported versions; app degrades gracefully against older instances. |
 | NFR-14 | Deployment | Ready-to-use `docker-compose.yml` (backend + PostgreSQL). |
-| NFR-15 | Deployment | Container images for ARM and x86. |
+| NFR-15 | Deployment | Container images for `linux/arm64`, `linux/arm/v7` (32-bit Raspberry Pi OS) and `linux/amd64`. |
 | NFR-16 | Deployment | Configuration through environment variables only. |
 | NFR-17 | Deployment | Database migrations run automatically at startup. |
 | NFR-18 | Deployment | Backend is stateless apart from PostgreSQL and the image directory. |
@@ -162,8 +162,8 @@ Planning a family's weekly menus is repetitive: finding recipes, avoiding repeat
 
 | Component | Responsibilities |
 |---|---|
-| **Mobile app** (stack: OQ-3) | Server URL setup, login, share-sheet target, page fetch + schema.org/Recipe extraction, local cache and offline reading, optimistic UI for adjustments, sync on open / pull-to-refresh. |
-| **Backend API** (language: OQ-2) | Versioned REST API, auth and roles, recipe storage, thumbnail storage on disk, **menu generation** and swap suggestions, invitations, migrations at startup. |
+| **Mobile app** (Kotlin / Jetpack Compose) | Server URL setup, login, share-sheet target, page fetch + schema.org/Recipe extraction, local cache and offline reading, optimistic UI for adjustments, sync on open / pull-to-refresh. |
+| **Backend API** (Go) | Versioned REST API, auth and roles, recipe storage, thumbnail storage on disk, **menu generation** and swap suggestions, invitations, migrations at startup. |
 | **Web admin** | Server-rendered htmx pages in the same binary: setup wizard, accounts, invitations, family settings, recipes. |
 | **PostgreSQL** | Single source of truth for accounts, recipes, tags, settings, menus. Low-memory tuning. |
 | **Image directory** | Compressed thumbnails on disk (volume). |
@@ -178,16 +178,16 @@ Where logic runs:
 [Browser (admin)] ---------HTTPS-----------/
 ```
 
-## 7. Open questions
+## 7. Decisions on former open questions (2026-10-30)
 
-| ID | Question | Options considered |
+| ID | Question | Decision |
 |---|---|---|
-| OQ-1 | Target machine specs (RAM, CPU, ARM or x86)? | e.g. Raspberry Pi–class ARM board; small x86 VPS / mini PC. Drives memory targets (NFR-01). |
-| OQ-2 | Backend language? | Go (favored, not confirmed); other lightweight runtimes (e.g. Rust). |
-| OQ-3 | Mobile stack? | Native Android (Kotlin / Jetpack Compose); cross-platform (Flutter / React Native) to support iPhone families. |
-| OQ-4 | Scope of later features? | Shopping list generated from menus; portion management; leftovers reused the next day. |
+| OQ-1 | Target machine | **Raspberry Pi 3B+, 1 GB RAM** (ARM). x86 still supported for other families. |
+| OQ-2 | Backend language | **Go**. |
+| OQ-3 | Mobile stack | **Native Android (Kotlin / Jetpack Compose)**. No iPhone app for now. |
+| OQ-4 | Later features | **None in v1**: shopping list, portions and leftovers stay out of scope. |
 
-Smaller points to clarify (not blocking): member permission to delete recipes, minimum recipe count for generation (FR-GEN-02), conflict resolution policy (FR-SHR-03, NFR-06).
+Remaining open points: none blocking. To define during design: menu generation algorithm, sync / conflict policy.
 
 ## 8. Visual design (decided)
 
