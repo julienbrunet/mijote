@@ -8,6 +8,7 @@ Mijote is a self-hosted family weekly menu planner (native Android app in Kotlin
 - Keep answers to the user short and to the point: no long tables or exhaustive detail unless asked; ask only the questions that matter.
 
 ## Commits
+- After every push, follow the CI (GitHub Actions) run of the pushed commit until it finishes; if it fails, fix it and push again before reporting the work as done.
 - Use Conventional Commits: `feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:`, `build:`, `ci:`…
 
 ## Scope and decisions
