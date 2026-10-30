@@ -93,11 +93,11 @@ Planning a family's weekly menus is repetitive: finding recipes, avoiding repeat
 | FR-GEN-01 | Generation runs server-side so all members see the same result. | Must |
 | FR-GEN-02 | Generation is available once the recipe base reaches a minimum size; the app explains what is missing otherwise. Threshold to define. | Must |
 | FR-GEN-03 | Avoid recently used recipes. | Must |
-| FR-GEN-04 | Balance dish types (meat / fish / vegetarian) over the period. | Should |
-| FR-GEN-05 | Prefer quick recipes on weekdays and allow longer ones on weekends. | Should |
-| FR-GEN-06 | Take season into account. | Could |
+| FR-GEN-04 | Balance dish types over the period towards the target split set by the admin (e.g. 40 % vegetarian, 30 % meat, 30 % fish). | Must |
+| FR-GEN-05 | Prefer quick recipes on weekdays and allow longer ones on weekends (preference, not strict). | Must |
+| FR-GEN-06 | Prefer in-season recipes (preference, not strict). | Should |
 | FR-GEN-07 | ~~Favor favorite recipes.~~ Dropped: no favorites. | — |
-| FR-GEN-08 | Rules and weights are candidates; the exact algorithm is to be specified in an ADR. | — |
+| FR-GEN-08 | Generation follows the algorithm in §10. | Must |
 
 ### 4.5 Adjustments after generation (ADJ)
 | ID | Requirement | Priority |
@@ -187,7 +187,7 @@ Where logic runs:
 | OQ-3 | Mobile stack | **Native Android (Kotlin / Jetpack Compose)**. No iPhone app for now. |
 | OQ-4 | Later features | **None in v1**: shopping list, portions and leftovers stay out of scope. |
 
-Remaining open points: none blocking. To define during design: menu generation algorithm, sync / conflict policy.
+Remaining open points: none blocking. To define during design: sync / conflict policy.
 
 ## 8. Visual design (decided)
 
@@ -339,6 +339,7 @@ id, code_hash (single-use, never stored in clear), created_by, created_at, expir
 - default planning horizon (days);
 - "quick" threshold in minutes for weekdays, and which days are the weekend;
 - recent-use window (days) for FR-GEN-03;
+- target dish type split (meat / fish / vegetarian percentages, summing to 100);
 - minimum recipe count for generation (FR-GEN-02);
 - timezone.
 
@@ -347,3 +348,21 @@ id, date, meal (`lunch` / `dinner`), recipe_id (nullable = empty slot), locked, 
 - One-off changes (e.g. away on Tuesday lunch) are done by adding or removing a slot; no dedicated table.
 - Moving a meal swaps the recipes of two slots.
 - Past slots are kept: they are the history used to avoid recent recipes.
+
+## 10. Menu generation algorithm (decided)
+
+Runs on the server. Input: a period, the family settings, the existing slots.
+
+1. **Slots to fill**: slots of the period that are empty and not locked, in date order. Locked and already filled slots are kept and count for the balance and recent use.
+2. **Eligible recipes** (hard filters): not archived; suits the slot's meal (lunch / dinner); not already used in the period.
+3. **Score** each eligible recipe (preferences, not filters):
+   - **Recent use**: strongly penalized if served within the recent-use window (history + this period).
+   - **Prep time**: on weekdays, recipes above the "quick" threshold are penalized; recipes with no time are treated as quick. No penalty on weekends.
+   - **Season**: recipes not matching the current season are penalized (no season = all year).
+   - **Dish type balance**: favor the type furthest below the admin's target split for the period so far.
+4. **Pick** randomly among the best-scored recipes (weighted), so regenerating gives variety.
+5. **Shortage**: if every eligible recipe was used recently, pick the one served the longest ago. A slot stays empty only when no recipe suits the meal at all.
+
+**Swap** (FR-ADJ-01) runs steps 2–5 for one slot, excluding its current recipe.
+**Regenerate** re-fills every non-locked slot of the period.
+Exact weights are tuned during implementation and kept in code constants.
