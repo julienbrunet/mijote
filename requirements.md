@@ -82,10 +82,10 @@ Planning a family's weekly menus is repetitive: finding recipes, avoiding repeat
 ### 4.3 Planning settings (PLAN)
 | ID | Requirement | Priority |
 |---|---|---|
-| FR-PLAN-01 | For each weekday, choose the meals to plan: lunch + dinner, or dinner only. | Must |
+| FR-PLAN-01 | For each weekday, choose the meals to plan: lunch + dinner, dinner only, or none. | Must |
 | FR-PLAN-02 | Admin defines the family default meals per weekday. | Must |
 | FR-PLAN-03 | User chooses a planning horizon of X days (user-defined). | Must |
-| FR-PLAN-04 | User can override the meals for a specific date in the period. | Could |
+| FR-PLAN-04 | User can add or remove a single meal slot in the period (e.g. away on Tuesday lunch). | Should |
 
 ### 4.4 Menu generation (GEN)
 | ID | Requirement | Priority |
@@ -123,7 +123,7 @@ Planning a family's weekly menus is repetitive: finding recipes, avoiding repeat
 | FR-ONB-03 | Member scans/opens the invitation and sets a password. | Must |
 | FR-ONB-04 | Invitations expire and can be revoked. | Should |
 | FR-ONB-05 | On first launch, the app asks for the server URL (typed or scanned); one store app serves any instance. | Must |
-| FR-ONB-06 | Login by username/email + password; no OAuth. | Must |
+| FR-ONB-06 | Login by username + password (no email); no OAuth. | Must |
 
 ### 4.8 Web admin (ADM)
 | ID | Requirement | Priority |
@@ -325,5 +325,25 @@ Aggregation (shopping list): quantities are summed only for the same ingredient 
 - **Favorites**: dropped.
 - **Last used date**: derived from menu history (FR-GEN-03).
 
-### Other entities (to detail later)
-- `user` (role admin / member), `invitation` (single-use code, expiry), `family_settings` (default meals per weekday, preferences), `menu_slot` (date, meal `lunch`/`dinner`, recipe, locked).
+### user
+id, username (unique, used to log in; no email), display_name, password_hash, role (`admin` / `member`), created_at, disabled_at (nullable). There is exactly **one admin** per instance.
+
+### api_token
+id, user_id, token_hash (never stored in clear), device_name, created_at, last_used_at, revoked_at. Lets the admin log out a device.
+
+### invitation
+id, code_hash (single-use, never stored in clear), created_by, created_at, expires_at, used_by, used_at, revoked_at. Invitations always create a **member** (an admin cannot invite another admin).
+
+### family_settings (single row)
+- default meals per weekday: `lunch_dinner`, `dinner` or `none`;
+- default planning horizon (days);
+- "quick" threshold in minutes for weekdays, and which days are the weekend;
+- recent-use window (days) for FR-GEN-03;
+- minimum recipe count for generation (FR-GEN-02);
+- timezone.
+
+### menu_slot
+id, date, meal (`lunch` / `dinner`), recipe_id (nullable = empty slot), locked, updated_by, updated_at, version. Unique on (date, meal).
+- One-off changes (e.g. away on Tuesday lunch) are done by adding or removing a slot; no dedicated table.
+- Moving a meal swaps the recipes of two slots.
+- Past slots are kept: they are the history used to avoid recent recipes.
