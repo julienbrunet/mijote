@@ -1,0 +1,65 @@
+name: Server (API + web admin)
+
+# Builds only when the backend changes; publishes a GitHub release on `server-vX.Y.Z` tags.
+on:
+  push:
+    branches: [main]
+    paths: ["server/**", ".github/workflows/server.yml"]
+    tags: ["server-v*"]
+  pull_request:
+    paths: ["server/**", ".github/workflows/server.yml"]
+  workflow_dispatch:
+
+concurrency:
+  group: server-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+defaults:
+  run:
+    working-directory: server
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
+
+      - name: Vet and test
+        run: |
+          go vet ./...
+          go test ./...
+
+      # Pure Go cross-compilation: one runner builds every target, no QEMU or matrix needed.
+      - name: Build binaries
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/server-v* ]]; then
+            version="${GITHUB_REF#refs/tags/server-v}"
+          else
+            version="0.0.0-dev+${GITHUB_SHA::7}"
+          fi
+          mkdir -p dist
+          for target in linux/amd64 linux/arm64 linux/arm/7; do
+            IFS=/ read -r os arch arm <<< "$target"
+            suffix="$os-$arch${arm:+v$arm}"
+            CGO_ENABLED=0 GOOS=$os GOARCH=$arch GOARM=$arm \
+              go build -trimpath -ldflags "-s -w -X main.version=$version" \
+              -o "dist/mijote-server-$version-$suffix" .
+          done
+          (cd dist && sha256sum * > SHA256SUMS)
+
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/server-v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --title "Server ${GITHUB_REF_NAME#server-v}" --generate-notes
