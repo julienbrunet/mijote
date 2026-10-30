@@ -5,6 +5,7 @@ Mijote is a self-hosted family weekly menu planner (mobile app + Go-favored back
 ## Language
 - All code, code comments, documentation and commit messages are written in **English**.
 - Conversation with the user happens in **French**.
+- Keep answers to the user short and to the point: no long tables or exhaustive detail unless asked; ask only the questions that matter.
 
 ## Commits
 - Use Conventional Commits: `feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:`, `build:`, `ci:`…
