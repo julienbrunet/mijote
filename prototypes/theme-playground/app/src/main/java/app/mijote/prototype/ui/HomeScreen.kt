@@ -59,7 +59,7 @@ fun HomeScreen() {
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             item {
-                Text("CETTE SEMAINE", fontSize = 26.sp, letterSpacing = 4.sp, fontWeight = FontWeight.Light, color = MaterialTheme.colorScheme.onBackground)
+                Text("ÇA MIJOTE", fontSize = 26.sp, letterSpacing = 4.sp, fontWeight = FontWeight.Light, color = MaterialTheme.colorScheme.onBackground)
                 Text("2 → 8 novembre · 11 repas", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp)
                 Spacer(Modifier.height(6.dp))
             }
