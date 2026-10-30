@@ -3,7 +3,7 @@ name: Android app
 # Builds only when the app changes; publishes a GitHub release on `android-vX.Y.Z` tags.
 on:
   push:
-    branches: [main]
+    branches: [main, "claude/**"]
     paths: ["android/**", ".github/workflows/android.yml"]
     tags: ["android-v*"]
   pull_request:
