@@ -49,14 +49,14 @@ class ScreenshotTest {
     fun generate() = paparazzi.snapshot {
         MijoteTheme {
             GenerateScreen(GenerationInfo(24, 10, 7, listOf("dinner", "dinner", "dinner", "dinner", "dinner", "lunch_dinner", "lunch_dinner")),
-                LocalDate.of(2026, 10, 31), busy = false, error = null, onGenerate = { _, _, _ -> })
+                LocalDate.of(2026, 10, 31), people = 4, busy = false, error = null, onGenerate = { _, _, _ -> })
         }
     }
 
     @Test
     fun generateNotEnoughRecipes() = paparazzi.snapshot {
         MijoteTheme {
-            GenerateScreen(GenerationInfo(4, 10, 7, List(7) { "lunch_dinner" }), LocalDate.of(2026, 10, 31),
+            GenerateScreen(GenerationInfo(4, 10, 7, List(7) { "lunch_dinner" }), LocalDate.of(2026, 10, 31), people = 1,
                 busy = false, error = null, onGenerate = { _, _, _ -> })
         }
     }

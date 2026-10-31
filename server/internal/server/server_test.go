@@ -667,6 +667,19 @@ func TestMenuGeneration(t *testing.T) {
 	_, tok := app.json("/api/v1/auth/login", map[string]string{"username": "julien", "password": "secret-pass"})
 	access := tok["accessToken"].(string)
 
+	// Preferences: number of people (default 1).
+	_, me := app.api("GET", "/api/v1/me", access, nil)
+	if me["preferences"].(map[string]any)["people"].(float64) != 1 {
+		t.Fatalf("default people %v", me)
+	}
+	res, _ := app.api("PUT", "/api/v1/me/preferences", access, map[string]any{"people": 0})
+	expect(t, res, http.StatusUnprocessableEntity, "people out of range")
+	res, me = app.api("PUT", "/api/v1/me/preferences", access, map[string]any{"people": 4})
+	expect(t, res, http.StatusOK, "set people")
+	if me["preferences"].(map[string]any)["people"].(float64) != 4 {
+		t.Fatalf("people not saved %v", me)
+	}
+
 	gen := map[string]any{"start": "2026-11-02", "meals": 5, "plan": "dinner"}
 	res, out := app.api("POST", "/api/v1/menu/generate", access, gen)
 	expect(t, res, http.StatusConflict, "empty recipe base")

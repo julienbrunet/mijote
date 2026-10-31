@@ -50,9 +50,9 @@ class MainActivity : ComponentActivity() {
                         HomeScreen(
                             s.user, onLogout = vm::logout,
                             period = m?.let(::menuPeriod), days = m?.let(::menuDays).orEmpty(),
-                            generatedCount = menu.generated, onNewWeek = vm::loadMenu,
+                            generatedCount = menu.generated, onNewWeek = vm::loadMenu, onPeople = vm::setPeople,
                         ) {
-                            GenerateScreen(m?.info, m?.today ?: LocalDate.now(), menu.generating, menu.error,
+                            GenerateScreen(m?.info, m?.today ?: LocalDate.now(), s.user.people, menu.generating, menu.error,
                                 onGenerate = vm::generateMenu)
                         }
                     }

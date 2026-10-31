@@ -200,6 +200,23 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** Saves the number of people; the screen shows the new value at once and rolls back on failure. */
+    fun setPeople(people: Int) {
+        val home = _state.value.screen as? Screen.Home ?: return
+        val before = home.user
+        _state.update { it.copy(screen = Screen.Home(before.copy(people = people))) }
+        viewModelScope.launch {
+            try {
+                val u = session.authed { api, access -> api.setPeople(access, people) }
+                session.updateUser(u)
+            } catch (e: SessionExpiredException) {
+                toLogin("Votre session a expiré : reconnectez-vous.")
+            } catch (e: IOException) {
+                _state.update { if (it.screen is Screen.Home) it.copy(screen = Screen.Home(before), error = errorMessage(e)) else it }
+            }
+        }
+    }
+
     fun generateMenu(start: LocalDate, meals: Int, plan: MealPlan) {
         if (_menu.value.generating) return
         _menu.update { it.copy(generating = true, error = null) }

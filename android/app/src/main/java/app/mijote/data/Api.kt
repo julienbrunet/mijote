@@ -8,9 +8,11 @@ import java.net.URL
 /** An error answered by the server: HTTP status and the `error` code of its JSON body. */
 class ApiException(val status: Int, val code: String, message: String) : IOException(message)
 
-data class User(val id: String, val username: String, val displayName: String, val role: String) {
+/** [people] is the user's preference: number of people to cook for (recipes are stored for one person). */
+data class User(val id: String, val username: String, val displayName: String, val role: String, val people: Int = 1) {
     fun toJson(): JSONObject = JSONObject()
         .put("id", id).put("username", username).put("displayName", displayName).put("role", role)
+        .put("preferences", JSONObject().put("people", people))
 
     companion object {
         fun fromJson(o: JSONObject) = User(
@@ -18,6 +20,7 @@ data class User(val id: String, val username: String, val displayName: String, v
             username = o.getString("username"),
             displayName = o.optString("displayName", o.getString("username")),
             role = o.optString("role", "member"),
+            people = o.optJSONObject("preferences")?.optInt("people", 1) ?: 1,
         )
     }
 }
@@ -102,6 +105,10 @@ class Api(private val baseUrl: String, private val http: Http = UrlConnectionHtt
     }
 
     fun me(access: String): User = User.fromJson(call("GET", "/api/v1/me", bearer = access))
+
+    /** Saves the user's preferences (number of people, 1 to 20). */
+    fun setPeople(access: String, people: Int): User =
+        User.fromJson(call("PUT", "/api/v1/me/preferences", JSONObject().put("people", people), bearer = access))
 
     /** Planned meals from today over the family horizon, and the generation info. */
     fun menu(access: String): Menu = parseMenu(call("GET", "/api/v1/menu", bearer = access))

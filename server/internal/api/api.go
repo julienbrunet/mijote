@@ -32,6 +32,7 @@ func (a *API) Routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/v1/invitations/redeem", a.redeemInvitation)
 	mux.Handle("POST /api/v1/auth/logout", a.authenticate(http.HandlerFunc(a.logout)))
 	mux.Handle("GET /api/v1/me", a.authenticate(http.HandlerFunc(a.me)))
+	mux.Handle("PUT /api/v1/me/preferences", a.authenticate(http.HandlerFunc(a.setPreferences)))
 	for pattern, h := range map[string]http.HandlerFunc{
 		"GET /api/v1/recipes":               a.listRecipes,
 		"POST /api/v1/recipes":              a.createRecipe,
@@ -116,8 +117,25 @@ func (a *API) me(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, userJSON(current(r).user))
 }
 
-func userJSON(u store.User) map[string]string {
-	return map[string]string{"id": u.ID, "username": u.Username, "displayName": u.DisplayName, "role": u.Role}
+// setPreferences changes the user's own preferences: {"people": 1..20}.
+func (a *API) setPreferences(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		People int `json:"people"`
+	}
+	if !body(w, r, &in) {
+		return
+	}
+	u, err := a.Store.SetPeople(r.Context(), current(r).user.ID, in.People)
+	if err != nil {
+		recipeError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, userJSON(u))
+}
+
+func userJSON(u store.User) map[string]any {
+	return map[string]any{"id": u.ID, "username": u.Username, "displayName": u.DisplayName, "role": u.Role,
+		"preferences": map[string]any{"people": u.People}}
 }
 
 // ---------- helpers ----------

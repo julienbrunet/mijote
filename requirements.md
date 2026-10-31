@@ -87,6 +87,7 @@ Planning a family's weekly menus is repetitive: finding recipes, avoiding repeat
 | FR-PLAN-01 | For each weekday, choose the meals to plan: lunch + dinner, dinner only, or none. | Must |
 | FR-PLAN-02 | Admin defines the family default meals per weekday. | Must |
 | FR-PLAN-03 | User chooses a planning horizon of X days (user-defined). | Must |
+| FR-PLAN-05 | Each user sets in their preferences the number of people to cook for (1–20, default 1). Recipes are stored for **one person**; quantities are multiplied by this number. It does not change which recipes generation picks. | Must |
 | FR-PLAN-04 | User can add or remove a single meal slot in the period (e.g. away on Tuesday lunch). | Should |
 
 ### 4.4 Menu generation (GEN)
@@ -264,7 +265,7 @@ Conceptual model for PostgreSQL. Names are indicative; the exact schema is defin
 | source_url | text, unique when set | Link to the original recipe; used for duplicate detection |
 | image_path | text, nullable | Thumbnail on disk (JPEG, 800 px max), relative to the image directory. The image is **uploaded** to the server (app or web admin); the server never stores or serves an external image URL and never fetches one. |
 | prep_minutes, cook_minutes, total_minutes | int, nullable | From schema.org; total used for quick / long |
-| servings | int, nullable | From `recipeYield` when parsable |
+| servings | int, nullable | From `recipeYield` when parsable. Recipes are meant to be stored for one person (quantities multiplied by the user's number of people, FR-PLAN-05). |
 | dish_type | enum: `meat`, `fish`, `vegetarian` | Dedicated field (not a tag), used by generation |
 | seasons | set of `spring`, `summer`, `autumn`, `winter` | Dedicated field; empty = all year |
 | meal_types | set of `lunch`, `dinner` | Meals the recipe suits |
@@ -338,7 +339,7 @@ Aggregation (shopping list): quantities are summed only for the same ingredient 
 - **Last used date**: derived from menu history (FR-GEN-03).
 
 ### user
-id, username (unique, used to log in; no email), display_name, password_hash, role (`admin` / `member`), created_at, disabled_at (nullable). There is exactly **one admin** per instance.
+id, username (unique, used to log in; no email), display_name, people (preference: number of people to cook for, 1–20, default 1), password_hash, role (`admin` / `member`), created_at, disabled_at (nullable). There is exactly **one admin** per instance.
 
 ### Authentication tables (see §13)
 - `api_token`: personal API tokens (user, name, SHA-256 hash, 8-character display prefix, scope `read`/`write`, expiry, last use, revocation).
@@ -382,7 +383,7 @@ Runs on the server. Input: a period, the family settings, the existing slots.
 
 **Generation request** (implemented 2026-10-31): the app asks for a **number of meals** from a start day (`POST /api/v1/menu/generate` with `start`, `meals` 1–42, `plan`). The plan decides which meals each day gets: `default` (family default meals per weekday), `lunch_dinner` or `dinner`; slots are taken day after day until the count is reached (60 days at most). Locked slots in the period are kept and count among the meals; other slots of the period are refilled, and unlocked slots the new plan leaves out are removed. Seasons are meteorological (northern hemisphere: winter = Dec–Feb…). Below the family's minimum recipe count, the server answers `409 not_enough_recipes` with `have` / `need`. `GET /api/v1/menu?from&to` returns the planned meals (default: today onwards) and the generation info (recipe count, minimum, horizon, default meals). Weights live in `server/internal/menu/plan.go`.
 
-**Generation screen** (app, "Générer" tab): Butter sheet titled "Nouveau menu"; a card with a +/− meal count stepper on its left (default: meals of the family horizon), a white face summarizing the count and the period, and a Slate band of plan choices (Mes réglages / Midi & soir / Soir seulement, selected one Butter with a check); start day choices below (Aujourd'hui, Demain, Lundi prochain), then "Générer le menu". The "Nouvelle semaine" button of the home screen opens it; after generation the app returns to the menus.
+**Generation screen** (app, "Générer" tab): Butter sheet titled "Nouveau menu"; a card with a +/− meal count stepper on its left (default: meals of the family horizon), a white face summarizing the count and the period, and a Slate band of plan choices (Mes réglages / Midi & soir / Soir seulement, selected one Butter with a check); start day choices below (Aujourd'hui, Demain, Lundi prochain), then "Générer le menu". The summary shows the user's number of people (edited from the user menu, `PUT /api/v1/me/preferences`). The "Nouvelle semaine" button of the home screen opens it; after generation the app returns to the menus.
 
 **Swap** (FR-ADJ-01) runs steps 2–5 for one slot, excluding its current recipe.
 **Regenerate** re-fills every non-locked slot of the period.
