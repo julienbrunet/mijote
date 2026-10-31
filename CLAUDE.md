@@ -48,6 +48,10 @@ Mijote is a self-hosted family weekly menu planner (native Android app in Kotlin
 - Android: Gradle reads `-PversionName` / `-PversionCode` (`MAJOR*10000+MINOR*100+PATCH`); release signing from env `MIJOTE_KEYSTORE`, `MIJOTE_KEYSTORE_PASSWORD`, `MIJOTE_KEY_ALIAS`, `MIJOTE_KEY_PASSWORD` (repo secrets `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`).
 - Server: static binaries for linux amd64, arm64, armv7; `main` declares `var version = "dev"` (set via `-X main.version`). Docker image not built yet.
 
+## Android app
+- `android/`: package `app.mijote`, same toolchain as the prototype. No DI or networking library: `HttpURLConnection` + `org.json`; tokens encrypted with an Android Keystore AES-GCM key. HTTPS only.
+- Screenshots: `./gradlew :app:recordPaparazziDebug` (snapshots are git-ignored).
+
 ## Backend
 - `server/`: Go module (Go 1.24, pgx v5), `main` package at its root. Schema changes = new file in `server/internal/migrate/migrations/` (see `requirements.md` §12).
 - PostgreSQL 16 binaries are in `/usr/lib/postgresql/16/bin`; run them as the `postgres` user with a data dir outside the scratchpad (e.g. `/var/tmp`), then set `MIJOTE_TEST_DATABASE_URL`.
