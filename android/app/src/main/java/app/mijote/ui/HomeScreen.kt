@@ -72,7 +72,7 @@ fun HomeScreen(user: User, onLogout: () -> Unit, period: String? = null, days: L
                 )
             }
         }
-        BottomBar(tab, Modifier.align(Alignment.BottomCenter)) { tab = it }
+        BottomBar(tab, Modifier.align(Alignment.BottomEnd)) { tab = it }
     }
 }
 
@@ -184,27 +184,43 @@ private fun UserButton(user: User, onLogout: () -> Unit) {
     }
 }
 
-/** Floating white bar; the selected tab is a peach pill with its label. */
+/**
+ * Bottom navigation as stacked peach tabs anchored to the bottom-right corner of the screen.
+ * Tabs are laid out from the right; each one overlaps the tab on its left with its rounded
+ * top-left corner. The selected tab widens to show its label.
+ */
 @Composable
 private fun BottomBar(selected: Tab, modifier: Modifier, onSelect: (Tab) -> Unit) {
     val icons = mapOf(Tab.MENUS to Icons.Filled.Home, Tab.RECIPES to Icons.Filled.Search, Tab.SETTINGS to Icons.Filled.Settings)
-    Row(
-        modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 20.dp, vertical = 14.dp)
-            .shadow(14.dp, RoundedCornerShape(28.dp), ambientColor = Sunny.PeachDeep, spotColor = Sunny.PeachDeep)
-            .background(Sunny.Card, RoundedCornerShape(28.dp)).padding(8.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Tab.entries.forEach { t ->
+    // Shades from the leftmost tab to the rightmost one, lighter towards the screen edge.
+    val shades = listOf(Sunny.PeachDeep, Color(0xFFF89A7D), Color(0xFFFCAF94))
+    val radius = 36.dp
+    val navInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    val tabHeight = 76.dp + navInset
+    fun width(t: Tab) = if (t == selected) 176.dp else 112.dp
+    val tabs = Tab.entries
+    Box(modifier.fillMaxWidth().height(tabHeight)) {
+        // Drawn left to right so each tab covers the one on its left.
+        tabs.forEachIndexed { i, t ->
             val on = t == selected
+            val rightmost = i == tabs.lastIndex
+            // Distance from the screen's right edge: widths of the tabs on the right, minus their overlap.
+            val end = tabs.drop(i + 1).fold(0.dp) { acc, r -> acc + width(r) - radius }
+            val shape = RoundedCornerShape(topStart = radius)
             Row(
-                Modifier.clip(RoundedCornerShape(20.dp)).background(if (on) Sunny.PeachDeep else Color.Transparent)
-                    .clickable { onSelect(t) }.padding(horizontal = 18.dp, vertical = 12.dp),
+                Modifier.align(Alignment.BottomEnd).padding(end = end)
+                    .width(width(t)).fillMaxHeight()
+                    .shadow(10.dp, shape, ambientColor = Sunny.PeachDeep, spotColor = Sunny.PeachDeep)
+                    .background(shades[i], shape).clip(shape)
+                    .clickable { onSelect(t) }
+                    .padding(bottom = navInset, end = if (rightmost) 0.dp else radius),
+                horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(icons.getValue(t), contentDescription = t.label, tint = if (on) Color.White else Sunny.Slate)
-                if (on) Text(t.label, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp,
-                    modifier = Modifier.padding(start = 8.dp))
+                Icon(icons.getValue(t), contentDescription = t.label,
+                    tint = if (on) Color.White else Color.White.copy(alpha = 0.8f), modifier = Modifier.size(26.dp))
+                if (on) Text(t.label, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp,
+                    modifier = Modifier.padding(start = 10.dp))
             }
         }
     }
