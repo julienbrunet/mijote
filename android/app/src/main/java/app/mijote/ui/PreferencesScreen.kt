@@ -1,5 +1,6 @@
 package app.mijote.ui
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -14,9 +15,11 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
+import app.mijote.R
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.mijote.data.User
@@ -46,7 +49,8 @@ fun PreferencesScreen(
                 .background(Sunny.Butter, RoundedCornerShape(bottomStart = 40.dp, bottomEnd = 40.dp)),
         ) {
             CornerBlock(Sunny.Card, size = 88.dp, modifier = Modifier.align(Alignment.TopEnd)) {
-                Text("⚙️", fontSize = 30.sp, modifier = Modifier.statusBarsPadding())
+                Image(painterResource(R.drawable.ic_mijote_cocotte), contentDescription = null,
+                    modifier = Modifier.statusBarsPadding().size(56.dp))
             }
             Column(Modifier.statusBarsPadding().padding(start = 16.dp, end = 100.dp, top = 12.dp, bottom = 64.dp)) {
                 IconButton(onClick = onBack) {
