@@ -1,0 +1,58 @@
+name: Presentation site
+
+# Builds the static site in `site/` on every change; deploys it to GitHub Pages from `main` only.
+# Download links are resolved in the browser from the latest GitHub releases, so a new app or
+# server release needs no redeploy.
+on:
+  push:
+    branches: [main, "claude/**"]
+    paths: ["site/**", ".github/workflows/pages.yml"]
+  pull_request:
+    paths: ["site/**", ".github/workflows/pages.yml"]
+  workflow_dispatch:
+
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the site
+        run: |
+          node --check site/app.js
+          for f in index.html style.css app.js favicon.svg fonts/inter-300.ttf fonts/inter-400.ttf fonts/inter-500.ttf fonts/inter-600.ttf; do
+            test -s "site/$f" || { echo "::error::site/$f is missing"; exit 1; }
+          done
+          # Every English block needs a French twin (and the other way round).
+          en=$(grep -o 'data-l="en"' site/index.html | wc -l)
+          fr=$(grep -o 'data-l="fr"' site/index.html | wc -l)
+          [ "$en" -eq "$fr" ] || { echo "::error::$en English blocks vs $fr French blocks in site/index.html"; exit 1; }
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/configure-pages@v5
+        with:
+          enablement: true
+      - id: deployment
+        uses: actions/deploy-pages@v4

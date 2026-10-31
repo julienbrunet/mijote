@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en" data-lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mijote — family weekly menu planner</title>
+<meta name="description" content="Mijote is a self-hosted family weekly menu planner: Android app and lightweight Go server. / Planificateur de menus familial auto-hébergé.">
+<meta name="theme-color" content="#EFEAE3">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="style.css">
+<script>
+  // Pick the language before first paint: saved choice, else browser language (French or English).
+  (function () {
+    var lang = "en";
+    try {
+      var saved = localStorage.getItem("mijote-lang");
+      if (saved === "fr" || saved === "en") lang = saved;
+      else lang = /^fr\b/i.test((navigator.languages && navigator.languages[0]) || navigator.language || "") ? "fr" : "en";
+    } catch (e) {}
+    document.documentElement.setAttribute("data-lang", lang);
+    document.documentElement.lang = lang;
+  })();
+</script>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <a class="brand" href="#"><img src="favicon.svg" alt="">Mijote</a>
+    <div class="lang" role="group" aria-label="Language / Langue">
+      <button type="button" data-set-lang="en">EN</button>
+      <button type="button" data-set-lang="fr">FR</button>
+    </div>
+  </header>
+
+  <main>
+  <div class="hero">
+    <h1>Ça mijote</h1>
+    <p class="lead" data-l="en">The weekly menu planner for your family. Import recipes from the web, generate balanced menus, adjust them with a swipe — on your own server.</p>
+    <p class="lead" data-l="fr">Le planificateur de menus de la semaine pour votre famille. Importez des recettes du web, générez des menus équilibrés, ajustez-les d'un geste — sur votre propre serveur.</p>
+    <div class="btns">
+      <a class="btn" href="#download"><span data-l="en">Download</span><span data-l="fr">Télécharger</span></a>
+      <a class="btn alt" href="#install"><span data-l="en">Install guide</span><span data-l="fr">Guide d'installation</span></a>
+    </div>
+  </div>
+
+  <section id="features">
+    <h2><span data-l="en">Features</span><span data-l="fr">Fonctionnalités</span></h2>
+    <div class="grid">
+      <div class="card">
+        <h3 data-l="en">Recipe import</h3><h3 data-l="fr">Import de recettes</h3>
+        <p data-l="en">Paste a link or use the Android share sheet. The app reads the recipe (schema.org) on your phone — the server never scrapes web pages.</p>
+        <p data-l="fr">Collez un lien ou utilisez le partage Android. L'application lit la recette (schema.org) sur votre téléphone — le serveur n'explore jamais les pages web.</p>
+      </div>
+      <div class="card">
+        <h3 data-l="en">Shared recipe base</h3><h3 data-l="fr">Base de recettes partagée</h3>
+        <p data-l="en">One collection for the whole family, organised with tags.</p>
+        <p data-l="fr">Une seule collection pour toute la famille, organisée avec des tags.</p>
+        <p style="margin-top:10px"><span class="tag meat" data-l="en">Meat</span><span class="tag meat" data-l="fr">Viande</span><span class="tag fish" data-l="en">Fish</span><span class="tag fish" data-l="fr">Poisson</span><span class="tag veg" data-l="en">Vegetarian</span><span class="tag veg" data-l="fr">Végétarien</span></p>
+      </div>
+      <div class="card">
+        <h3 data-l="en">Menu generation</h3><h3 data-l="fr">Génération de menus</h3>
+        <p data-l="en">Set the meals of each weekday and a planning horizon; the server proposes a varied menu that fits your preparation time.</p>
+        <p data-l="fr">Définissez les repas de chaque jour et un horizon de planification ; le serveur propose un menu varié adapté à votre temps de préparation.</p>
+      </div>
+      <div class="card">
+        <h3 data-l="en">Easy adjustments</h3><h3 data-l="fr">Ajustements faciles</h3>
+        <p data-l="en">Swap a dish, lock the ones you like, move meals around.</p>
+        <p data-l="fr">Échangez un plat, verrouillez ceux que vous aimez, déplacez les repas.</p>
+      </div>
+      <div class="card">
+        <h3 data-l="en">Shared and offline</h3><h3 data-l="fr">Partagé et hors ligne</h3>
+        <p data-l="en">Every family member sees the same menu. Recipes and current menus stay readable offline.</p>
+        <p data-l="fr">Chaque membre de la famille voit le même menu. Les recettes et les menus en cours restent lisibles hors ligne.</p>
+      </div>
+      <div class="card">
+        <h3 data-l="en">Self-hosted and light</h3><h3 data-l="fr">Auto-hébergé et léger</h3>
+        <p data-l="en">A single Go binary plus PostgreSQL, sized for a Raspberry Pi 3B+. Web admin for accounts, invitations and security (optional 2FA).</p>
+        <p data-l="fr">Un binaire Go et PostgreSQL, dimensionnés pour un Raspberry Pi 3B+. Interface web d'administration pour les comptes, invitations et la sécurité (2FA optionnelle).</p>
+      </div>
+    </div>
+    <div class="note">
+      <span data-l="en"><strong>Project status:</strong> early development. The server (authentication, web admin) and the app skeleton (server setup, sign-in) are available; the features above are being built.</span>
+      <span data-l="fr"><strong>État du projet :</strong> développement en cours. Le serveur (authentification, interface d'administration) et la base de l'application (connexion au serveur, identification) sont disponibles ; les fonctionnalités ci-dessus sont en construction.</span>
+    </div>
+  </section>
+
+  <section id="download">
+    <h2><span data-l="en">Download</span><span data-l="fr">Télécharger</span></h2>
+    <div class="grid">
+      <div class="card dl" id="dl-android">
+        <h3>Android</h3>
+        <div class="version" data-version><span data-l="en">Loading…</span><span data-l="fr">Chargement…</span></div>
+        <ul data-files></ul>
+        <p style="margin-top:12px"><a href="https://github.com/julienbrunet/mijote/releases" data-fallback><span data-l="en">All releases</span><span data-l="fr">Toutes les versions</span></a></p>
+      </div>
+      <div class="card dl" id="dl-server">
+        <h3 data-l="en">Server</h3><h3 data-l="fr">Serveur</h3>
+        <div class="version" data-version><span data-l="en">Loading…</span><span data-l="fr">Chargement…</span></div>
+        <ul data-files></ul>
+        <p style="margin-top:12px"><a href="https://github.com/julienbrunet/mijote/releases" data-fallback><span data-l="en">All releases</span><span data-l="fr">Toutes les versions</span></a></p>
+      </div>
+    </div>
+  </section>
+
+  <section id="install">
+    <h2><span data-l="en">Install guide</span><span data-l="fr">Guide d'installation</span></h2>
+
+    <h3 data-l="en">1. Server</h3><h3 data-l="fr">1. Serveur</h3>
+    <p data-l="en">You need a Linux machine (a Raspberry Pi 3B+ is enough) and PostgreSQL 16. Binaries are provided for <code>linux-amd64</code>, <code>linux-arm64</code> and <code>linux-armv7</code> (32-bit Raspberry Pi OS).</p>
+    <p data-l="fr">Il vous faut une machine Linux (un Raspberry Pi 3B+ suffit) et PostgreSQL 16. Les binaires sont fournis pour <code>linux-amd64</code>, <code>linux-arm64</code> et <code>linux-armv7</code> (Raspberry Pi OS 32 bits).</p>
+    <ol class="steps">
+      <li data-l="en">Create a database and a user in PostgreSQL (<code>createuser mijote</code>, <code>createdb -O mijote mijote</code>).</li>
+      <li data-l="fr">Créez une base et un utilisateur PostgreSQL (<code>createuser mijote</code>, <code>createdb -O mijote mijote</code>).</li>
+      <li data-l="en">Download the binary matching your machine, check it against <code>SHA256SUMS</code> and make it executable.</li>
+      <li data-l="fr">Téléchargez le binaire correspondant à votre machine, vérifiez-le avec <code>SHA256SUMS</code> et rendez-le exécutable.</li>
+      <li data-l="en">Start it with environment variables (migrations run automatically):</li>
+      <li data-l="fr">Lancez-le avec des variables d'environnement (les migrations s'exécutent automatiquement) :</li>
+    </ol>
+<pre>chmod +x mijote-server-*-linux-arm64
+MIJOTE_DATABASE_URL='postgres://mijote:secret@localhost:5432/mijote' \
+MIJOTE_IMAGE_DIR=/var/lib/mijote/images \
+./mijote-server-*-linux-arm64</pre>
+    <div class="tablewrap"><table>
+      <tr><th>Variable</th><th><span data-l="en">Default</span><span data-l="fr">Défaut</span></th><th>Description</th></tr>
+      <tr><td><code>MIJOTE_DATABASE_URL</code></td><td><span data-l="en">required</span><span data-l="fr">obligatoire</span></td><td><span data-l="en">PostgreSQL URL</span><span data-l="fr">URL PostgreSQL</span></td></tr>
+      <tr><td><code>MIJOTE_LISTEN_ADDR</code></td><td><code>:8080</code></td><td><span data-l="en">HTTP listen address</span><span data-l="fr">Adresse d'écoute HTTP</span></td></tr>
+      <tr><td><code>MIJOTE_IMAGE_DIR</code></td><td><code>/data/images</code></td><td><span data-l="en">Thumbnail directory</span><span data-l="fr">Dossier des miniatures</span></td></tr>
+      <tr><td><code>MIJOTE_TRUSTED_PROXIES</code></td><td><span data-l="en">none</span><span data-l="fr">aucun</span></td><td><span data-l="en">Reverse proxies whose <code>X-Forwarded-*</code> headers are trusted</span><span data-l="fr">Proxys inverses dont les en-têtes <code>X-Forwarded-*</code> sont de confiance</span></td></tr>
+    </table></div>
+    <ol class="steps" start="6">
+      <li data-l="en">Open <code>http://your-server:8080/admin/</code> and follow the setup wizard to create the administrator account.</li>
+      <li data-l="fr">Ouvrez <code>http://votre-serveur:8080/admin/</code> et suivez l'assistant pour créer le compte administrateur.</li>
+      <li data-l="en">Put a reverse proxy with HTTPS (Caddy, nginx…) in front of it: the Android app only talks HTTPS. Keep a regular backup (<code>pg_dump</code> + image directory) and back up before every upgrade.</li>
+      <li data-l="fr">Placez un proxy inverse HTTPS (Caddy, nginx…) devant : l'application Android ne parle qu'en HTTPS. Faites des sauvegardes régulières (<code>pg_dump</code> + dossier des images), et avant chaque mise à jour.</li>
+    </ol>
+    <p data-l="en">To keep it running, use a systemd service (<code>Restart=always</code>, variables in an <code>EnvironmentFile</code>). Lost your 2FA phone? Run <code>mijote reset-2fa &lt;username&gt;</code> on the server.</p>
+    <p data-l="fr">Pour le garder actif, utilisez un service systemd (<code>Restart=always</code>, variables dans un <code>EnvironmentFile</code>). Téléphone 2FA perdu ? Lancez <code>mijote reset-2fa &lt;utilisateur&gt;</code> sur le serveur.</p>
+
+    <h3 style="margin-top:28px" data-l="en">2. Android app</h3><h3 style="margin-top:28px" data-l="fr">2. Application Android</h3>
+    <ol class="steps">
+      <li data-l="en">Download the <code>.apk</code> on your phone (Android 8.0 or later).</li>
+      <li data-l="fr">Téléchargez le fichier <code>.apk</code> sur votre téléphone (Android 8.0 ou plus).</li>
+      <li data-l="en">Open it and allow installing from this source when Android asks.</li>
+      <li data-l="fr">Ouvrez-le et autorisez l'installation depuis cette source quand Android le demande.</li>
+      <li data-l="en">Launch Mijote, enter your server address (<code>https://…</code>), then sign in.</li>
+      <li data-l="fr">Lancez Mijote, saisissez l'adresse de votre serveur (<code>https://…</code>), puis connectez-vous.</li>
+    </ol>
+  </section>
+  </main>
+
+  <footer>
+    <a href="https://github.com/julienbrunet/mijote">GitHub</a> ·
+    <a href="https://github.com/julienbrunet/mijote/releases"><span data-l="en">Releases</span><span data-l="fr">Versions</span></a>
+  </footer>
+</div>
+<script src="app.js"></script>
+</body>
+</html>

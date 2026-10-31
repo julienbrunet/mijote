@@ -41,8 +41,15 @@ Mijote is a self-hosted family weekly menu planner (native Android app in Kotlin
 ## Prototypes
 - `prototypes/theme-playground/`: throwaway Compose app used to tune the theme.
 
+## Presentation site (GitHub Pages)
+- `site/`: static page (plain HTML/CSS/JS, no build step) describing the app, with download links and install docs; same "Calm Kit" theme as the app and the same Inter fonts. Published at `https://julienbrunet.github.io/mijote/` by `.github/workflows/pages.yml` (deploys from `main` only; GitHub Pages source must be "GitHub Actions").
+- **Every feature change or addition (app or server) must be reflected in `site/index.html`** (features list, project status note, install guide, environment variables table), in the same commit.
+- Bilingual English/French: every text block exists twice, with `data-l="en"` and `data-l="fr"`; the language is detected from the browser and can be switched (choice saved in `localStorage`). CI fails if the two counts differ.
+- Download links are fetched at runtime from the latest `android-v*` and `server-v*` GitHub releases (`site/app.js`): a release needs no site redeploy.
+- Theme changes in `requirements.md` §8 must also be applied to `site/style.css`.
+
 ## CI/CD and releases
-- GitHub Actions: `.github/workflows/android.yml` (`android/`) and `server.yml` (`server/`, API + web admin). Each runs only when its directory changes; in-progress runs are cancelled; caches enabled.
+- GitHub Actions: `.github/workflows/android.yml` (`android/`) and `server.yml` (`server/`, API + web admin) and `pages.yml` (`site/`, presentation page). Each runs only when its directory changes; in-progress runs are cancelled; caches enabled.
 - Android: SemVer via tags `android-vX.Y.Z`; a tag publishes a public GitHub release with checksums.
 - Server: every push to `main` touching `server/` publishes release `server-v0.1.<run number>` automatically (a `server-vX.Y.Z` tag still works). After merging, tell the user the published server version.
 - Android: Gradle reads `-PversionName` / `-PversionCode` (`MAJOR*10000+MINOR*100+PATCH`); release signing from env `MIJOTE_KEYSTORE`, `MIJOTE_KEYSTORE_PASSWORD`, `MIJOTE_KEY_ALIAS`, `MIJOTE_KEY_PASSWORD` (repo secrets `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`).

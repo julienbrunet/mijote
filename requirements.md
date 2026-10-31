@@ -30,6 +30,8 @@ Planning a family's weekly menus is repetitive: finding recipes, avoiding repeat
 - Web admin (server-rendered, htmx).
 - Docker distribution (ARM + x86), env-var configuration, automatic migrations, documented backups, API versioning.
 
+- Presentation site on GitHub Pages (`site/`, EN/FR): description, downloads, install guide; kept in sync with every feature change (see `CLAUDE.md`).
+
 ### Out of scope / later
 - Multi-household per instance (no `household_id`).
 - OAuth / third-party login.
