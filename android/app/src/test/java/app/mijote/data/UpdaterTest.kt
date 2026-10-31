@@ -30,5 +30,11 @@ class UpdaterTest {
         ]"""
         assertEquals(AppRelease("0.1.15", "https://x/a.apk", "https://x/a.apk.sha256"), latestAppRelease(json))
         assertNull(latestAppRelease("[]"))
+        // An old tag listed first must not win over a higher version.
+        val reordered = """[
+          {"tag_name":"android-v0.1.8","assets":[{"name":"a.apk","browser_download_url":"u8"},{"name":"a.apk.sha256","browser_download_url":"s8"}]},
+          {"tag_name":"android-v0.1.37","assets":[{"name":"a.apk","browser_download_url":"u37"},{"name":"a.apk.sha256","browser_download_url":"s37"}]}
+        ]"""
+        assertEquals("0.1.37", latestAppRelease(reordered)?.version)
     }
 }

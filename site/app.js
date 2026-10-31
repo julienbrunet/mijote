@@ -38,11 +38,15 @@
     });
   }
 
-  fetch("https://api.github.com/repos/" + REPO + "/releases?per_page=30", { headers: { Accept: "application/vnd.github+json" } })
+  fetch("https://api.github.com/repos/" + REPO + "/releases?per_page=100", { headers: { Accept: "application/vnd.github+json" } })
     .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
     .then(function (releases) {
       function latest(prefix) {
-        return releases.filter(function (r) { return !r.draft && !r.prerelease && r.tag_name.indexOf(prefix) === 0; })[0];
+        // Highest version, not the first listed: a re-published old tag can come first.
+        function ver(r) { return r.tag_name.slice(prefix.length).split(".").map(Number); }
+        function newer(a, b) { var x = ver(a), y = ver(b); for (var i = 0; i < 3; i++) if (x[i] !== y[i]) return x[i] > y[i]; return false; }
+        return releases.filter(function (r) { return !r.draft && !r.prerelease && r.tag_name.indexOf(prefix) === 0; })
+          .reduce(function (best, r) { return !best || newer(r, best) ? r : best; }, undefined);
       }
       show("dl-android", latest("android-v"));
       show("dl-server", latest("server-v"));

@@ -16,7 +16,7 @@ import java.security.MessageDigest
 /** A published app release: version name and the URLs of its APK and SHA-256 file. */
 data class AppRelease(val version: String, val apkUrl: String, val sha256Url: String)
 
-private const val RELEASES_URL = "https://api.github.com/repos/julienbrunet/mijote/releases?per_page=30"
+private const val RELEASES_URL = "https://api.github.com/repos/julienbrunet/mijote/releases?per_page=100"
 private const val TAG_PREFIX = "android-v"
 
 /** Parses `MAJOR.MINOR.PATCH` (suffixes such as `-dev` ignored) into a comparable triple. */
@@ -33,9 +33,13 @@ fun isNewer(candidate: String, current: String): Boolean {
     return false
 }
 
-/** Picks the latest published `android-v*` release from a GitHub releases list (newest first). */
+/**
+ * Picks the highest-versioned published `android-v*` release from a GitHub releases list.
+ * The list order is not trusted: a re-published old tag can come first.
+ */
 fun latestAppRelease(releasesJson: String): AppRelease? {
     val list = JSONArray(releasesJson)
+    var best: AppRelease? = null
     for (i in 0 until list.length()) {
         val r = list.getJSONObject(i)
         val tag = r.optString("tag_name")
@@ -50,9 +54,12 @@ fun latestAppRelease(releasesJson: String): AppRelease? {
             if (name.endsWith(".apk")) apk = url
             if (name.endsWith(".apk.sha256")) sha = url
         }
-        if (apk != null && sha != null) return AppRelease(tag.removePrefix(TAG_PREFIX), apk, sha)
+        val version = tag.removePrefix(TAG_PREFIX)
+        if (apk != null && sha != null && parseVersion(version) != null && (best == null || isNewer(version, best.version))) {
+            best = AppRelease(version, apk, sha)
+        }
     }
-    return null
+    return best
 }
 
 /**
