@@ -233,23 +233,36 @@ func TestInvitationFlow(t *testing.T) {
 	create := func(days string) string {
 		res, page := web.form("/admin/invitations", url.Values{"csrf": {csrf}, "days": {days}})
 		expect(t, res, http.StatusOK, "create invitation")
-		m := regexp.MustCompile(`Code : <code>([a-z2-7]+)</code>`).FindStringSubmatch(page)
+		m := regexp.MustCompile(`value="http[^"]*/invite/([a-z2-7]+)"`).FindStringSubmatch(page)
 		if m == nil {
-			t.Fatal("invitation code not shown")
-		}
-		if !strings.Contains(page, "mijote://invite?server=") {
 			t.Fatal("invitation link not shown")
 		}
 		return m[1]
 	}
 	code := create("7")
 
+	// The shared link is a public page (no session), the same for any well-formed code.
+	visitor := newClient(t, srv.URL)
+	res, page := visitor.do("GET", "/invite/"+code, "", "")
+	expect(t, res, http.StatusOK, "invitation page")
+	if !strings.Contains(page, "mijote://invite?server=") || !strings.Contains(page, "code="+code) ||
+		!strings.Contains(page, "Je n'ai pas encore l'application") {
+		t.Fatal("invitation page is incomplete")
+	}
+	res, page2 := visitor.do("GET", "/invite/"+strings.Repeat("a", 20), "", "")
+	expect(t, res, http.StatusOK, "page does not reveal whether a code is valid")
+	if strings.Contains(page2, code) {
+		t.Fatal("page shows another code")
+	}
+	res, _ = visitor.do("GET", "/invite/x", "", "")
+	expect(t, res, http.StatusNotFound, "malformed code")
+
 	app := newClient(t, srv.URL)
 	redeem := func(code, user, pw string) (*http.Response, map[string]any) {
 		return app.json("/api/v1/invitations/redeem", map[string]string{"code": code, "username": user,
 			"displayName": "Léa", "password": pw, "deviceName": "Pixel"})
 	}
-	res, _ := redeem("wrongcode", "lea", "lea-password")
+	res, _ = redeem("wrongcode", "lea", "lea-password")
 	expect(t, res, http.StatusNotFound, "unknown code")
 	res, _ = redeem(code, "lea", "short")
 	expect(t, res, http.StatusUnprocessableEntity, "weak password keeps the code usable")

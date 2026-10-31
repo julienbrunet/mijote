@@ -2,9 +2,10 @@
 {{if .New}}<section class="card"><h2>Invitation créée</h2>
 <p>Valable {{.New.Days}} jour(s), à usage unique. Ce code ne sera plus affiché : transmettez-le maintenant.</p>
 <p><img src="{{.New.QR}}" alt="QR code de l'invitation" width="220" height="220"></p>
-<p>Scannez ce QR code depuis l'app, ou saisissez dans l'app l'adresse du serveur et le code :</p>
-<p>Code : <code>{{.New.Code}}</code></p>
-<p class="muted">Lien : <code>{{.New.Link}}</code></p>
+<p>Envoyez ce lien à la personne (message, mail…). Il fonctionne même si elle n'a pas encore l'application : la page explique comment l'installer.</p>
+<p><input type="text" readonly value="{{.New.Link}}" aria-label="Lien d'invitation"></p>
+<p>Ou faites-lui scanner ce QR code avec l'appareil photo de son téléphone :</p>
+<p><img src="{{.New.QR}}" alt="QR code de l'invitation" width="220" height="220"></p>
 </section>{{end}}
 <section class="card"><h2>Nouvelle invitation</h2>
 <form method="post" action="/admin/invitations"><input type="hidden" name="csrf" value="{{$.CSRF}}">
