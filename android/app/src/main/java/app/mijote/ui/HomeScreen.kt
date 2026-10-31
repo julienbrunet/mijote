@@ -13,7 +13,6 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -27,6 +26,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import app.mijote.data.Menu
+import app.mijote.data.MenuSlot
 import app.mijote.data.User
 
 enum class Tab(val label: String) { MENUS("Menus"), RECIPES("Recettes"), GENERATE("Générer") }
@@ -36,7 +37,7 @@ enum class DishType(val label: String, val colors: Pair<Color, Color>) {
 }
 
 /** A planned meal as shown on the home screen. [picture] stands in for the recipe image. */
-data class MealUi(val slot: String, val title: String, val dish: DishType, val prepMinutes: Int, val picture: String, val locked: Boolean)
+data class MealUi(val slot: String, val title: String, val dish: DishType?, val prepMinutes: Int?, val picture: String, val locked: Boolean)
 
 data class DayUi(val label: String, val date: String, val meals: List<MealUi>)
 
@@ -51,11 +52,29 @@ private val sheetStyles = listOf(
 
 /** Signed-in shell: white header with the user corner block, stacked day sheets, floating bottom bar. */
 @Composable
-fun HomeScreen(user: User, onLogout: () -> Unit, period: String? = null, days: List<DayUi> = emptyList()) {
+fun HomeScreen(
+    user: User,
+    onLogout: () -> Unit,
+    period: String? = null,
+    days: List<DayUi> = emptyList(),
+    generatedCount: Int = 0,
+    onNewWeek: (() -> Unit)? = null,
+    generate: @Composable () -> Unit = {},
+) {
     var tab by rememberSaveable { mutableStateOf(Tab.MENUS) }
+    // A successful generation brings the user back to the menus.
+    LaunchedEffect(generatedCount) { if (generatedCount > 0) tab = Tab.MENUS }
+    if (tab == Tab.GENERATE) {
+        Box(Modifier.fillMaxSize()) {
+            generate()
+            BottomBar(tab, Modifier.align(Alignment.BottomEnd)) { tab = it }
+        }
+        return
+    }
     Box(Modifier.fillMaxSize().background(Sunny.Cream)) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-            Header(user, onLogout, if (tab == Tab.MENUS) "Ça mijote" else tab.label, period.takeIf { tab == Tab.MENUS })
+            Header(user, onLogout, if (tab == Tab.MENUS) "Ça mijote" else tab.label, period.takeIf { tab == Tab.MENUS },
+                onNewWeek = { onNewWeek?.invoke(); tab = Tab.GENERATE })
             if (tab == Tab.MENUS && days.isNotEmpty()) {
                 days.forEachIndexed { i, day ->
                     DaySheet(day, sheetStyles[i % sheetStyles.size], first = i == 0, last = i == days.lastIndex)
@@ -63,7 +82,7 @@ fun HomeScreen(user: User, onLogout: () -> Unit, period: String? = null, days: L
             } else {
                 Text(
                     when (tab) {
-                        Tab.MENUS -> "Les menus de la semaine arriveront ici."
+                        Tab.MENUS -> "Aucun repas prévu : touchez « Générer » pour créer le menu."
                         Tab.RECIPES -> "Les recettes arriveront ici."
                         Tab.GENERATE -> "La génération de menus arrivera ici."
                     },
@@ -77,7 +96,7 @@ fun HomeScreen(user: User, onLogout: () -> Unit, period: String? = null, days: L
 }
 
 @Composable
-private fun Header(user: User, onLogout: () -> Unit, title: String, period: String?) {
+private fun Header(user: User, onLogout: () -> Unit, title: String, period: String?, onNewWeek: () -> Unit) {
     Box(
         Modifier.fillMaxWidth().zIndexShadow()
             .background(Sunny.Card, RoundedCornerShape(bottomStart = 40.dp, bottomEnd = 40.dp)),
@@ -87,11 +106,12 @@ private fun Header(user: User, onLogout: () -> Unit, title: String, period: Stri
         }
         Column(Modifier.statusBarsPadding().padding(start = 24.dp, end = 24.dp, top = 40.dp, bottom = 28.dp)) {
             ScreenTitle(title, period, size = 32)
-            if (period != null) {
+            if (title == "Ça mijote") {
                 Spacer(Modifier.height(22.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Row(
-                        Modifier.weight(1f).height(64.dp).clip(Shapes.Control).background(Sunny.Peach).padding(horizontal = 14.dp),
+                        Modifier.weight(1f).height(64.dp).clip(Shapes.Control).background(Sunny.Peach)
+                            .clickable(onClick = onNewWeek).padding(horizontal = 14.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Box(Modifier.size(36.dp).background(Color.White.copy(alpha = 0.3f), CircleShape), contentAlignment = Alignment.Center) {
@@ -153,8 +173,10 @@ private fun MealCard(meal: MealUi, accent: Color) {
                 Text(meal.title, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Sunny.Ink, maxLines = 2,
                     overflow = TextOverflow.Ellipsis, lineHeight = 19.sp, modifier = Modifier.padding(vertical = 3.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    DishTag(meal.dish.label, meal.dish.colors)
-                    Text("${meal.prepMinutes} min", fontSize = 12.sp, color = Sunny.InkSoft, modifier = Modifier.padding(start = 8.dp))
+                    meal.dish?.let { DishTag(it.label, it.colors) }
+                    meal.prepMinutes?.let {
+                        Text("$it min", fontSize = 12.sp, color = Sunny.InkSoft, modifier = Modifier.padding(start = 8.dp))
+                    }
                 }
             }
         }
@@ -224,4 +246,28 @@ private fun BottomBar(selected: Tab, modifier: Modifier, onSelect: (Tab) -> Unit
             }
         }
     }
+}
+
+/** Groups the planned meals by day for the home screen. */
+fun menuDays(menu: Menu): List<DayUi> = menu.slots.groupBy { it.date }.toSortedMap().map { (date, slots) ->
+    DayUi(dayLabel(date, menu.today), shortDate(date), slots.sortedBy { it.meal != "lunch" }.map(::mealUi))
+}
+
+/** "2 → 8 novembre · 11 repas", null without planned meals. */
+fun menuPeriod(menu: Menu): String? {
+    val dates = menu.slots.map { it.date }
+    if (dates.isEmpty()) return null
+    return "${periodLabel(dates.min(), dates.max())} · ${menu.slots.size} repas"
+}
+
+private fun mealUi(s: MenuSlot): MealUi {
+    val dish = when (s.recipe?.dishType) {
+        "meat" -> DishType.MEAT
+        "fish" -> DishType.FISH
+        "vegetarian" -> DishType.VEGETARIAN
+        else -> null
+    }
+    val picture = when (dish) { DishType.MEAT -> "🍗"; DishType.FISH -> "🐟"; DishType.VEGETARIAN -> "🥗"; null -> "🍽️" }
+    return MealUi(if (s.meal == "lunch") "Midi" else "Soir", s.recipe?.title ?: "Aucune recette disponible",
+        dish, s.recipe?.minutes, picture, s.locked)
 }

@@ -1,6 +1,6 @@
 # Mijote — Requirements
 
-Status: draft v0.1. Server skeleton in `server/` (migrations, initial schema).
+Status: draft v0.1. Server skeleton in `server/` (migrations, initial schema); menu generation implemented (§10).
 
 Priorities: **Must** (required for v1), **Should** (expected in v1, can slip), **Could** (nice to have).
 
@@ -379,6 +379,10 @@ Runs on the server. Input: a period, the family settings, the existing slots.
    - **Dish type balance**: favor the type furthest below the admin's target split for the period so far.
 4. **Pick** randomly among the best-scored recipes (weighted), so regenerating gives variety.
 5. **Shortage**: if every eligible recipe was used recently, pick the one served the longest ago. A slot stays empty only when no recipe suits the meal at all.
+
+**Generation request** (implemented 2026-10-31): the app asks for a **number of meals** from a start day (`POST /api/v1/menu/generate` with `start`, `meals` 1–42, `plan`). The plan decides which meals each day gets: `default` (family default meals per weekday), `lunch_dinner` or `dinner`; slots are taken day after day until the count is reached (60 days at most). Locked slots in the period are kept and count among the meals; other slots of the period are refilled, and unlocked slots the new plan leaves out are removed. Seasons are meteorological (northern hemisphere: winter = Dec–Feb…). Below the family's minimum recipe count, the server answers `409 not_enough_recipes` with `have` / `need`. `GET /api/v1/menu?from&to` returns the planned meals (default: today onwards) and the generation info (recipe count, minimum, horizon, default meals). Weights live in `server/internal/menu/plan.go`.
+
+**Generation screen** (app, "Générer" tab): Butter sheet titled "Nouveau menu"; a card with a +/− meal count stepper on its left (default: meals of the family horizon), a white face summarizing the count and the period, and a Slate band of plan choices (Réglages famille / Midi & soir / Soir seulement, selected one Butter with a check); start day choices below (Aujourd'hui, Demain, Lundi prochain), then "Générer le menu". The "Nouvelle semaine" button of the home screen opens it; after generation the app returns to the menus.
 
 **Swap** (FR-ADJ-01) runs steps 2–5 for one slot, excluding its current recipe.
 **Regenerate** re-fills every non-locked slot of the period.

@@ -2,7 +2,9 @@ package app.mijote.ui
 
 import app.cash.paparazzi.DeviceConfig
 import app.cash.paparazzi.Paparazzi
+import app.mijote.data.GenerationInfo
 import app.mijote.data.User
+import java.time.LocalDate
 import org.junit.Rule
 import org.junit.Test
 
@@ -41,6 +43,22 @@ class ScreenshotTest {
     @Test
     fun homeWithMenu() = paparazzi.snapshot {
         MijoteTheme { HomeScreen(User("u1", "julien", "Julien", "admin"), onLogout = {}, period = "2 → 8 novembre · 11 repas", days = sampleDays) }
+    }
+
+    @Test
+    fun generate() = paparazzi.snapshot {
+        MijoteTheme {
+            GenerateScreen(GenerationInfo(24, 10, 7, listOf("dinner", "dinner", "dinner", "dinner", "dinner", "lunch_dinner", "lunch_dinner")),
+                LocalDate.of(2026, 10, 31), busy = false, error = null, onGenerate = { _, _, _ -> })
+        }
+    }
+
+    @Test
+    fun generateNotEnoughRecipes() = paparazzi.snapshot {
+        MijoteTheme {
+            GenerateScreen(GenerationInfo(4, 10, 7, List(7) { "lunch_dinner" }), LocalDate.of(2026, 10, 31),
+                busy = false, error = null, onGenerate = { _, _, _ -> })
+        }
     }
 
     private val sampleDays = listOf(

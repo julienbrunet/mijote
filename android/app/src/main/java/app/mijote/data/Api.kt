@@ -102,6 +102,14 @@ class Api(private val baseUrl: String, private val http: Http = UrlConnectionHtt
     }
 
     fun me(access: String): User = User.fromJson(call("GET", "/api/v1/me", bearer = access))
+
+    /** Planned meals from today over the family horizon, and the generation info. */
+    fun menu(access: String): Menu = parseMenu(call("GET", "/api/v1/menu", bearer = access))
+
+    /** Generates [meals] meals from [start] (FR-GEN); answers 409 not_enough_recipes on a too small base. */
+    fun generateMenu(access: String, start: java.time.LocalDate, meals: Int, plan: MealPlan): List<MenuSlot> =
+        parseGenerated(call("POST", "/api/v1/menu/generate", JSONObject()
+            .put("start", start.toString()).put("meals", meals).put("plan", plan.code), bearer = access))
 }
 
 /**
