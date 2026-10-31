@@ -8,7 +8,12 @@ on:
     tags: ["server-v*"]
   pull_request:
     paths: ["server/**", ".github/workflows/server.yml"]
+  # Manual release: run on main with a version (e.g. 0.1.0); GitHub creates the tag.
   workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release (X.Y.Z); empty = build only"
+        required: false
 
 concurrency:
   group: server-${{ github.ref }}
@@ -51,8 +56,12 @@ jobs:
 
       # Pure Go cross-compilation: one runner builds every target, no QEMU or matrix needed.
       - name: Build binaries
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
         run: |
-          if [[ "$GITHUB_REF" == refs/tags/server-v* ]]; then
+          if [[ -n "$INPUT_VERSION" ]]; then
+            version="$INPUT_VERSION"
+          elif [[ "$GITHUB_REF" == refs/tags/server-v* ]]; then
             version="${GITHUB_REF#refs/tags/server-v}"
           else
             version="0.0.0-dev+${GITHUB_SHA::7}"
@@ -68,9 +77,13 @@ jobs:
           (cd dist && sha256sum * > SHA256SUMS)
 
       - name: Publish release
-        if: startsWith(github.ref, 'refs/tags/server-v')
+        if: startsWith(github.ref, 'refs/tags/server-v') || (inputs.version != '' && github.ref == 'refs/heads/main')
         env:
           GH_TOKEN: ${{ github.token }}
+          INPUT_VERSION: ${{ inputs.version }}
         run: |
-          gh release create "$GITHUB_REF_NAME" dist/* \
-            --title "Server ${GITHUB_REF_NAME#server-v}" --generate-notes
+          tag="${INPUT_VERSION:+server-v$INPUT_VERSION}"
+          tag="${tag:-$GITHUB_REF_NAME}"
+          [[ "$tag" =~ ^server-v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "invalid version: $tag"; exit 1; }
+          gh release create "$tag" dist/* --target "$GITHUB_SHA" \
+            --title "Server ${tag#server-v}" --generate-notes
