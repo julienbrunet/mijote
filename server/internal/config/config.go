@@ -14,6 +14,9 @@ type Config struct {
 	ListenAddr string
 	// ImageDir is the directory holding recipe thumbnails (MIJOTE_IMAGE_DIR).
 	ImageDir string
+	// TrustedProxies lists the reverse proxies whose X-Forwarded-* headers are
+	// trusted, e.g. "192.168.1.10, 10.0.0.0/8" (MIJOTE_TRUSTED_PROXIES).
+	TrustedProxies string
 }
 
 // Load reads the configuration from the environment and applies defaults.
@@ -22,6 +25,8 @@ func Load() (Config, error) {
 		DatabaseURL: os.Getenv("MIJOTE_DATABASE_URL"),
 		ListenAddr:  getenv("MIJOTE_LISTEN_ADDR", ":8080"),
 		ImageDir:    getenv("MIJOTE_IMAGE_DIR", "/data/images"),
+
+		TrustedProxies: os.Getenv("MIJOTE_TRUSTED_PROXIES"),
 	}
 	if c.DatabaseURL == "" {
 		return c, errors.New("MIJOTE_DATABASE_URL is required")

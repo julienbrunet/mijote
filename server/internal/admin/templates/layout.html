@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="same-origin">
+<title>{{.Title}} · Mijote</title>
+<style>
+:root{--sage:#6B7F6E;--mist:#D9E1D9;--sand:#C9BDAF;--bg:#EFEAE3;--card:#F7F4EF;--ink:#2E3530;--soft:#7D847F;--err:#9A5B52}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,sans-serif}
+header{display:flex;flex-wrap:wrap;gap:16px;align-items:center;padding:12px 16px;background:var(--card);border-bottom:1px solid var(--sand)}
+header b{letter-spacing:3px;font-weight:300;margin-right:auto}header a{color:var(--soft);text-decoration:none}header a.on{color:var(--sage);font-weight:600}
+main{max-width:960px;margin:0 auto;padding:16px}
+.card{background:var(--card);border-radius:18px;padding:16px 20px;margin:0 0 16px;box-shadow:0 2px 4px rgba(0,0,0,.06)}
+h1{font-weight:300;letter-spacing:2px;text-transform:uppercase;font-size:22px}h2{font-size:17px;font-weight:500;margin-top:0}
+label{display:block;margin:8px 0}input[type=text],input[type=password]{display:block;width:100%;max-width:320px;padding:8px;border:1px solid var(--sand);border-radius:8px;background:#fff;font:inherit}
+button{background:var(--sage);color:#fff;border:0;border-radius:8px;padding:8px 14px;font:inherit;cursor:pointer}button.link{background:none;color:var(--sage);padding:0}
+.error{background:#F1DEDA;color:var(--err);padding:8px 12px;border-radius:8px}.notice{background:var(--mist);padding:8px 12px;border-radius:8px}
+.muted{color:var(--soft)}table{border-collapse:collapse;width:100%}td,th{text-align:left;padding:6px 8px;border-bottom:1px solid var(--mist);vertical-align:top}
+.scroll{overflow-x:auto}code{background:var(--mist);padding:2px 6px;border-radius:6px}form.inline{display:inline}
+</style>
+</head>
+<body>
+{{if .User}}<header><b>MIJOTE</b>
+<a href="/admin/" {{if eq .Nav "home"}}class="on"{{end}}>Accueil</a>
+<a href="/admin/sessions" {{if eq .Nav "sessions"}}class="on"{{end}}>Sessions</a>
+<a href="/admin/journal" {{if eq .Nav "journal"}}class="on"{{end}}>Journal</a>
+<a href="/admin/account" {{if eq .Nav "account"}}class="on"{{end}}>Mon compte</a>
+<form class="inline" method="post" action="/admin/logout"><input type="hidden" name="csrf" value="{{.CSRF}}"><button class="link">Déconnexion</button></form>
+</header>{{end}}
+<main>
+<h1>{{.Title}}</h1>
+{{if .Error}}<p class="error">{{.Error}}</p>{{end}}
+{{if .Notice}}<p class="notice">{{.Notice}}</p>{{end}}
+{{template "content" .}}
+</main>
+</body>
+</html>

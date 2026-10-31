@@ -1,0 +1,6 @@
+{{define "content"}}<form class="card" method="post" action="/admin/login/2fa">
+<label>Code de l'application d'authentification, ou code de secours
+<input type="text" name="code" inputmode="numeric" autocomplete="one-time-code" required autofocus></label>
+<button>Valider</button>
+<p class="muted"><a href="/admin/login">Recommencer</a></p>
+</form>{{end}}

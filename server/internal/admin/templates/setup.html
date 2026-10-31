@@ -1,0 +1,8 @@
+{{define "content"}}<form class="card" method="post" action="/admin/setup">
+<p>Créez le compte administrateur de cette instance.</p>
+<label>Identifiant<input type="text" name="username" autocomplete="username" required></label>
+<label>Nom affiché<input type="text" name="display_name"></label>
+<label>Mot de passe (8 caractères minimum)<input type="password" name="password" autocomplete="new-password" required minlength="8"></label>
+<label>Confirmation<input type="password" name="confirm" autocomplete="new-password" required></label>
+<button>Créer le compte</button>
+</form>{{end}}

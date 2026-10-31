@@ -8,12 +8,15 @@ Go server: REST API, database migrations at startup.
 | `MIJOTE_DATABASE_URL` | (required) | PostgreSQL URL, e.g. `postgres://mijote:secret@db:5432/mijote` |
 | `MIJOTE_LISTEN_ADDR` | `:8080` | HTTP listen address |
 | `MIJOTE_IMAGE_DIR` | `/data/images` | Thumbnail directory |
+| `MIJOTE_TRUSTED_PROXIES` | (none) | Reverse proxies whose `X-Forwarded-*` headers are trusted, e.g. `192.168.1.10` |
 
 ## Run
 ```bash
 MIJOTE_DATABASE_URL=postgres://... go run .
 ```
-Endpoints so far: `GET /healthz`, `GET /api/versions`.
+Endpoints so far: `GET /healthz`, `GET /api/versions`, `POST /api/v1/auth/{login,refresh,logout}`,
+`GET /api/v1/me`, and the web admin under `/admin/` (setup wizard on first start).
+Security model: `requirements.md` §13. Lost 2FA phone: `mijote reset-2fa <username>`.
 
 ## Database migrations
 To change the schema, add
@@ -24,5 +27,5 @@ an applied file. Migrations run automatically on startup.
 ```bash
 go test ./...
 ```
-Set `MIJOTE_TEST_DATABASE_URL` to an empty, disposable database to also run the
-migrations against PostgreSQL.
+Set `MIJOTE_TEST_DATABASE_URL` to a disposable database to also run the migration
+and auth flow tests (the latter creates and drops its own temporary database).

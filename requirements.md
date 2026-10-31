@@ -147,7 +147,7 @@ Planning a family's weekly menus is repetitive: finding recipes, avoiding repeat
 | NFR-07 | Perceived performance | Screens render from local cache immediately; network refresh happens in background. |
 | NFR-08 | Perceived performance | Gestures (swap, drag and drop, lock) respond without waiting for the network. |
 | NFR-09 | Security | Passwords hashed with a modern algorithm (e.g. argon2id / bcrypt). |
-| NFR-10 | Security | Token-based API authentication; tokens revocable. |
+| NFR-10 | Security | Token-based API authentication; tokens revocable (see §13). |
 | NFR-11 | Security | HTTPS expected in production (via reverse proxy); documented. |
 | NFR-12 | Security | Invitation codes single-use, random, time-limited. |
 | NFR-13 | API versioning | API is versioned (e.g. `/api/v1`); server exposes its supported versions; app degrades gracefully against older instances. |
@@ -328,8 +328,12 @@ Aggregation (shopping list): quantities are summed only for the same ingredient 
 ### user
 id, username (unique, used to log in; no email), display_name, password_hash, role (`admin` / `member`), created_at, disabled_at (nullable). There is exactly **one admin** per instance.
 
-### api_token
-id, user_id, token_hash (never stored in clear), device_name, created_at, last_used_at, revoked_at. Lets the admin log out a device.
+### Authentication tables (see §13)
+- `refresh_token`: one row per app refresh token; `family_id` groups the tokens of one device session (rotation chain). Only the SHA-256 hash is stored.
+- `admin_session`: web admin sessions (cookie hash, expiry, idle limit).
+- `user_totp` / `user_totp_backup`: TOTP secret (AES-GCM sealed) and hashed backup codes.
+- `auth_event`: login journal.
+- `server_secret`: keys generated on first start (JWT, admin cookies, TOTP sealing).
 
 ### invitation
 id, code_hash (single-use, never stored in clear), created_by, created_at, expires_at, used_by, used_at, revoked_at. Invitations always create a **member** (an admin cannot invite another admin).
@@ -377,7 +381,21 @@ Exact weights are tuned during implementation and kept in code constants.
 
 ## 12. Database migrations (decided)
 
-- Run automatically at startup (NFR-17). Driver `github.com/jackc/pgx/v5`, the server's only external dependency (Go has no PostgreSQL driver).
+- Run automatically at startup (NFR-17). Driver `github.com/jackc/pgx/v5` (Go has no PostgreSQL driver). Other dependencies: `golang-jwt/jwt/v5` (access tokens), `golang.org/x/crypto` (argon2id), `rsc.io/qr` (2FA QR code).
 - Plain, forward-only SQL files `NNNN_description.sql` in `server/internal/migrate/migrations/`, embedded in the binary; a small in-house runner applies them in order, one transaction each, records them in `schema_migrations`, and holds a PostgreSQL advisory lock so two instances never migrate at once.
 - Applied files are never edited; fixes go into a new migration.
 - No down migrations: a binary older than the schema refuses to start; rollback = restore a backup, so back up before upgrading.
+
+## 13. Security (decided)
+
+Modeled on the author's paper-stacks project.
+
+- **Passwords**: argon2id (19 MiB, 3 passes), 8 characters minimum. The first admin is created by the setup wizard (`/admin/setup`, only while the instance has no account).
+- **App tokens**: JWT access token (HS256, 15 min, `Authorization: Bearer`) + random 256-bit refresh token (60 days) used only on `POST /api/v1/auth/refresh`. Each refresh rotates the token within its device session; presenting an already rotated token revokes the whole session and is logged. Every request checks that the device session is still open and the account active, so a revocation takes effect immediately. Endpoints: `POST /api/v1/auth/login`, `/refresh`, `/logout`, `GET /api/v1/me`.
+- **Web admin session**: cookie `mijote_admin` (HttpOnly, SameSite=Strict, Secure over HTTPS, path `/admin`); 12 h max and 2 h idle, or 15 days max and 5 days idle with "stay signed in". Every form carries a CSRF token derived from the session. Changing the password closes the account's other sessions.
+- **Admin sign-in**: password only (single admin). Optional **TOTP** (RFC 6238, 6 digits, 30 s, ±1 step, each code accepted once) set up from *Mon compte* with a QR code, plus 10 single-use backup codes. Two steps: password → signed 5-min challenge cookie → code → session. Disabling 2FA or regenerating backup codes requires the password and a code. Recovery: `mijote reset-2fa <username>` on the server. 2FA covers the web admin only.
+- **Rate limiting** (in memory, app and admin): 5 failures in 15 min on an account (admin: shared key) or 20 from one address block sign-in for 15 min (`429` + `Retry-After`). Same response whether the account exists or not.
+- **Reverse proxy**: `X-Forwarded-For` / `X-Forwarded-Proto` are trusted only from `MIJOTE_TRUSTED_PROXIES`, for real client addresses and HTTPS detection.
+- **Headers** on every response: `X-Content-Type-Options`, `X-Frame-Options: DENY`, `Referrer-Policy`, `Content-Security-Policy`, and HSTS over HTTPS.
+- **Tracking in the web admin**: device and admin sessions (revocable one by one, "log out my other sessions"), and the login journal (sign-ins, failures, lockouts, logouts, token reuse, 2FA events) with a "failures only" filter.
+- **Retention**: journal 180 days, expired tokens and sessions 30 days (daily purge).

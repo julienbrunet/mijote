@@ -1,0 +1,39 @@
+{{define "content"}}
+<section class="card"><h2>Mot de passe</h2>
+<form method="post" action="/admin/password"><input type="hidden" name="csrf" value="{{.CSRF}}">
+<label>Mot de passe actuel<input type="password" name="current" autocomplete="current-password" required></label>
+<label>Nouveau mot de passe<input type="password" name="new" autocomplete="new-password" required minlength="8"></label>
+<label>Confirmation<input type="password" name="confirm" autocomplete="new-password" required></label>
+<button>Changer le mot de passe</button>
+<p class="muted">Changer le mot de passe ferme toutes vos autres sessions (app et admin).</p>
+</form>
+<form method="post" action="/admin/logout-everywhere"><input type="hidden" name="csrf" value="{{.CSRF}}">
+<button>Déconnecter mes autres sessions</button></form>
+</section>
+
+<section class="card"><h2>Double authentification</h2>
+{{with .Data}}
+{{if .Codes}}<div class="notice"><p><b>Codes de secours</b> : notez-les maintenant, ils ne seront plus affichés. Chacun ne sert qu'une fois.</p>
+<p>{{range .Codes}}<code>{{.}}</code> {{end}}</p></div>{{end}}
+{{if .TOTP.Enabled}}
+<p>Activée. Codes de secours restants : {{.TOTP.BackupLeft}}.</p>
+<form method="post" action="/admin/2fa/backup"><input type="hidden" name="csrf" value="{{$.CSRF}}">
+<label>Mot de passe<input type="password" name="password" autocomplete="current-password" required></label>
+<label>Code<input type="text" name="code" inputmode="numeric" autocomplete="one-time-code" required></label>
+<button>Régénérer les codes de secours</button>
+<button formaction="/admin/2fa/disable">Désactiver</button>
+</form>
+{{else if .TOTP.Pending}}
+<p>Scannez ce QR code avec votre application d'authentification (Aegis, 2FAS, Google Authenticator…), puis saisissez le code affiché.</p>
+<p><img src="{{.QR}}" alt="QR code" width="200" height="200"></p>
+<p class="muted">Ou saisissez la clé : <code>{{.Key}}</code></p>
+<form method="post" action="/admin/2fa/enable"><input type="hidden" name="csrf" value="{{$.CSRF}}">
+<label>Code<input type="text" name="code" inputmode="numeric" autocomplete="one-time-code" required></label>
+<button>Activer</button></form>
+{{else}}
+<p>Désactivée. Une fois activée, la connexion à l'admin demande aussi un code à 6 chiffres.</p>
+<form method="post" action="/admin/2fa/setup"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button>Configurer</button></form>
+{{end}}
+{{end}}
+</section>
+{{end}}

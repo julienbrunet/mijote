@@ -1,0 +1,15 @@
+{{define "content"}}{{with .Data}}
+<p>{{if .All}}<a href="/admin/sessions">Sessions actives seulement</a>{{else}}<a href="/admin/sessions?all=1">Afficher aussi les sessions terminées</a>{{end}}</p>
+<section class="card scroll"><h2>Appareils (app Android)</h2>
+<table><tr><th>Compte</th><th>Appareil</th><th>Adresse</th><th>Ouverte</th><th>Dernière activité</th><th>Renouv.</th><th></th></tr>
+{{range .App}}<tr><td>{{.Username}}</td><td>{{deref .Device}}</td><td>{{deref .IP}}</td><td>{{date .CreatedAt}}</td><td>{{date .LastUsedAt}}</td><td>{{.Rotations}}</td>
+<td>{{if .Active}}<form method="post" action="/admin/sessions/app/{{.FamilyID}}"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button>Révoquer</button></form>{{else}}<span class="muted">terminée ({{deref .RevokeReason}})</span>{{end}}</td></tr>
+{{else}}<tr><td colspan="7" class="muted">Aucune session.</td></tr>{{end}}
+</table></section>
+<section class="card scroll"><h2>Web admin</h2>
+<table><tr><th>Compte</th><th>Adresse</th><th>Navigateur</th><th>Ouverte</th><th>Dernière activité</th><th></th></tr>
+{{range .Admin}}<tr><td>{{.Username}}</td><td>{{deref .IP}}</td><td class="muted">{{deref .UserAgent}}</td><td>{{date .CreatedAt}}</td><td>{{date .LastSeenAt}}</td>
+<td>{{if eq .ID $.Data.Self}}<span class="muted">cette session</span>{{else if .Active}}<form method="post" action="/admin/sessions/admin/{{.ID}}"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button>Révoquer</button></form>{{else}}<span class="muted">terminée {{deref .RevokeReason}}</span>{{end}}</td></tr>
+{{else}}<tr><td colspan="6" class="muted">Aucune session.</td></tr>{{end}}
+</table></section>
+{{end}}{{end}}

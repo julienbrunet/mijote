@@ -1,0 +1,6 @@
+{{define "content"}}<form class="card" method="post" action="/admin/login">
+<input type="hidden" name="next" value="{{.Data.Next}}">
+<label>Mot de passe administrateur<input type="password" name="password" autocomplete="current-password" required autofocus></label>
+<label><input type="checkbox" name="remember"> Rester connecté 15 jours (appareil personnel uniquement)</label>
+<button>Se connecter</button>
+</form>{{end}}

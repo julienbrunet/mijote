@@ -1,0 +1,9 @@
+{{define "content"}}{{with .Data}}
+<p>{{if .FailuresOnly}}<a href="/admin/journal">Tout afficher</a>{{else}}<a href="/admin/journal?failures=1">Échecs et alertes seulement</a>{{end}}</p>
+<section class="card scroll"><table>
+<tr><th>Date</th><th>Compte</th><th>Origine</th><th>Événement</th><th>Détail</th><th>Adresse</th></tr>
+{{range .Events}}<tr><td>{{date .At}}</td><td>{{.Username}}</td><td>{{.Client}}</td><td>{{event .Event}}</td><td>{{deref .Detail}}</td><td>{{deref .IP}}</td></tr>
+{{else}}<tr><td colspan="6" class="muted">Journal vide.</td></tr>{{end}}
+</table></section>
+<p class="muted">Conservation : 180 jours.</p>
+{{end}}{{end}}
