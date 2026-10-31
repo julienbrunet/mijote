@@ -13,7 +13,7 @@ header b{letter-spacing:3px;font-weight:300;margin-right:auto}header a{color:var
 main{max-width:960px;margin:0 auto;padding:16px}
 .card{background:var(--card);border-radius:18px;padding:16px 20px;margin:0 0 16px;box-shadow:0 2px 4px rgba(0,0,0,.06)}
 h1{font-weight:300;letter-spacing:2px;text-transform:uppercase;font-size:22px}h2{font-size:17px;font-weight:500;margin-top:0}
-label{display:block;margin:8px 0}input[type=text],input[type=password]{display:block;width:100%;max-width:320px;padding:8px;border:1px solid var(--sand);border-radius:8px;background:#fff;font:inherit}
+label{display:block;margin:8px 0}input[type=text],input[type=password],select{display:block;width:100%;max-width:320px;padding:8px;border:1px solid var(--sand);border-radius:8px;background:#fff;font:inherit}
 button{background:var(--sage);color:#fff;border:0;border-radius:8px;padding:8px 14px;font:inherit;cursor:pointer}button.link{background:none;color:var(--sage);padding:0}
 .error{background:#F1DEDA;color:var(--err);padding:8px 12px;border-radius:8px}.notice{background:var(--mist);padding:8px 12px;border-radius:8px}
 .muted{color:var(--soft)}table{border-collapse:collapse;width:100%}td,th{text-align:left;padding:6px 8px;border-bottom:1px solid var(--mist);vertical-align:top}
@@ -23,6 +23,8 @@ button{background:var(--sage);color:#fff;border:0;border-radius:8px;padding:8px 
 <body>
 {{if .User}}<header><b>MIJOTE</b>
 <a href="/admin/" {{if eq .Nav "home"}}class="on"{{end}}>Accueil</a>
+<a href="/admin/accounts" {{if eq .Nav "accounts"}}class="on"{{end}}>Comptes</a>
+<a href="/admin/invitations" {{if eq .Nav "invitations"}}class="on"{{end}}>Invitations</a>
 <a href="/admin/sessions" {{if eq .Nav "sessions"}}class="on"{{end}}>Sessions</a>
 <a href="/admin/journal" {{if eq .Nav "journal"}}class="on"{{end}}>Journal</a>
 <a href="/admin/account" {{if eq .Nav "account"}}class="on"{{end}}>Mon compte</a>

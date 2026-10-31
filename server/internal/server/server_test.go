@@ -206,3 +206,90 @@ func TestAuthFlow(t *testing.T) {
 		t.Fatal("missing Retry-After")
 	}
 }
+
+func TestInvitationFlow(t *testing.T) {
+	pool := testDB(t)
+	ctx := context.Background()
+	h, err := New(ctx, pool, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(h)
+	defer srv.Close()
+	st := store.New(pool)
+
+	web := newClient(t, srv.URL)
+	web.form("/admin/setup", url.Values{"username": {"julien"}, "password": {"secret-pass"}, "confirm": {"secret-pass"}})
+	web.form("/admin/login", url.Values{"password": {"secret-pass"}})
+	_, page := web.do("GET", "/admin/invitations", "", "")
+	csrf := csrfRe.FindStringSubmatch(page)[1]
+
+	create := func(days string) string {
+		res, page := web.form("/admin/invitations", url.Values{"csrf": {csrf}, "days": {days}})
+		expect(t, res, http.StatusOK, "create invitation")
+		m := regexp.MustCompile(`Code : <code>([a-z2-7]+)</code>`).FindStringSubmatch(page)
+		if m == nil {
+			t.Fatal("invitation code not shown")
+		}
+		if !strings.Contains(page, "mijote://invite?server=") {
+			t.Fatal("invitation link not shown")
+		}
+		return m[1]
+	}
+	code := create("7")
+
+	app := newClient(t, srv.URL)
+	redeem := func(code, user, pw string) (*http.Response, map[string]any) {
+		return app.json("/api/v1/invitations/redeem", map[string]string{"code": code, "username": user,
+			"displayName": "Léa", "password": pw, "deviceName": "Pixel"})
+	}
+	res, _ := redeem("wrongcode", "lea", "lea-password")
+	expect(t, res, http.StatusNotFound, "unknown code")
+	res, _ = redeem(code, "lea", "short")
+	expect(t, res, http.StatusUnprocessableEntity, "weak password keeps the code usable")
+	res, _ = redeem(code, "julien", "lea-password")
+	expect(t, res, http.StatusUnprocessableEntity, "username already taken")
+	res, tok := redeem(strings.ToUpper(code), "lea", "lea-password")
+	expect(t, res, http.StatusCreated, "redeem")
+	if tok["user"].(map[string]any)["role"] != "member" {
+		t.Fatalf("invited account is not a member: %v", tok["user"])
+	}
+	res, _ = app.do("GET", "/api/v1/me", "", "", "Authorization", "Bearer "+tok["accessToken"].(string))
+	expect(t, res, http.StatusOK, "me with the new account")
+	res, _ = redeem(code, "lea2", "lea-password")
+	expect(t, res, http.StatusNotFound, "code is single-use")
+
+	// Revoked and expired codes are refused.
+	revoked := create("1")
+	_, page = web.do("GET", "/admin/invitations", "", "")
+	id := regexp.MustCompile(`/admin/invitations/([0-9a-f-]+)/revoke`).FindStringSubmatch(page)[1]
+	res, _ = web.form("/admin/invitations/"+id+"/revoke", url.Values{"csrf": {csrf}})
+	expect(t, res, http.StatusSeeOther, "revoke")
+	res, _ = redeem(revoked, "bob", "bob-password")
+	expect(t, res, http.StatusNotFound, "revoked code")
+	expired := create("1")
+	if _, err := pool.Exec(ctx, `UPDATE invitation SET expires_at = now() - interval '1 minute' WHERE used_at IS NULL`); err != nil {
+		t.Fatal(err)
+	}
+	res, _ = redeem(expired, "bob", "bob-password")
+	expect(t, res, http.StatusNotFound, "expired code")
+
+	// Accounts: a member can be disabled (sessions closed), reactivated, and get a new password.
+	lea, _ := st.UserByUsername(ctx, "lea")
+	res, _ = web.form("/admin/accounts/"+lea.ID+"/disable", url.Values{"csrf": {csrf}})
+	expect(t, res, http.StatusSeeOther, "disable")
+	res, _ = app.do("GET", "/api/v1/me", "", "", "Authorization", "Bearer "+tok["accessToken"].(string))
+	expect(t, res, http.StatusUnauthorized, "disabled account loses its session")
+	res, _ = app.json("/api/v1/auth/login", map[string]string{"username": "lea", "password": "lea-password"})
+	expect(t, res, http.StatusUnauthorized, "disabled account cannot sign in")
+	web.form("/admin/accounts/"+lea.ID+"/enable", url.Values{"csrf": {csrf}})
+	res, _ = web.form("/admin/accounts/"+lea.ID+"/password", url.Values{"csrf": {csrf}, "password": {"new-password"}})
+	expect(t, res, http.StatusSeeOther, "reset password")
+	res, _ = app.json("/api/v1/auth/login", map[string]string{"username": "lea", "password": "new-password"})
+	expect(t, res, http.StatusOK, "sign in with the new password")
+	admin, _ := st.Admin(ctx)
+	res, _ = web.form("/admin/accounts/"+admin.ID+"/disable", url.Values{"csrf": {csrf}})
+	expect(t, res, http.StatusUnprocessableEntity, "admin cannot be disabled")
+	res, _ = web.form("/admin/accounts/"+lea.ID+"/disable", url.Values{})
+	expect(t, res, http.StatusForbidden, "account action without CSRF")
+}

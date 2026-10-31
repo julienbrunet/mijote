@@ -1,0 +1,17 @@
+{{define "content"}}{{with .Data}}
+<section class="card scroll"><table>
+<tr><th>Identifiant</th><th>Nom affiché</th><th>Rôle</th><th>Créé le</th><th>État</th><th>Actions</th></tr>
+{{range .Users}}<tr><td>{{.Username}}</td><td>{{.DisplayName}}</td><td>{{if .IsAdmin}}administrateur{{else}}membre{{end}}</td><td>{{date .CreatedAt}}</td>
+<td>{{if .Disabled}}désactivé{{else}}actif{{end}}</td>
+<td>{{if .IsAdmin}}<span class="muted">—</span>{{else}}
+{{if .Disabled}}<form class="inline" method="post" action="/admin/accounts/{{.ID}}/enable"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button>Réactiver</button></form>
+{{else}}<form class="inline" method="post" action="/admin/accounts/{{.ID}}/disable"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button>Désactiver</button></form>{{end}}
+<details><summary>Nouveau mot de passe</summary>
+<form method="post" action="/admin/accounts/{{.ID}}/password"><input type="hidden" name="csrf" value="{{$.CSRF}}">
+<label>Mot de passe (8 caractères minimum)<input type="password" name="password" autocomplete="new-password" required minlength="8"></label>
+<button>Enregistrer</button></form></details>
+{{end}}</td></tr>
+{{end}}
+</table></section>
+<p class="muted">Pour ajouter un membre, créez une <a href="/admin/invitations">invitation</a>. Désactiver un compte ou changer son mot de passe ferme toutes ses sessions.</p>
+{{end}}{{end}}

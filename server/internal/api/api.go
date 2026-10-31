@@ -26,6 +26,7 @@ type API struct {
 func (a *API) Routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/v1/auth/login", a.login)
 	mux.HandleFunc("POST /api/v1/auth/refresh", a.refresh)
+	mux.HandleFunc("POST /api/v1/invitations/redeem", a.redeemInvitation)
 	mux.Handle("POST /api/v1/auth/logout", a.authenticate(http.HandlerFunc(a.logout)))
 	mux.Handle("GET /api/v1/me", a.authenticate(http.HandlerFunc(a.me)))
 }

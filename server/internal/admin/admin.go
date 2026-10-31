@@ -39,6 +39,10 @@ var eventLabels = map[string]string{
 	"refresh_reuse": "Jeton réutilisé", "password_changed": "Mot de passe changé",
 	"2fa_enabled": "2FA activée", "2fa_disabled": "2FA désactivée", "2fa_failed": "Échec 2FA",
 	"2fa_backup": "Code de secours utilisé", "2fa_backup_regen": "Codes de secours régénérés",
+	"account_created": "Compte créé (invitation)", "invite_failed": "Invitation refusée",
+	"invite_created": "Invitation créée", "invite_revoked": "Invitation révoquée",
+	"account_disabled": "Compte désactivé", "account_enabled": "Compte réactivé",
+	"password_reset": "Mot de passe réinitialisé",
 }
 
 // Admin holds the dependencies of the web admin.
@@ -55,7 +59,7 @@ type Admin struct {
 // New parses the templates.
 func New(st *store.Store, guard *auth.Guard, proxies auth.Proxies, key []byte) (*Admin, error) {
 	a := &Admin{Store: st, Guard: guard, Proxies: proxies, Key: key, pages: map[string]*template.Template{}}
-	for _, p := range []string{"setup", "login", "login_2fa", "home", "account", "sessions", "journal", "error"} {
+	for _, p := range []string{"setup", "login", "login_2fa", "home", "account", "sessions", "journal", "accounts", "invitations", "error"} {
 		t, err := template.New("layout.html").Funcs(funcs).ParseFS(templateFS, "templates/layout.html", "templates/"+p+".html")
 		if err != nil {
 			return nil, err
@@ -75,19 +79,26 @@ func (a *Admin) Routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /admin/login/2fa", a.twoFALogin)
 
 	protected := map[string]http.HandlerFunc{
-		"GET /admin/{$}":                  a.home,
-		"POST /admin/logout":              a.logout,
-		"GET /admin/account":              a.accountPage,
-		"POST /admin/password":            a.changePassword,
-		"POST /admin/logout-everywhere":   a.logoutEverywhere,
-		"POST /admin/2fa/setup":           a.twoFASetup,
-		"POST /admin/2fa/enable":          a.twoFAEnable,
-		"POST /admin/2fa/disable":         a.twoFADisable,
-		"POST /admin/2fa/backup":          a.twoFABackup,
-		"GET /admin/sessions":             a.sessionsPage,
-		"POST /admin/sessions/app/{id}":   a.revokeAppSession,
-		"POST /admin/sessions/admin/{id}": a.revokeAdminSession,
-		"GET /admin/journal":              a.journalPage,
+		"GET /admin/{$}":                      a.home,
+		"POST /admin/logout":                  a.logout,
+		"GET /admin/account":                  a.accountPage,
+		"POST /admin/password":                a.changePassword,
+		"POST /admin/logout-everywhere":       a.logoutEverywhere,
+		"POST /admin/2fa/setup":               a.twoFASetup,
+		"POST /admin/2fa/enable":              a.twoFAEnable,
+		"POST /admin/2fa/disable":             a.twoFADisable,
+		"POST /admin/2fa/backup":              a.twoFABackup,
+		"GET /admin/sessions":                 a.sessionsPage,
+		"POST /admin/sessions/app/{id}":       a.revokeAppSession,
+		"POST /admin/sessions/admin/{id}":     a.revokeAdminSession,
+		"GET /admin/journal":                  a.journalPage,
+		"GET /admin/accounts":                 a.accountsPage,
+		"POST /admin/accounts/{id}/disable":   a.disableAccount,
+		"POST /admin/accounts/{id}/enable":    a.enableAccount,
+		"POST /admin/accounts/{id}/password":  a.resetAccountPassword,
+		"GET /admin/invitations":              a.invitationsPage,
+		"POST /admin/invitations":             a.createInvitation,
+		"POST /admin/invitations/{id}/revoke": a.revokeInvitation,
 	}
 	for pattern, h := range protected {
 		mux.Handle(pattern, a.requireSession(h))
@@ -126,6 +137,10 @@ var notices = map[string]string{
 	"everywhere":   "Toutes vos autres sessions ont été fermées.",
 	"2fa_disabled": "Double authentification désactivée.",
 	"revoked":      "Session révoquée.",
+	"disabled":     "Compte désactivé ; ses sessions ont été fermées.",
+	"enabled":      "Compte réactivé.",
+	"reset":        "Mot de passe modifié ; les sessions du compte ont été fermées.",
+	"inv_revoked":  "Invitation révoquée.",
 }
 
 func redirect(w http.ResponseWriter, r *http.Request, path, ok string) {
