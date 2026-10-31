@@ -1,0 +1,21 @@
+{{define "content"}}{{with .Data}}
+<section class="card"><form method="get" action="/admin/recipes">
+<div class="grid">
+<label>Recherche (titre ou étiquette)<input type="text" name="q" value="{{.Q}}"></label>
+<label>Étiquette<select name="tag"><option value="">Toutes</option>{{range .Tags}}<option value="{{.Name}}" {{if eq .Name $.Data.Tag}}selected{{end}}>{{.Name}}</option>{{end}}</select></label>
+<label>Type de plat<select name="dishType"><option value="">Tous</option>{{range .DishOpts}}<option value="{{.Code}}" {{if eq .Code $.Data.DishType}}selected{{end}}>{{.Label}}</option>{{end}}</select></label>
+</div>
+<label class="check"><input type="checkbox" name="archived" value="1" {{if .Archived}}checked{{end}}> Recettes archivées</label>
+<button>Filtrer</button> <a href="/admin/recipes/new" style="margin-left:12px">Nouvelle recette</a>
+</form></section>
+<section class="card scroll"><table>
+<tr><th>Titre</th><th>Type</th><th>Temps</th><th>Étiquettes</th><th></th></tr>
+{{range .Recipes}}<tr><td>{{if .ImagePath}}<img src="/admin/recipes/{{.ID}}/image?v={{.Version}}" alt="" width="40" height="30" style="object-fit:cover;border-radius:6px;vertical-align:middle;margin-right:8px">{{end}}<a href="/admin/recipes/{{.ID}}">{{.Title}}</a></td><td>{{label $.Data.DishOpts .DishType}}</td>
+<td>{{if .TotalMinutes}}{{intp .TotalMinutes}} min{{else}}<span class="muted">—</span>{{end}}</td>
+<td>{{range $i, $t := .Tags}}{{if $i}}, {{end}}{{$t}}{{end}}</td>
+<td>{{if .ArchivedAt}}<form class="inline" method="post" action="/admin/recipes/{{.ID}}/restore"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button>Restaurer</button></form>
+{{else}}<form class="inline" method="post" action="/admin/recipes/{{.ID}}/archive"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button>Archiver</button></form>{{end}}</td></tr>
+{{else}}<tr><td colspan="5" class="muted">Aucune recette.</td></tr>{{end}}
+</table></section>
+<p class="muted">Archiver une recette la retire de l'app et des futurs menus ; les menus passés la conservent. Les membres ajoutent leurs recettes depuis l'app.</p>
+{{end}}{{end}}

@@ -13,7 +13,7 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -29,7 +29,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.mijote.data.User
 
-enum class Tab(val label: String) { MENUS("Menus"), RECIPES("Recettes"), SETTINGS("Réglages") }
+enum class Tab(val label: String) { MENUS("Menus"), RECIPES("Recettes"), GENERATE("Générer") }
 
 enum class DishType(val label: String, val colors: Pair<Color, Color>) {
     MEAT("Viande", DishColors.meat), FISH("Poisson", DishColors.fish), VEGETARIAN("Végé", DishColors.veggie)
@@ -65,7 +65,7 @@ fun HomeScreen(user: User, onLogout: () -> Unit, period: String? = null, days: L
                     when (tab) {
                         Tab.MENUS -> "Les menus de la semaine arriveront ici."
                         Tab.RECIPES -> "Les recettes arriveront ici."
-                        Tab.SETTINGS -> "Les réglages arriveront ici."
+                        Tab.GENERATE -> "La génération de menus arrivera ici."
                     },
                     color = Sunny.InkSoft, textAlign = TextAlign.Center,
                     modifier = Modifier.fillMaxWidth().padding(top = 160.dp),
@@ -191,7 +191,7 @@ private fun UserButton(user: User, onLogout: () -> Unit) {
  */
 @Composable
 private fun BottomBar(selected: Tab, modifier: Modifier, onSelect: (Tab) -> Unit) {
-    val icons = mapOf(Tab.MENUS to Icons.Filled.Home, Tab.RECIPES to Icons.Filled.Search, Tab.SETTINGS to Icons.Filled.Settings)
+    val icons = mapOf(Tab.MENUS to Icons.Filled.Home, Tab.RECIPES to Icons.Filled.Search, Tab.GENERATE to Icons.Filled.Refresh)
     // Shades from the leftmost tab to the rightmost one, lighter towards the screen edge.
     val shades = listOf(Sunny.PeachDeep, Color(0xFFF89A7D), Color(0xFFFCAF94))
     val radius = 36.dp

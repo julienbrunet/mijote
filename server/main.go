@@ -70,7 +70,10 @@ func run() error {
 	}
 	slog.Info("database ready", "schema_version", v)
 
-	handler, err := server.New(ctx, pool, proxies)
+	if err := os.MkdirAll(cfg.ImageDir, 0o750); err != nil {
+		return fmt.Errorf("MIJOTE_IMAGE_DIR: %w", err)
+	}
+	handler, err := server.New(ctx, pool, proxies, cfg.ImageDir)
 	if err != nil {
 		return err
 	}

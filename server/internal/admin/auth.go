@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/julienbrunet/mijote/server/internal/images"
 	"github.com/julienbrunet/mijote/server/internal/store"
 )
 
@@ -57,7 +58,11 @@ func (a *Admin) setCookie(w http.ResponseWriter, r *http.Request, name, value st
 func (a *Admin) requireSession(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
-			r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+			limit := int64(1 << 20)
+			if strings.HasSuffix(r.URL.Path, "/image") {
+				limit = images.MaxUpload + 1<<20 // picture upload plus form fields
+			}
+			r.Body = http.MaxBytesReader(w, r.Body, limit)
 		}
 		c, err := r.Cookie(cookieName)
 		if err != nil {

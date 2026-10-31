@@ -13,16 +13,19 @@ header b{letter-spacing:3px;font-weight:300;margin-right:auto}header a{color:var
 main{max-width:960px;margin:0 auto;padding:16px}
 .card{background:var(--card);border-radius:18px;padding:16px 20px;margin:0 0 16px;box-shadow:0 2px 4px rgba(0,0,0,.06)}
 h1{font-weight:300;letter-spacing:2px;text-transform:uppercase;font-size:22px}h2{font-size:17px;font-weight:500;margin-top:0}
-label{display:block;margin:8px 0}input[type=text],input[type=password],select{display:block;width:100%;max-width:320px;padding:8px;border:1px solid var(--sand);border-radius:8px;background:#fff;font:inherit}
+label{display:block;margin:8px 0}input[type=text],input[type=password],input[type=number],input[type=url],select,textarea{display:block;width:100%;max-width:320px;padding:8px;border:1px solid var(--sand);border-radius:8px;background:#fff;font:inherit}
 button{background:var(--sage);color:#fff;border:0;border-radius:8px;padding:8px 14px;font:inherit;cursor:pointer}button.link{background:none;color:var(--sage);padding:0}
 .error{background:#F1DEDA;color:var(--err);padding:8px 12px;border-radius:8px}.notice{background:var(--mist);padding:8px 12px;border-radius:8px}
 .muted{color:var(--soft)}table{border-collapse:collapse;width:100%}td,th{text-align:left;padding:6px 8px;border-bottom:1px solid var(--mist);vertical-align:top}
+textarea{max-width:640px;min-height:90px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:0 16px}.grid input,.grid select{max-width:none}label.check{display:inline-block;margin-right:16px}label.check input{display:inline;width:auto}
 .scroll{overflow-x:auto}code{background:var(--mist);padding:2px 6px;border-radius:6px}form.inline{display:inline}
 </style>
 </head>
 <body>
 {{if .User}}<header><b>MIJOTE</b>
 <a href="/admin/" {{if eq .Nav "home"}}class="on"{{end}}>Accueil</a>
+<a href="/admin/recipes" {{if eq .Nav "recipes"}}class="on"{{end}}>Recettes</a>
+<a href="/admin/tags" {{if eq .Nav "tags"}}class="on"{{end}}>Étiquettes</a>
 <a href="/admin/accounts" {{if eq .Nav "accounts"}}class="on"{{end}}>Comptes</a>
 <a href="/admin/invitations" {{if eq .Nav "invitations"}}class="on"{{end}}>Invitations</a>
 <a href="/admin/sessions" {{if eq .Nav "sessions"}}class="on"{{end}}>Sessions</a>
