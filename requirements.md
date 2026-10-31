@@ -227,6 +227,7 @@ Dish type tags (background / text):
 
 ### Logo and wordmark
 - Logo: a coral cocotte with a green sprout as the lid knob, on a butter rounded square (`android/app/src/main/res/drawable/ic_mijote_logo.xml`).
+- The same cocotte is the launcher icon (adaptive: butter background, cocotte foreground in the safe zone, monochrome variant for themed icons), sits in the white corner blocks (onboarding, web admin, presentation site) and is the favicon of the site and the web admin.
 - Wordmark "Mijote" in **Grandstander ExtraBold** (SIL OFL, bundled), Ink title; used only for the brand name.
 
 ### Typography

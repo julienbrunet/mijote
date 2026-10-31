@@ -1,9 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- A simmering pot: lid knob, lid and bowl, on the 108dp adaptive icon grid. -->
+<!-- Launcher foreground: the cocotte scaled into the adaptive icon safe zone. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="108dp" android:height="108dp"
-    android:viewportWidth="108" android:viewportHeight="108">
-    <path android:fillColor="@color/icon_fg" android:pathData="M50,36h8v5h-8z" />
-    <path android:fillColor="@color/icon_fg" android:pathData="M34,46h40a3,3 0,0 1,0 6h-40a3,3 0,0 1,0 -6z" />
-    <path android:fillColor="@color/icon_fg" android:pathData="M37,55h34v8a14,14 0,0 1,-14 14h-6a14,14 0,0 1,-14 -14z" />
+    android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+    <group android:scaleX="0.8" android:scaleY="0.8" android:pivotX="54" android:pivotY="55">
+        <path android:fillColor="#7FB069" android:pathData="M54,40c0,-9 6,-14 15,-14 0,9 -6,14 -15,14z" />
+        <path android:fillColor="#9CC98A" android:pathData="M54,40c0,-6 -4,-10 -10,-10 0,6 4,10 10,10z" />
+        <path android:fillColor="#E07055"
+            android:pathData="M54,38a2.5,2.5 0,0 1,2.5 2.5v3a2.5,2.5 0,0 1,-5 0v-3a2.5,2.5 0,0 1,2.5 -2.5z" />
+        <path android:fillColor="#E07055" android:pathData="M26,54a28,10 0,0 1,56 0z" />
+        <path android:fillColor="#F4876A" android:pathData="M28,56h52v10a18,18 0,0 1,-18 18h-16a18,18 0,0 1,-18 -18z" />
+        <path android:strokeColor="#F4876A" android:strokeWidth="4"
+            android:pathData="M20,62a5,5 0,1 0,10 0a5,5 0,1 0,-10 0M78,62a5,5 0,1 0,10 0a5,5 0,1 0,-10 0" />
+        <path android:strokeColor="#FFFFFF" android:strokeAlpha="0.6" android:strokeWidth="4" android:strokeLineCap="round"
+            android:pathData="M38,66a16,12 0,0 0,10 10" />
+    </group>
 </vector>

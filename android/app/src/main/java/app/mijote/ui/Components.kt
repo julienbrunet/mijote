@@ -80,7 +80,8 @@ fun OnboardingScaffold(title: String, subtitle: String?, content: @Composable Co
                 .background(Sunny.Butter, RoundedCornerShape(bottomStart = 40.dp, bottomEnd = 40.dp)),
         ) {
             CornerBlock(Sunny.Card, size = 104.dp, modifier = Modifier.align(Alignment.TopEnd)) {
-                Text("🍲", fontSize = 36.sp, modifier = Modifier.statusBarsPadding())
+                Image(painterResource(R.drawable.ic_mijote_cocotte), contentDescription = null,
+                    modifier = Modifier.statusBarsPadding().size(72.dp))
             }
             Column(Modifier.statusBarsPadding().padding(start = 28.dp, end = 28.dp, top = 96.dp, bottom = 80.dp)) {
                 ScreenTitle(title, subtitle, size = 40)
