@@ -5,10 +5,15 @@ import android.content.pm.ApplicationInfo
 import android.os.Build
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import app.mijote.data.Api
 import app.mijote.data.ApiException
 import app.mijote.data.AppRelease
 import app.mijote.data.MealPlan
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.util.LruCache
 import app.mijote.data.Menu
+import app.mijote.data.RecipeDetail
 import app.mijote.data.PrefsSessionStore
 import app.mijote.data.Session
 import app.mijote.data.SessionExpiredException
@@ -55,12 +60,21 @@ data class UiState(
 /** Manual update check from the preferences: [message] tells the result. */
 data class UpdateCheck(val checking: Boolean = false, val message: String? = null)
 
+/** Period just generated, shown on the review screen (step 2 of the generation). */
+data class ReviewPeriod(val from: LocalDate, val to: LocalDate)
+
 data class MenuState(
     val menu: Menu? = null,
     val generating: Boolean = false,
     val error: String? = null,
     val generated: Int = 0,
+    val review: ReviewPeriod? = null,
+    /** Slot being changed (swap / remove) or "date|meal" of a meal being added: shows a spinner. */
+    val working: String? = null,
 )
+
+/** Recipe detail screen: [recipe] is null while loading. */
+data class RecipeState(val id: String, val title: String, val recipe: RecipeDetail? = null, val error: String? = null)
 
 class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val session = Session(PrefsSessionStore(app))
@@ -79,6 +93,27 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _menu = MutableStateFlow(MenuState())
     val menu: StateFlow<MenuState> = _menu.asStateFlow()
+
+    private val _recipe = MutableStateFlow<RecipeState?>(null)
+    val recipe: StateFlow<RecipeState?> = _recipe.asStateFlow()
+
+    // Thumbnails are small (see the server): a bitmap cache of a few MB is plenty.
+    private val images = object : LruCache<String, Bitmap>(24 * 1024 * 1024) {
+        override fun sizeOf(key: String, value: Bitmap) = value.byteCount
+    }
+
+    /** Downloads (with the access token) and caches a recipe thumbnail; null when missing or offline. */
+    suspend fun image(path: String): Bitmap? {
+        images.get(path)?.let { return it }
+        val bytes = try {
+            session.authed { api, access -> api.image(access, path) }
+        } catch (_: Exception) {
+            return null
+        } ?: return null
+        val bmp = withContext(Dispatchers.Default) { BitmapFactory.decodeByteArray(bytes, 0, bytes.size) } ?: return null
+        images.put(path, bmp)
+        return bmp
+    }
 
     init {
         // Release builds look for a newer published version at launch; debug builds never do.
@@ -269,9 +304,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         _menu.update { it.copy(generating = true, error = null) }
         viewModelScope.launch {
             try {
-                session.authed { api, access -> api.generateMenu(access, start, meals, plan) }
+                val slots = session.authed { api, access -> api.generateMenu(access, start, meals, plan) }
                 val m = session.authed { api, access -> api.menu(access) }
-                _menu.update { MenuState(menu = m, generated = it.generated + 1) }
+                val end = slots.maxOfOrNull { it.date } ?: start
+                _menu.update { MenuState(menu = m, generated = it.generated + 1, review = ReviewPeriod(start, end)) }
             } catch (e: SessionExpiredException) {
                 _menu.update { it.copy(generating = false) }
                 toLogin("Votre session a expiré : reconnectez-vous.")
@@ -279,6 +315,56 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 _menu.update { it.copy(generating = false, error = errorMessage(e)) }
             }
         }
+    }
+
+    /** Validates the generated menu: it is already saved, the review just closes. */
+    fun closeReview() {
+        _menu.update { it.copy(review = null, error = null) }
+    }
+
+    /** Runs a change of the planned meals, then reloads the menu. */
+    private fun change(key: String, action: (Api, String) -> Unit) {
+        if (_menu.value.working != null) return
+        _menu.update { it.copy(working = key, error = null) }
+        viewModelScope.launch {
+            try {
+                session.authed { api, access -> action(api, access) }
+                val m = session.authed { api, access -> api.menu(access) }
+                _menu.update { it.copy(menu = m, working = null) }
+            } catch (e: SessionExpiredException) {
+                _menu.update { it.copy(working = null) }
+                toLogin("Votre session a expiré : reconnectez-vous.")
+            } catch (e: IOException) {
+                _menu.update { it.copy(working = null, error = errorMessage(e)) }
+            }
+        }
+    }
+
+    /** Another recipe for a planned meal. */
+    fun swapMeal(slotId: String) = change(slotId) { api, access -> api.swapSlot(access, slotId) }
+
+    /** One more meal (lunch or dinner) on a day. */
+    fun addMeal(date: LocalDate, meal: String) = change("$date|$meal") { api, access -> api.addSlot(access, date, meal) }
+
+    fun removeMeal(slotId: String) = change(slotId) { api, access -> api.removeSlot(access, slotId) }
+
+    fun openRecipe(id: String, title: String) {
+        _recipe.value = RecipeState(id, title)
+        viewModelScope.launch {
+            try {
+                val r = session.authed { api, access -> api.recipe(access, id) }
+                _recipe.update { if (it?.id == id) it.copy(recipe = r) else it }
+            } catch (e: SessionExpiredException) {
+                _recipe.value = null
+                toLogin("Votre session a expiré : reconnectez-vous.")
+            } catch (e: IOException) {
+                _recipe.update { if (it?.id == id) it.copy(error = errorMessage(e)) else it }
+            }
+        }
+    }
+
+    fun closeRecipe() {
+        _recipe.value = null
     }
 
     fun logout() {
@@ -313,6 +399,7 @@ internal fun errorMessage(e: IOException): String = when {
     e.code == "not_mijote" || e.status == 404 -> "Cette adresse ne répond pas comme un serveur Mijote."
     e.code == "invalid_credentials" -> "Identifiant ou mot de passe incorrect."
     e.code == "too_many_requests" -> "Trop de tentatives : réessayez dans quelques minutes."
+    e.code == "slot_exists" -> "Ce repas est déjà prévu ce jour-là."
     e.code == "not_enough_recipes" -> "Pas assez de recettes pour générer un menu : ajoutez-en d'abord."
     else -> "Erreur du serveur (${e.status})."
 

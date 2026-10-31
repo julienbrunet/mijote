@@ -45,6 +45,9 @@ func (a *API) Routes(mux *http.ServeMux) {
 		"DELETE /api/v1/recipes/{id}/image": a.deleteImage,
 		"GET /api/v1/menu":                  a.getMenu,
 		"POST /api/v1/menu/generate":        a.generateMenu,
+		"POST /api/v1/menu/slots":           a.addSlot,
+		"POST /api/v1/menu/slots/{id}/swap": a.swapSlot,
+		"DELETE /api/v1/menu/slots/{id}":    a.removeSlot,
 	} {
 		mux.Handle(pattern, a.authenticate(h))
 	}

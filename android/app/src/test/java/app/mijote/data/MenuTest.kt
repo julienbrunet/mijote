@@ -34,4 +34,18 @@ class MenuTest {
         assertEquals(monday, nextMonday(LocalDate.of(2026, 10, 31)))
         assertEquals(LocalDate.of(2026, 11, 9), nextMonday(monday))
     }
+
+    @Test
+    fun lunchOnlyPlanHasOneMealPerDay() {
+        val d = LocalDate.of(2026, 11, 2)
+        assertEquals(listOf("lunch"), mealsOn(MealPlan.LUNCH, emptyList(), d))
+        assertEquals(LocalDate.of(2026, 11, 4), periodEnd(MealPlan.LUNCH, emptyList(), d, 3))
+    }
+
+    @Test
+    fun recipeIngredientsAreMultipliedByPeople() {
+        assertEquals("600 g farine, tamisée", IngredientLine(150.0, "g", "farine", "tamisée").text(4))
+        assertEquals("1,5 c. à soupe pesto", IngredientLine(0.5, "tbsp", "pesto", null).text(3))
+        assertEquals("pincée sel", IngredientLine(null, "pinch", "sel", null).text(2))
+    }
 }

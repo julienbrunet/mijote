@@ -23,6 +23,7 @@ const (
 const (
 	PlanDefault     = "default"      // family default meals per weekday
 	PlanLunchDinner = "lunch_dinner" // every day
+	PlanLunch       = "lunch"        // lunch only, every day
 	PlanDinner      = "dinner"       // dinner only, every day
 )
 
@@ -160,6 +161,8 @@ func mealsFor(plan string, defaults []string, d time.Time) []string {
 	switch plan {
 	case PlanLunchDinner:
 		return []string{"lunch", "dinner"}
+	case PlanLunch:
+		return []string{"lunch"}
 	case PlanDinner:
 		return []string{"dinner"}
 	}
@@ -175,7 +178,7 @@ func (s *Store) GenerateMenu(ctx context.Context, userID string, req GenerateReq
 	if req.Meals < 1 || req.Meals > MaxGeneratedMeals {
 		return nil, invalid("le nombre de repas doit être compris entre 1 et 42")
 	}
-	if !slices.Contains([]string{PlanDefault, PlanLunchDinner, PlanDinner}, req.Plan) {
+	if !slices.Contains([]string{PlanDefault, PlanLunchDinner, PlanLunch, PlanDinner}, req.Plan) {
 		return nil, invalid("formule de repas inconnue")
 	}
 	var out []MenuSlot
@@ -310,4 +313,173 @@ func IsNotEnoughRecipes(err error) (*ErrNotEnoughRecipes, bool) {
 	var e *ErrNotEnoughRecipes
 	ok := errors.As(err, &e)
 	return e, ok
+}
+
+// slotWindow is how many days around a slot count as "the period" when a single
+// meal is picked (swap, extra meal): recipes planned there are not proposed again.
+const slotWindow = 6
+
+// pickFor chooses a recipe for the slot (date, meal) among the recipes that
+// suit it, never returning exclude. The meals planned around it are the period.
+func pickFor(ctx context.Context, tx pgx.Tx, date time.Time, meal, exclude string) (string, error) {
+	f, err := loadSettings(ctx, tx, false)
+	if err != nil {
+		return "", err
+	}
+	recipes, err := planRecipes(ctx, tx)
+	if err != nil {
+		return "", err
+	}
+	if len(recipes) < f.min || len(recipes) == 0 {
+		return "", &ErrNotEnoughRecipes{Have: len(recipes), Need: max(f.min, 1)}
+	}
+	around, err := menuSlotsIn(ctx, tx, date.AddDate(0, 0, -slotWindow), date.AddDate(0, 0, slotWindow))
+	if err != nil {
+		return "", err
+	}
+	var slots []menu.Slot
+	for _, m := range around {
+		d, _ := time.Parse(time.DateOnly, m.Date)
+		if d.Equal(date) && m.Meal == meal {
+			continue
+		}
+		sl := menu.Slot{Date: d, Meal: m.Meal, Locked: m.Locked}
+		if m.Recipe != nil {
+			sl.RecipeID = m.Recipe.ID
+		}
+		slots = append(slots, sl)
+	}
+	slots = append(slots, menu.Slot{Date: date, Meal: meal})
+	last, err := lastUsed(ctx, tx, date)
+	if err != nil {
+		return "", err
+	}
+	p := menu.Planner{Recipes: recipes, LastUsed: last, Settings: f.plan}
+	return p.Pick(slots, len(slots)-1, exclude), nil
+}
+
+func slotByID(ctx context.Context, tx pgx.Tx, id string) (MenuSlot, error) {
+	var date time.Time
+	var meal string
+	var locked bool
+	var rid *string
+	err := tx.QueryRow(ctx, `SELECT date, meal::text, locked, recipe_id::text FROM menu_slot
+		WHERE id::text = $1 AND deleted_at IS NULL FOR UPDATE`, id).Scan(&date, &meal, &locked, &rid)
+	if err != nil {
+		return MenuSlot{}, notFound(err)
+	}
+	m := MenuSlot{ID: id, Date: date.Format(time.DateOnly), Meal: meal, Locked: locked}
+	if rid != nil {
+		m.Recipe = &MenuRecipe{ID: *rid}
+	}
+	return m, nil
+}
+
+func oneSlot(ctx context.Context, tx pgx.Tx, id string) (MenuSlot, error) {
+	var date time.Time
+	if err := tx.QueryRow(ctx, `SELECT date FROM menu_slot WHERE id::text = $1`, id).Scan(&date); err != nil {
+		return MenuSlot{}, notFound(err)
+	}
+	list, err := menuSlotsIn(ctx, tx, date, date)
+	if err != nil {
+		return MenuSlot{}, err
+	}
+	for _, m := range list {
+		if m.ID == id {
+			return m, nil
+		}
+	}
+	return MenuSlot{}, ErrNotFound
+}
+
+// SwapSlot replaces the recipe of a slot by another suitable one (FR-ADJ-01,
+// requirements.md §10). A locked slot is refused.
+func (s *Store) SwapSlot(ctx context.Context, userID, id string) (MenuSlot, error) {
+	var out MenuSlot
+	err := s.tx(ctx, func(tx pgx.Tx) error {
+		cur, err := slotByID(ctx, tx, id)
+		if err != nil {
+			return err
+		}
+		if cur.Locked {
+			return invalid("ce repas est verrouillé")
+		}
+		exclude := ""
+		if cur.Recipe != nil {
+			exclude = cur.Recipe.ID
+		}
+		date, _ := time.Parse(time.DateOnly, cur.Date)
+		rid, err := pickFor(ctx, tx, date, cur.Meal, exclude)
+		if err != nil {
+			return err
+		}
+		if rid == "" {
+			return invalid("aucune autre recette ne convient pour ce repas")
+		}
+		if _, err := tx.Exec(ctx, `UPDATE menu_slot SET recipe_id = $2, updated_by = $3, updated_at = $4, version = version + 1
+			WHERE id::text = $1`, id, rid, userID, s.now()); err != nil {
+			return err
+		}
+		out, err = oneSlot(ctx, tx, id)
+		return err
+	})
+	return out, err
+}
+
+// AddSlot plans one more meal (lunch or dinner) on a day and picks its recipe.
+// It fails when the day already has that meal.
+func (s *Store) AddSlot(ctx context.Context, userID string, date time.Time, meal string) (MenuSlot, error) {
+	if meal != "lunch" && meal != "dinner" {
+		return MenuSlot{}, invalid("le repas doit être le midi ou le soir")
+	}
+	var out MenuSlot
+	err := s.tx(ctx, func(tx pgx.Tx) error {
+		if _, err := loadSettings(ctx, tx, true); err != nil { // serializes with generation
+			return err
+		}
+		var exists bool
+		if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM menu_slot WHERE date = $1 AND meal = $2::meal AND deleted_at IS NULL)`,
+			date, meal).Scan(&exists); err != nil {
+			return err
+		}
+		if exists {
+			return ErrSlotExists
+		}
+		rid, err := pickFor(ctx, tx, date, meal, "")
+		if err != nil {
+			return err
+		}
+		var rp *string
+		if rid != "" {
+			rp = &rid
+		}
+		var id string
+		now := s.now()
+		err = tx.QueryRow(ctx, `INSERT INTO menu_slot (date, meal, recipe_id, updated_by, updated_at) VALUES ($1, $2, $3, $4, $5)
+			ON CONFLICT (date, meal) DO UPDATE SET recipe_id = $3, locked = false, deleted_at = NULL,
+				updated_by = $4, updated_at = $5, version = menu_slot.version + 1
+			RETURNING id::text`, date, meal, rp, userID, now).Scan(&id)
+		if err != nil {
+			return err
+		}
+		out, err = oneSlot(ctx, tx, id)
+		return err
+	})
+	return out, err
+}
+
+// ErrSlotExists is returned when a day already has the requested meal.
+var ErrSlotExists = errors.New("slot_exists")
+
+// RemoveSlot removes a planned meal (soft delete, so other devices learn of it).
+func (s *Store) RemoveSlot(ctx context.Context, userID, id string) error {
+	tag, err := s.Pool.Exec(ctx, `UPDATE menu_slot SET deleted_at = $2, updated_at = $2, updated_by = $3, version = version + 1
+		WHERE id::text = $1 AND deleted_at IS NULL`, id, s.now(), userID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
 }

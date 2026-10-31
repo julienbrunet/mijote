@@ -117,6 +117,35 @@ class Api(private val baseUrl: String, private val http: Http = UrlConnectionHtt
     fun generateMenu(access: String, start: java.time.LocalDate, meals: Int, plan: MealPlan): List<MenuSlot> =
         parseGenerated(call("POST", "/api/v1/menu/generate", JSONObject()
             .put("start", start.toString()).put("meals", meals).put("plan", plan.code), bearer = access))
+
+    /** Replaces the recipe of a planned meal by another suitable one (FR-ADJ-01). */
+    fun swapSlot(access: String, id: String): MenuSlot =
+        parseSlot(call("POST", "/api/v1/menu/slots/$id/swap", bearer = access))
+
+    /** Plans one more meal ("lunch" or "dinner") on a day; the server picks its recipe. */
+    fun addSlot(access: String, date: java.time.LocalDate, meal: String): MenuSlot =
+        parseSlot(call("POST", "/api/v1/menu/slots", JSONObject().put("date", date.toString()).put("meal", meal), bearer = access))
+
+    fun removeSlot(access: String, id: String) {
+        call("DELETE", "/api/v1/menu/slots/$id", bearer = access)
+    }
+
+    fun recipe(access: String, id: String): RecipeDetail = parseRecipe(call("GET", "/api/v1/recipes/$id", bearer = access))
+
+    /** Thumbnail bytes of a recipe image path (as sent by the server), null when missing. */
+    fun image(access: String, path: String): ByteArray? {
+        val c = URL(baseUrl + path).openConnection() as HttpURLConnection
+        try {
+            c.connectTimeout = 10_000
+            c.readTimeout = 20_000
+            c.setRequestProperty("Authorization", "Bearer $access")
+            if (c.responseCode == 401) throw ApiException(401, "unauthorized", "HTTP 401")
+            if (c.responseCode !in 200..299) return null
+            return c.inputStream.use { it.readBytes() }
+        } finally {
+            c.disconnect()
+        }
+    }
 }
 
 /**

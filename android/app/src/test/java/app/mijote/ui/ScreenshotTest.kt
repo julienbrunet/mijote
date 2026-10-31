@@ -98,6 +98,30 @@ class ScreenshotTest {
         }
     }
 
+    @Test
+    fun review() = paparazzi.snapshot {
+        MijoteTheme {
+            ReviewScreen("2 → 4 novembre", sampleDays.mapIndexed { i, d -> d.copy(missing = if (i == 1) listOf("lunch") else emptyList()) },
+                working = null, error = null, onOpenMeal = {}, onSwapMeal = {}, onRemoveMeal = {}, onAddMeal = { _, _ -> }, onValidate = {})
+        }
+    }
+
+    @Test
+    fun recipe() = paparazzi.snapshot {
+        MijoteTheme {
+            RecipeScreen(
+                app.mijote.RecipeState("r1", "Poulet au pesto et tomates rôties", app.mijote.data.RecipeDetail(
+                    "r1", "Poulet au pesto et tomates rôties", null, "meat", 10, 25, 35, "Se réchauffe très bien.",
+                    listOf(
+                        app.mijote.data.IngredientLine(150.0, "g", "blanc de poulet", null),
+                        app.mijote.data.IngredientLine(1.0, "tbsp", "pesto", null),
+                        app.mijote.data.IngredientLine(null, "pinch", "sel", null),
+                    ),
+                    listOf("Préchauffer le four à 200 °C.", "Enfourner 25 minutes."))),
+                people = 4, onBack = {})
+        }
+    }
+
     private val sampleDays = listOf(
         DayUi("Aujourd'hui", "lun. 2 nov.", listOf(
             MealUi("Midi", "Poulet au pesto et tomates rôties", DishType.MEAT, 25, "🍗", locked = true),

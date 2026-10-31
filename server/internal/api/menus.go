@@ -1,6 +1,7 @@
 package api
 
 import (
+	"errors"
 	"net/http"
 	"time"
 
@@ -58,7 +59,7 @@ func (a *API) getMenu(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"today": today.Format(time.DateOnly), "slots": slots, "generation": info})
 }
 
-// generateMenu plans {"meals": N, "start": "YYYY-MM-DD", "plan": "default|lunch_dinner|dinner"}.
+// generateMenu plans {"meals": N, "start": "YYYY-MM-DD", "plan": "default|lunch_dinner|lunch|dinner"}.
 func (a *API) generateMenu(w http.ResponseWriter, r *http.Request) {
 	var in struct {
 		Start string `json:"start"`
@@ -98,4 +99,63 @@ func (a *API) generateMenu(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"slots": slots})
+}
+
+// menuSlotError answers the errors of the single-slot operations.
+func menuSlotError(w http.ResponseWriter, r *http.Request, err error) {
+	if e, ok := store.IsNotEnoughRecipes(err); ok {
+		writeJSON(w, http.StatusConflict, map[string]any{"error": "not_enough_recipes",
+			"message": "not enough recipes to generate a menu", "have": e.Have, "need": e.Need})
+		return
+	}
+	if errors.Is(err, store.ErrNotFound) {
+		problem(w, http.StatusNotFound, "not_found", "meal not found")
+		return
+	}
+	if errors.Is(err, store.ErrSlotExists) {
+		problem(w, http.StatusConflict, "slot_exists", "this meal is already planned")
+		return
+	}
+	recipeError(w, r, err)
+}
+
+// swapSlot picks another recipe for a planned meal.
+func (a *API) swapSlot(w http.ResponseWriter, r *http.Request) {
+	slot, err := a.Store.SwapSlot(r.Context(), current(r).user.ID, r.PathValue("id"))
+	if err != nil {
+		menuSlotError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, slot)
+}
+
+// addSlot plans one more meal: {"date": "YYYY-MM-DD", "meal": "lunch|dinner"}.
+func (a *API) addSlot(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Date string `json:"date"`
+		Meal string `json:"meal"`
+	}
+	if !body(w, r, &in) {
+		return
+	}
+	d, ok := parseDate(in.Date)
+	if !ok {
+		problem(w, http.StatusUnprocessableEntity, "validation_error", "date invalide")
+		return
+	}
+	slot, err := a.Store.AddSlot(r.Context(), current(r).user.ID, d, in.Meal)
+	if err != nil {
+		menuSlotError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, slot)
+}
+
+// removeSlot removes a planned meal.
+func (a *API) removeSlot(w http.ResponseWriter, r *http.Request) {
+	if err := a.Store.RemoveSlot(r.Context(), current(r).user.ID, r.PathValue("id")); err != nil {
+		menuSlotError(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }

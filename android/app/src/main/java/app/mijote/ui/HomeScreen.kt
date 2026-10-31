@@ -8,6 +8,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Person
@@ -29,6 +30,7 @@ import androidx.compose.ui.unit.sp
 import app.mijote.data.Menu
 import app.mijote.data.MenuSlot
 import app.mijote.data.User
+import java.time.LocalDate
 
 enum class Tab(val label: String) { MENUS("Menus"), RECIPES("Recettes"), GENERATE("Générer") }
 
@@ -37,9 +39,16 @@ enum class DishType(val label: String, val colors: Pair<Color, Color>) {
 }
 
 /** A planned meal as shown on the home screen. [picture] stands in for the recipe image. */
-data class MealUi(val slot: String, val title: String, val dish: DishType?, val prepMinutes: Int?, val picture: String, val locked: Boolean)
+data class MealUi(
+    val slot: String, val title: String, val dish: DishType?, val prepMinutes: Int?, val picture: String, val locked: Boolean,
+    val id: String = "", val recipeId: String? = null, val image: String? = null,
+)
 
-data class DayUi(val label: String, val date: String, val meals: List<MealUi>)
+/** One day of the menu. [missing] lists the meals ("lunch", "dinner") that can still be added (review screen). */
+data class DayUi(
+    val label: String, val date: String, val meals: List<MealUi>,
+    val day: LocalDate? = null, val missing: List<String> = emptyList(),
+)
 
 /** Signed-in shell on the Butter background: white header, the days as a list, corner tabs. */
 @Composable
@@ -51,8 +60,15 @@ fun HomeScreen(
     generatedCount: Int = 0,
     onNewWeek: (() -> Unit)? = null,
     onPreferences: () -> Unit = {},
+    working: String? = null,
+    error: String? = null,
+    onOpenMeal: (MealUi) -> Unit = {},
+    onSwapMeal: (MealUi) -> Unit = {},
+    onRemoveMeal: (MealUi) -> Unit = {},
     generate: @Composable () -> Unit = {},
 ) {
+    var editing by remember { mutableStateOf<MealUi?>(null) }
+    MealActionsDialog(editing, onDismiss = { editing = null }, onOpen = onOpenMeal, onSwap = onSwapMeal, onRemove = onRemoveMeal)
     var tab by rememberSaveable { mutableStateOf(Tab.MENUS) }
     // A successful generation brings the user back to the menus.
     LaunchedEffect(generatedCount) { if (generatedCount > 0) tab = Tab.MENUS }
@@ -69,12 +85,10 @@ fun HomeScreen(
                 onNewWeek = { onNewWeek?.invoke(); tab = Tab.GENERATE }, onPreferences = onPreferences)
             if (tab == Tab.MENUS && days.isNotEmpty()) {
                 Column(Modifier.padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 120.dp)) {
+                    ErrorText(error)
+                    // No separator between days: the day titles and a wider gap group the meals.
                     days.forEachIndexed { i, day ->
-                        // Short centered pill between days, like the former sheet handle.
-                        if (i > 0) Box(Modifier.fillMaxWidth().padding(top = 26.dp, bottom = 4.dp), contentAlignment = Alignment.Center) {
-                            Box(Modifier.width(56.dp).height(5.dp).background(Color.White.copy(alpha = 0.7f), CircleShape))
-                        }
-                        DaySection(day)
+                        DaySection(day, first = i == 0, working = working, onOpen = onOpenMeal, onEdit = { editing = it })
                     }
                 }
             } else {
@@ -139,29 +153,35 @@ private fun Modifier.zIndexShadow() =
 
 /** One day: its title and date on the Butter background, then the meal cards. */
 @Composable
-private fun DaySection(day: DayUi) {
+fun DaySection(
+    day: DayUi, first: Boolean = false, working: String? = null,
+    onOpen: (MealUi) -> Unit, onEdit: (MealUi) -> Unit, extra: @Composable () -> Unit = {},
+) {
     Column {
-        Row(Modifier.fillMaxWidth().padding(top = 18.dp, bottom = 14.dp, start = 4.dp, end = 4.dp),
+        Row(Modifier.fillMaxWidth().padding(top = if (first) 18.dp else 34.dp, bottom = 14.dp, start = 4.dp, end = 4.dp),
             verticalAlignment = Alignment.CenterVertically) {
             Text(day.label, fontSize = 19.sp, fontWeight = FontWeight.Bold, color = Sunny.Ink, modifier = Modifier.weight(1f))
             Text(day.date.uppercase(), fontSize = 12.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 1.sp,
                 color = Sunny.Ink.copy(alpha = 0.6f))
         }
         Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            day.meals.forEach { MealCard(it, Sunny.Peach) }
+            day.meals.forEach { MealCard(it, Sunny.Peach, busy = working == it.id, onOpen = { onOpen(it) }, onEdit = { onEdit(it) }) }
+            extra()
         }
     }
 }
 
+/** A planned meal: tap the card for the recipe, the corner pencil to change it. */
 @Composable
-private fun MealCard(meal: MealUi, accent: Color) {
+fun MealCard(meal: MealUi, accent: Color, busy: Boolean, onOpen: () -> Unit, onEdit: () -> Unit) {
     Box(
         Modifier.fillMaxWidth().height(104.dp)
             .shadow(4.dp, Shapes.Card, ambientColor = Color.Black, spotColor = Color.Black)
-            .background(Sunny.Card, Shapes.Card),
+            .background(Sunny.Card, Shapes.Card).clip(Shapes.Card)
+            .clickable(enabled = meal.recipeId != null, onClick = onOpen),
     ) {
         Row(Modifier.fillMaxSize().padding(start = 12.dp, end = 52.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.size(68.dp), contentAlignment = Alignment.Center) { Text(meal.picture, fontSize = 44.sp) }
+            RecipeThumb(meal.image, meal.picture, Modifier.size(76.dp).clip(RoundedCornerShape(16.dp)), emojiSize = 40.sp)
             Column(Modifier.padding(start = 12.dp)) {
                 Text(meal.slot.uppercase(), fontSize = 10.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold, color = Sunny.InkSoft)
                 Text(meal.title, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Sunny.Ink, maxLines = 2,
@@ -177,13 +197,47 @@ private fun MealCard(meal: MealUi, accent: Color) {
         // Corner action glued to the card's bottom-right corner, as the basket buttons of the reference.
         Box(
             Modifier.align(Alignment.BottomEnd).size(46.dp)
-                .background(accent, RoundedCornerShape(topStart = 16.dp, bottomEnd = 22.dp)),
+                .background(accent, RoundedCornerShape(topStart = 16.dp, bottomEnd = 22.dp))
+                .clickable(onClick = onEdit),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(if (meal.locked) Icons.Filled.Lock else Icons.Filled.Refresh,
-                contentDescription = if (meal.locked) "Verrouillé" else "Changer", tint = Color.White, modifier = Modifier.size(20.dp))
+            if (busy) CircularProgressIndicator(Modifier.size(20.dp), color = Color.White, strokeWidth = 2.dp)
+            else Icon(Icons.Filled.Edit, contentDescription = "Modifier", tint = Color.White, modifier = Modifier.size(20.dp))
         }
+        if (meal.locked) Icon(Icons.Filled.Lock, contentDescription = "Verrouillé", tint = Sunny.InkSoft,
+            modifier = Modifier.align(Alignment.TopEnd).padding(10.dp).size(14.dp))
     }
+}
+
+/** What can be done to a meal: see the recipe, take another one, remove it. */
+@Composable
+fun MealActionsDialog(
+    meal: MealUi?, onDismiss: () -> Unit,
+    onOpen: (MealUi) -> Unit, onSwap: (MealUi) -> Unit, onRemove: (MealUi) -> Unit,
+) {
+    if (meal == null) return
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = Sunny.Card,
+        title = { Text(meal.title, fontWeight = FontWeight.Bold, color = Sunny.Ink, fontSize = 18.sp) },
+        text = {
+            Column {
+                if (meal.recipeId != null) DialogAction("Voir la recette") { onDismiss(); onOpen(meal) }
+                DialogAction(if (meal.locked) "Verrouillé : impossible de changer" else "Changer de recette", enabled = !meal.locked) {
+                    onDismiss(); onSwap(meal)
+                }
+                DialogAction("Retirer ce repas", enabled = !meal.locked, danger = true) { onDismiss(); onRemove(meal) }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Fermer", color = Sunny.Slate) } },
+    )
+}
+
+@Composable
+private fun DialogAction(text: String, enabled: Boolean = true, danger: Boolean = false, onClick: () -> Unit) {
+    Text(text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold,
+        color = when { !enabled -> Sunny.InkSoft; danger -> Sunny.Error; else -> Sunny.Ink },
+        modifier = Modifier.fillMaxWidth().clip(Shapes.Control).clickable(enabled = enabled, onClick = onClick).padding(vertical = 14.dp, horizontal = 4.dp))
 }
 
 @Composable
@@ -237,7 +291,17 @@ private fun BottomBar(selected: Tab, modifier: Modifier, onSelect: (Tab) -> Unit
 
 /** Groups the planned meals by day for the home screen. */
 fun menuDays(menu: Menu): List<DayUi> = menu.slots.groupBy { it.date }.toSortedMap().map { (date, slots) ->
-    DayUi(dayLabel(date, menu.today), shortDate(date), slots.sortedBy { it.meal != "lunch" }.map(::mealUi))
+    DayUi(dayLabel(date, menu.today), shortDate(date), slots.sortedBy { it.meal != "lunch" }.map(::mealUi), day = date)
+}
+
+/** Every day from [from] to [to], also the empty ones, with the meals that can still be added. */
+fun reviewDays(menu: Menu, from: LocalDate, to: LocalDate): List<DayUi> {
+    val byDate = menu.slots.groupBy { it.date }
+    return generateSequence(from) { it.plusDays(1) }.takeWhile { !it.isAfter(to) }.map { d ->
+        val slots = byDate[d].orEmpty().sortedBy { it.meal != "lunch" }
+        DayUi(dayLabel(d, menu.today), shortDate(d), slots.map(::mealUi), day = d,
+            missing = listOf("lunch", "dinner").filter { m -> slots.none { it.meal == m } })
+    }.toList()
 }
 
 /** "2 → 8 novembre · 11 repas", null without planned meals. */
@@ -256,5 +320,5 @@ private fun mealUi(s: MenuSlot): MealUi {
     }
     val picture = when (dish) { DishType.MEAT -> "🍗"; DishType.FISH -> "🐟"; DishType.VEGETARIAN -> "🥗"; null -> "🍽️" }
     return MealUi(if (s.meal == "lunch") "Midi" else "Soir", s.recipe?.title ?: "Aucune recette disponible",
-        dish, s.recipe?.minutes, picture, s.locked)
+        dish, s.recipe?.minutes, picture, s.locked, id = s.id, recipeId = s.recipe?.id, image = s.recipe?.image)
 }

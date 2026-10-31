@@ -6,6 +6,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -27,26 +28,20 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.mijote.data.GenerationInfo
 import app.mijote.data.MealPlan
-import app.mijote.data.defaultMealCount
-import app.mijote.data.nextMonday
-import app.mijote.data.periodEnd
 import java.time.LocalDate
 
-private const val MAX_MEALS = 42
+private const val MAX_DAYS = 21
+private const val START_CHOICES = 14
 
-/** Start of the generated period. */
-enum class StartChoice(val label: String) { TODAY("Aujourd'hui"), TOMORROW("Demain"), MONDAY("Lundi\nprochain") }
-
-private fun StartChoice.date(today: LocalDate) = when (this) {
-    StartChoice.TODAY -> today
-    StartChoice.TOMORROW -> today.plusDays(1)
-    StartChoice.MONDAY -> nextMonday(today)
+/** Which meals of each day to plan. */
+enum class MealKind(val plan: MealPlan, val perDay: Int) {
+    LUNCH(MealPlan.LUNCH, 1), DINNER(MealPlan.DINNER, 1), BOTH(MealPlan.LUNCH_DINNER, 2)
 }
 
 /**
- * Menu generation, shaped like the reference "Add basket" card: a big Butter sheet with the title,
- * a white card with the meal count stepper on its right, a Slate band of meal plan choices
- * under it, then the start day choices and the generate button.
+ * Step 1 of the menu generation, shaped like the reference "Add basket" card: a big Butter sheet with the title,
+ * a white card with the day count stepper on its right, a Slate band to choose lunch, dinner or both,
+ * then the start day choices and the button leading to the review screen.
  */
 @Composable
 fun GenerateScreen(
@@ -57,14 +52,12 @@ fun GenerateScreen(
     error: String?,
     onGenerate: (start: LocalDate, meals: Int, plan: MealPlan) -> Unit,
 ) {
-    val defaults = info?.defaultMeals.orEmpty()
-    var start by rememberSaveable { mutableStateOf(StartChoice.TOMORROW) }
-    var plan by rememberSaveable { mutableStateOf(MealPlan.DEFAULT) }
-    val startDate = start.date(today)
-    var count by rememberSaveable(info) {
-        mutableIntStateOf(defaultMealCount(defaults, startDate, info?.horizonDays ?: 7).coerceIn(1, MAX_MEALS))
-    }
-    val end = periodEnd(plan, defaults, startDate, count)
+    var startDay by rememberSaveable { mutableLongStateOf(today.plusDays(1).toEpochDay()) }
+    var kind by rememberSaveable { mutableStateOf(MealKind.BOTH) }
+    var days by rememberSaveable(info?.horizonDays) { mutableIntStateOf((info?.horizonDays ?: 7).coerceIn(1, MAX_DAYS)) }
+    val start = LocalDate.ofEpochDay(startDay)
+    val end = start.plusDays(days - 1L)
+    val meals = days * kind.perDay
 
     Column(
         Modifier.fillMaxSize().background(Sunny.Butter).verticalScroll(rememberScrollState())
@@ -82,25 +75,25 @@ fun GenerateScreen(
         }
         Spacer(Modifier.height(30.dp))
 
-        // The card: count stepper on the left, summary on the white face, plan choices underneath.
+        // The card: day stepper on the right, summary on the white face, meal choices underneath.
         Column(
             Modifier.padding(horizontal = 18.dp).fillMaxWidth()
                 .shadow(14.dp, Shapes.Sheet, ambientColor = Sunny.PeachDeep, spotColor = Sunny.PeachDeep)
                 .background(Sunny.Slate, Shapes.Sheet),
         ) {
-            Box(Modifier.fillMaxWidth().height(232.dp).background(Color(0xFFF4F4F5), Shapes.Sheet)) {
+            Box(Modifier.fillMaxWidth().height(220.dp).background(Color(0xFFF4F4F5), Shapes.Sheet)) {
                 // Stepper on the right edge, within reach of the right thumb.
                 Column(
                     Modifier.align(Alignment.CenterEnd).width(76.dp).fillMaxHeight(),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.SpaceEvenly,
                 ) {
-                    StepButton("+", "Un repas de plus", enabled = count < MAX_MEALS) { count++ }
+                    StepButton("+", "Un jour de plus", enabled = days < MAX_DAYS) { days++ }
                     Box(
                         Modifier.size(52.dp).background(Sunny.Card, RoundedCornerShape(14.dp)),
                         contentAlignment = Alignment.Center,
-                    ) { Text("$count", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = Sunny.Ink) }
-                    StepButton("−", "Un repas de moins", enabled = count > 1) { count-- }
+                    ) { Text("$days", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = Sunny.Ink) }
+                    StepButton("−", "Un jour de moins", enabled = days > 1) { days-- }
                 }
                 Column(
                     Modifier.padding(end = 76.dp).fillMaxSize()
@@ -108,12 +101,12 @@ fun GenerateScreen(
                 ) {
                     Text("🥗", fontSize = 40.sp)
                     Spacer(Modifier.height(10.dp))
-                    Text(if (count > 1) "$count repas" else "1 repas", fontSize = 24.sp, fontWeight = FontWeight.Bold,
+                    Text(if (days > 1) "$days jours" else "1 jour", fontSize = 24.sp, fontWeight = FontWeight.Bold,
                         color = Sunny.InkTitle)
-                    Text("${periodLabel(startDate, end)} · ${if (people > 1) "$people personnes" else "1 personne"}", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Sunny.Ink,
+                    Text(periodLabel(start, end), fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Sunny.Ink,
                         modifier = Modifier.padding(top = 4.dp))
-                    Text(planDescription(plan), fontSize = 13.sp, color = Sunny.InkSoft, lineHeight = 18.sp,
-                        modifier = Modifier.padding(top = 10.dp))
+                    Text("${if (meals > 1) "$meals repas" else "1 repas"} · ${if (people > 1) "$people personnes" else "1 personne"}",
+                        fontSize = 13.sp, color = Sunny.InkSoft, modifier = Modifier.padding(top = 10.dp))
                 }
             }
             Row(
@@ -121,27 +114,30 @@ fun GenerateScreen(
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                PlanChip("Mes", "réglages", plan == MealPlan.DEFAULT) { plan = MealPlan.DEFAULT }
-                PlanChip("Midi", "& soir", plan == MealPlan.LUNCH_DINNER) { plan = MealPlan.LUNCH_DINNER }
-                PlanChip("Soir", "seulement", plan == MealPlan.DINNER) { plan = MealPlan.DINNER }
+                PlanChip("Midi", "", kind == MealKind.LUNCH) { kind = MealKind.LUNCH }
+                PlanChip("Soir", "", kind == MealKind.DINNER) { kind = MealKind.DINNER }
+                PlanChip("Midi", "& soir", kind == MealKind.BOTH) { kind = MealKind.BOTH }
             }
         }
 
-        Text("À PARTIR DE", fontSize = 11.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold, color = Sunny.InkTitle,
+        Text("PREMIER JOUR", fontSize = 11.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold, color = Sunny.InkTitle,
             modifier = Modifier.padding(start = 30.dp, top = 28.dp, bottom = 10.dp))
-        Row(Modifier.padding(horizontal = 18.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            StartChoice.entries.forEach { c ->
-                val on = c == start
+        Row(
+            Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 18.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            (0 until START_CHOICES).map { today.plusDays(it.toLong()) }.forEach { d ->
+                val on = d == start
                 Column(
-                    Modifier.weight(1f).height(72.dp).clip(Shapes.Control)
-                        .background(if (on) Sunny.Card else Sunny.ButterLight).clickable { start = c }
+                    Modifier.width(78.dp).height(72.dp).clip(Shapes.Control)
+                        .background(if (on) Sunny.Card else Sunny.ButterLight).clickable { startDay = d.toEpochDay() }
                         .padding(8.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center,
                 ) {
-                    Text(c.label, fontSize = 13.sp, lineHeight = 15.sp, textAlign = TextAlign.Center,
+                    Text(if (d == today) "Auj." else dayLabel(d, today), fontSize = 13.sp, lineHeight = 15.sp, textAlign = TextAlign.Center, maxLines = 1,
                         fontWeight = if (on) FontWeight.Bold else FontWeight.Medium, color = if (on) Sunny.PeachDeep else Sunny.Ink)
-                    Text(shortDate(c.date(today)), fontSize = 11.sp, color = Sunny.InkSoft)
+                    Text(shortDate(d).substringAfter(' '), fontSize = 11.sp, color = Sunny.InkSoft)
                 }
             }
         }
@@ -157,8 +153,8 @@ fun GenerateScreen(
                 Spacer(Modifier.height(12.dp))
             }
             ErrorText(error)
-            PrimaryButton(if (busy) "Génération…" else "Générer le menu", busy) {
-                onGenerate(startDate, count, plan)
+            PrimaryButton(if (busy) "Génération…" else "Voir le menu", busy) {
+                onGenerate(start, meals, kind.plan)
             }
         }
     }
@@ -186,15 +182,9 @@ private fun PlanChip(title: String, subtitle: String, selected: Boolean, onClick
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text(title, color = if (selected) Sunny.InkTitle else Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-            Text(subtitle, color = if (selected) Sunny.InkTitle else Color.White.copy(alpha = 0.85f), fontSize = 11.sp)
+            if (subtitle.isNotEmpty()) Text(subtitle, color = if (selected) Sunny.InkTitle else Color.White.copy(alpha = 0.85f), fontSize = 11.sp)
         }
         if (selected) Icon(Icons.Filled.Check, contentDescription = null, tint = Sunny.InkTitle,
             modifier = Modifier.padding(start = 6.dp).size(16.dp))
     }
-}
-
-private fun planDescription(plan: MealPlan) = when (plan) {
-    MealPlan.DEFAULT -> "Repas prévus selon vos réglages. Recettes de saison et pas servies récemment en priorité."
-    MealPlan.LUNCH_DINNER -> "Midi et soir chaque jour. Recettes de saison et pas servies récemment en priorité."
-    MealPlan.DINNER -> "Le soir uniquement. Recettes de saison et pas servies récemment en priorité."
 }

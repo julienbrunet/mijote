@@ -6,7 +6,8 @@ import java.time.DayOfWeek
 import java.time.LocalDate
 
 /** Recipe summary shown in a menu. */
-data class MenuRecipe(val id: String, val title: String, val dishType: String, val minutes: Int?)
+/** [image] is the API path of the thumbnail (needs the access token), null without picture. */
+data class MenuRecipe(val id: String, val title: String, val dishType: String, val minutes: Int?, val image: String? = null)
 
 /** One planned meal; [recipe] is null for an empty slot. */
 data class MenuSlot(val id: String, val date: LocalDate, val meal: String, val recipe: MenuRecipe?, val locked: Boolean)
@@ -19,20 +20,22 @@ data class GenerationInfo(val recipeCount: Int, val minRecipes: Int, val horizon
 data class Menu(val today: LocalDate, val slots: List<MenuSlot>, val info: GenerationInfo)
 
 /** Meal plans of `POST /api/v1/menu/generate`. */
-enum class MealPlan(val code: String) { DEFAULT("default"), LUNCH_DINNER("lunch_dinner"), DINNER("dinner") }
+enum class MealPlan(val code: String) { DEFAULT("default"), LUNCH_DINNER("lunch_dinner"), LUNCH("lunch"), DINNER("dinner") }
 
 private fun JSONObject.optIntOrNull(key: String): Int? = if (isNull(key) || !has(key)) null else optInt(key)
 
-private fun parseSlots(a: JSONArray?): List<MenuSlot> = (0 until (a?.length() ?: 0)).map { i ->
-    val o = a!!.getJSONObject(i)
+private fun parseSlots(a: JSONArray?): List<MenuSlot> = (0 until (a?.length() ?: 0)).map { parseSlot(a!!.getJSONObject(it)) }
+
+fun parseSlot(o: JSONObject): MenuSlot {
     val r = o.optJSONObject("recipe")
-    MenuSlot(
+    return MenuSlot(
         id = o.getString("id"),
         date = LocalDate.parse(o.getString("date")),
         meal = o.getString("meal"),
         recipe = r?.let {
             MenuRecipe(it.getString("id"), it.getString("title"), it.optString("dishType"),
-                it.optIntOrNull("totalMinutes") ?: it.optIntOrNull("prepMinutes"))
+                it.optIntOrNull("totalMinutes") ?: it.optIntOrNull("prepMinutes"),
+                if (it.isNull("image")) null else it.optString("image").ifEmpty { null })
         },
         locked = o.optBoolean("locked"),
     )
@@ -56,6 +59,7 @@ fun mealsOn(plan: MealPlan, defaults: List<String>, date: LocalDate): List<Strin
     val code = if (plan == MealPlan.DEFAULT) defaults.getOrElse(date.dayOfWeek.value - 1) { "lunch_dinner" } else plan.code
     return when (code) {
         "lunch_dinner" -> listOf("lunch", "dinner")
+        "lunch" -> listOf("lunch")
         "dinner" -> listOf("dinner")
         else -> emptyList()
     }

@@ -758,4 +758,39 @@ func TestMenuGeneration(t *testing.T) {
 	if menu["generation"].(map[string]any)["recipeCount"].(float64) != 12 {
 		t.Fatalf("generation info %v", menu["generation"])
 	}
+
+	// Swap: a new recipe, never the same; a locked meal is refused.
+	_, now := app.api("GET", "/api/v1/menu?from=2026-11-03&to=2026-11-03", access, nil)
+	free := now["slots"].([]any)[0].(map[string]any)
+	res, out = app.api("POST", "/api/v1/menu/slots/"+free["id"].(string)+"/swap", access, nil)
+	expect(t, res, http.StatusOK, "swap")
+	if out["recipe"].(map[string]any)["id"] == free["recipe"].(map[string]any)["id"] {
+		t.Fatalf("swap kept the recipe: %v", out)
+	}
+	res, _ = app.api("POST", "/api/v1/menu/slots/"+first["id"].(string)+"/swap", access, nil)
+	expect(t, res, http.StatusUnprocessableEntity, "swap a locked meal")
+	res, _ = app.api("POST", "/api/v1/menu/slots/00000000-0000-0000-0000-000000000000/swap", access, nil)
+	expect(t, res, http.StatusNotFound, "swap unknown")
+
+	// Extra meal: a lunch needs a recipe suiting lunch (none here), a dinner is refused when planned.
+	res, _ = app.api("POST", "/api/v1/menu/slots", access, map[string]any{"date": "2026-11-02", "meal": "dinner"})
+	expect(t, res, http.StatusConflict, "dinner already planned")
+	res, out = app.api("POST", "/api/v1/menu/slots", access, map[string]any{"date": "2026-11-02", "meal": "lunch"})
+	expect(t, res, http.StatusCreated, "extra lunch")
+	if out["meal"] != "lunch" || out["date"] != "2026-11-02" {
+		t.Fatalf("bad extra meal %v", out)
+	}
+	res, _ = app.api("DELETE", "/api/v1/menu/slots/"+out["id"].(string), access, nil)
+	expect(t, res, http.StatusNoContent, "remove extra meal")
+	res, _ = app.api("DELETE", "/api/v1/menu/slots/"+out["id"].(string), access, nil)
+	expect(t, res, http.StatusNotFound, "remove twice")
+
+	// Lunch-only plan.
+	res, out = app.api("POST", "/api/v1/menu/generate", access, map[string]any{"start": "2026-12-01", "meals": 2, "plan": "lunch"})
+	expect(t, res, http.StatusOK, "lunch plan")
+	for _, sl := range out["slots"].([]any) {
+		if sl.(map[string]any)["meal"] != "lunch" {
+			t.Fatalf("lunch plan gave %v", sl)
+		}
+	}
 }
