@@ -7,6 +7,8 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import app.mijote.data.ApiException
 import app.mijote.data.AppRelease
+import app.mijote.data.MealPlan
+import app.mijote.data.Menu
 import app.mijote.data.PrefsSessionStore
 import app.mijote.data.Session
 import app.mijote.data.SessionExpiredException
@@ -16,6 +18,7 @@ import app.mijote.data.normalizeInvitationCode
 import app.mijote.data.normalizeServerUrl
 import app.mijote.data.parseInvitationLink
 import java.io.IOException
+import java.time.LocalDate
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -47,6 +50,14 @@ data class UiState(
     val error: String? = null,
 )
 
+/** Planned meals (server-side generation, FR-GEN). [generated] counts successful generations. */
+data class MenuState(
+    val menu: Menu? = null,
+    val generating: Boolean = false,
+    val error: String? = null,
+    val generated: Int = 0,
+)
+
 class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val session = Session(PrefsSessionStore(app))
 
@@ -57,6 +68,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val _update = MutableStateFlow<UpdateState>(UpdateState.None)
     val update: StateFlow<UpdateState> = _update.asStateFlow()
     val currentVersion get() = updater.currentVersion
+
+    private val _menu = MutableStateFlow(MenuState())
+    val menu: StateFlow<MenuState> = _menu.asStateFlow()
 
     init {
         // Release builds look for a newer published version at launch; debug builds never do.
@@ -72,6 +86,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 try {
                     val u = session.refreshUser()
                     _state.update { if (it.screen is Screen.Home) it.copy(screen = Screen.Home(u)) else it }
+                    loadMenu()
                 } catch (e: SessionExpiredException) {
                     toLogin("Votre session a expiré : reconnectez-vous.")
                 } catch (_: IOException) {
@@ -128,6 +143,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         run {
             val user = session.login(username.trim(), password, "${Build.MANUFACTURER} ${Build.MODEL}")
             _state.value = UiState(Screen.Home(user))
+            loadMenu()
         }
     }
 
@@ -167,6 +183,37 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             val user = session.redeemInvitation(url, cleanCode, username.trim(), displayName.trim(), password,
                 "${Build.MANUFACTURER} ${Build.MODEL}")
             _state.value = UiState(Screen.Home(user))
+            loadMenu()
+        }
+    }
+
+    /** Reloads the planned meals; failures keep what is shown (offline reading). */
+    fun loadMenu() {
+        viewModelScope.launch {
+            try {
+                val m = session.authed { api, access -> api.menu(access) }
+                _menu.update { it.copy(menu = m) }
+            } catch (e: SessionExpiredException) {
+                toLogin("Votre session a expiré : reconnectez-vous.")
+            } catch (_: IOException) {
+            }
+        }
+    }
+
+    fun generateMenu(start: LocalDate, meals: Int, plan: MealPlan) {
+        if (_menu.value.generating) return
+        _menu.update { it.copy(generating = true, error = null) }
+        viewModelScope.launch {
+            try {
+                session.authed { api, access -> api.generateMenu(access, start, meals, plan) }
+                val m = session.authed { api, access -> api.menu(access) }
+                _menu.update { MenuState(menu = m, generated = it.generated + 1) }
+            } catch (e: SessionExpiredException) {
+                _menu.update { it.copy(generating = false) }
+                toLogin("Votre session a expiré : reconnectez-vous.")
+            } catch (e: IOException) {
+                _menu.update { it.copy(generating = false, error = errorMessage(e)) }
+            }
         }
     }
 
@@ -202,6 +249,7 @@ internal fun errorMessage(e: IOException): String = when {
     e.code == "not_mijote" || e.status == 404 -> "Cette adresse ne répond pas comme un serveur Mijote."
     e.code == "invalid_credentials" -> "Identifiant ou mot de passe incorrect."
     e.code == "too_many_requests" -> "Trop de tentatives : réessayez dans quelques minutes."
+    e.code == "not_enough_recipes" -> "Pas assez de recettes pour générer un menu : ajoutez-en d'abord."
     else -> "Erreur du serveur (${e.status})."
 
 }

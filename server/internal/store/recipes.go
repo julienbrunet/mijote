@@ -285,13 +285,19 @@ func scanRecipe(row pgx.Row) (Recipe, error) {
 		&r.Servings, &r.DishType, &r.Seasons, &r.MealTypes, &r.Notes, &r.Tags,
 		&r.CreatedAt, &r.UpdatedAt, &r.Version, &r.ArchivedAt)
 	r.Ingredients, r.Steps = []Ingredient{}, []string{}
-	if r.ImagePath != nil {
-		// "<id>-<hash>.jpg": the hash makes the URL change with the picture.
-		v := strings.TrimSuffix(strings.TrimPrefix(*r.ImagePath, r.ID+"-"), ".jpg")
-		img := "/api/v1/recipes/" + r.ID + "/image?v=" + v
-		r.Image = &img
-	}
+	r.Image = r.imageURL()
 	return r, err
+}
+
+// imageURL returns the API path of the thumbnail, nil without image.
+func (r Recipe) imageURL() *string {
+	if r.ImagePath == nil {
+		return nil
+	}
+	// "<id>-<hash>.jpg": the hash makes the URL change with the picture.
+	v := strings.TrimSuffix(strings.TrimPrefix(*r.ImagePath, r.ID+"-"), ".jpg")
+	img := "/api/v1/recipes/" + r.ID + "/image?v=" + v
+	return &img
 }
 
 // RecipeFilter selects recipes for a listing.

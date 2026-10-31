@@ -73,7 +73,7 @@ fun SheetHandle() {
 @Composable
 fun OnboardingScaffold(title: String, subtitle: String?, content: @Composable ColumnScope.() -> Unit) {
     Column(
-        Modifier.fillMaxSize().background(Sunny.Cream).imePadding().verticalScroll(rememberScrollState()),
+        Modifier.fillMaxSize().background(Sunny.Butter).imePadding().verticalScroll(rememberScrollState()),
     ) {
         Box(
             Modifier.fillMaxWidth()

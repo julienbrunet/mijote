@@ -650,3 +650,86 @@ func TestAPITokens(t *testing.T) {
 	res, _ = app.api("GET", "/api/v1/me", raw, nil)
 	expect(t, res, http.StatusUnauthorized, "expired token")
 }
+
+func TestMenuGeneration(t *testing.T) {
+	pool := testDB(t)
+	ctx := context.Background()
+	h, err := New(ctx, pool, nil, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(h)
+	defer srv.Close()
+
+	web := newClient(t, srv.URL)
+	web.form("/admin/setup", url.Values{"username": {"julien"}, "password": {"secret-pass"}, "confirm": {"secret-pass"}})
+	app := newClient(t, srv.URL)
+	_, tok := app.json("/api/v1/auth/login", map[string]string{"username": "julien", "password": "secret-pass"})
+	access := tok["accessToken"].(string)
+
+	gen := map[string]any{"start": "2026-11-02", "meals": 5, "plan": "dinner"}
+	res, out := app.api("POST", "/api/v1/menu/generate", access, gen)
+	expect(t, res, http.StatusConflict, "empty recipe base")
+	if out["error"] != "not_enough_recipes" || out["need"].(float64) != 10 {
+		t.Fatalf("unexpected answer %v", out)
+	}
+
+	types := []string{"meat", "fish", "vegetarian"}
+	for i := range 12 {
+		res, _ = app.api("POST", "/api/v1/recipes", access, map[string]any{
+			"title": "Recette " + string(rune('A'+i)), "dishType": types[i%3], "mealTypes": []string{"dinner"}})
+		expect(t, res, http.StatusCreated, "create recipe")
+	}
+
+	res, out = app.api("POST", "/api/v1/menu/generate", access, map[string]any{"start": "2026-11-02", "meals": 99})
+	expect(t, res, http.StatusUnprocessableEntity, "too many meals")
+
+	res, out = app.api("POST", "/api/v1/menu/generate", access, gen)
+	expect(t, res, http.StatusOK, "generate")
+	slots := out["slots"].([]any)
+	if len(slots) != 5 {
+		t.Fatalf("got %d slots", len(slots))
+	}
+	seen := map[string]bool{}
+	for i, s := range slots {
+		m := s.(map[string]any)
+		r := m["recipe"].(map[string]any)
+		if m["meal"] != "dinner" || m["date"] != time.Date(2026, 11, 2+i, 0, 0, 0, 0, time.UTC).Format(time.DateOnly) || seen[r["id"].(string)] {
+			t.Fatalf("bad slot %v", m)
+		}
+		seen[r["id"].(string)] = true
+	}
+
+	// Lock the first slot: regenerating the period keeps it.
+	first := slots[0].(map[string]any)
+	if _, err := pool.Exec(ctx, `UPDATE menu_slot SET locked = true WHERE id = $1`, first["id"]); err != nil {
+		t.Fatal(err)
+	}
+	res, out = app.api("POST", "/api/v1/menu/generate", access, gen)
+	expect(t, res, http.StatusOK, "regenerate")
+	again := out["slots"].([]any)[0].(map[string]any)
+	if again["recipe"].(map[string]any)["id"] != first["recipe"].(map[string]any)["id"] || again["locked"] != true {
+		t.Fatalf("locked slot changed: %v", again)
+	}
+
+	// The next week avoids the recipes just served when it can (12 recipes, 5 recent).
+	res, out = app.api("POST", "/api/v1/menu/generate", access, map[string]any{"start": "2026-11-07", "meals": 7, "plan": "dinner"})
+	expect(t, res, http.StatusOK, "next week")
+	_, cur := app.api("GET", "/api/v1/menu?from=2026-11-02&to=2026-11-06", access, nil)
+	recent := map[string]bool{}
+	for _, s := range cur["slots"].([]any) {
+		recent[s.(map[string]any)["recipe"].(map[string]any)["id"].(string)] = true
+	}
+	for _, s := range out["slots"].([]any) {
+		if recent[s.(map[string]any)["recipe"].(map[string]any)["id"].(string)] {
+			t.Fatalf("recent recipe reused: %v", s)
+		}
+	}
+	_, menu := app.api("GET", "/api/v1/menu?from=2026-11-01&to=2026-11-30", access, nil)
+	if n := len(menu["slots"].([]any)); n != 12 {
+		t.Fatalf("menu has %d slots, want 12", n)
+	}
+	if menu["generation"].(map[string]any)["recipeCount"].(float64) != 12 {
+		t.Fatalf("generation info %v", menu["generation"])
+	}
+}

@@ -1,6 +1,6 @@
 # Mijote — Requirements
 
-Status: draft v0.1. Server skeleton in `server/` (migrations, initial schema).
+Status: draft v0.1. Server skeleton in `server/` (migrations, initial schema); menu generation implemented (§10).
 
 Priorities: **Must** (required for v1), **Should** (expected in v1, can slip), **Could** (nice to have).
 
@@ -199,17 +199,17 @@ Theme name: **Sunny Kit** (2026-10-31, replaces the former "Calm Kit") — warm 
 
 ### Theme
 - **Light mode only** for now. A dark variant is out of scope until requested.
-- Edge-to-edge display: content scrolls behind the system bars and the bottom navigation.
+- Edge-to-edge display: content scrolls behind the system bars and the bottom navigation. System bar icons are always dark (light style), whatever the system theme.
 
 ### Color palette
 | Token | Hex | Usage |
 |---|---|---|
-| Butter | `#FFD88C` | Onboarding header sheet, first day sheet, user corner block |
+| Butter | `#FFD88C` | **App screen background** (all screens), user corner block |
 | Butter light | `#FFEBC2` | Surface variant |
-| Peach | `#FFA98B` | Second day sheet, "new week" button, card corner actions |
+| Peach | `#FFA98B` | "New week" button, card corner actions |
 | Peach deep | `#F4876A` | Primary: main buttons, focused fields, first bottom tab |
-| Slate | `#8E8E93` | Neutral accent: third day sheet, search tile, secondary actions |
-| Cream | `#FFF5E6` | Screen background |
+| Slate | `#8E8E93` | Neutral accent: search tile, secondary actions |
+| Cream | `#FFF5E6` | Background of the presentation site and the web admin |
 | Card | `#FFFFFF` | Cards, header, dialogs |
 | Ink | `#4A4A4A` | Main text |
 | Ink title | `#6B6B6B` | Titles |
@@ -238,7 +238,7 @@ Dish type tags (background / text):
 - Buttons: Bold ~15–16 sp.
 
 ### Shapes and elevation
-- Sheets: 36 dp radius, warm (peach-tinted) shadow; day sheets overlap the previous one by ~36 dp and carry a small white handle bar on top.
+- Sheets (generation screen): 36 dp radius, warm (peach-tinted) shadow.
 - **Corner block**: a colored square glued to the top-right corner of a sheet, only its bottom-left corner rounded (36 dp); holds the user button (home) or the app emoji (onboarding).
 - Cards: 22 dp radius, white, soft shadow. Buttons and tiles: 18 dp radius.
 - Card corner action: 46 dp square glued to the card's bottom-right corner (rounded top-left 16 dp), lock icon when the meal is locked, swap icon otherwise.
@@ -253,9 +253,9 @@ Dish type tags (background / text):
 
 ### Home screen layout
 - Big white header (rounded bottom corners 40 dp) with the logo (76 dp) next to the **"Mijote"** wordmark (54 sp) on the Menus tab (a plain title on the other tabs), the period summary below (e.g. "2 → 8 novembre · 11 repas"), a wide Peach **"Nouvelle semaine"** button and a square Slate search tile; the user button sits in a Butter corner block.
-- Upcoming days as stacked colored sheets cycling Butter, Peach, Slate, each with a header (e.g. "Aujourd'hui", "Demain", weekday) and its planned meals.
+- Upcoming days as a plain list on the Butter background (no colored sheets), each with a header (e.g. "Aujourd'hui", "Demain", weekday) and its planned meals; days are separated by a thin white line.
 - Meals shown as **full-width horizontal cards**: recipe image on the left, meal slot, recipe title, dish type tag and prep time, and the corner action. (Replaces the former 2-column grid.)
-- **Bottom navigation**: stacked tabs anchored to the bottom-right corner of the screen, laid out from the right (Generate, Recipes, Menus) in three peach shades lighter towards the edge; each tab overlaps its left neighbour with a rounded top-left corner (36 dp) and extends behind the system navigation bar. The selected tab widens and shows its label next to the icon; the others show the icon only.
+- **Bottom navigation**: stacked tabs anchored to the bottom-right corner of the screen, laid out from the right (Generate, Recipes, Menus) in three peach shades lighter towards the edge; tabs are 56 dp high (plus the system navigation bar inset they extend behind); each tab overlaps its left neighbour with a rounded top-left corner (28 dp). The selected tab widens and shows its label next to the icon; the others show the icon only.
 
 ## 9. Data model (decided)
 
@@ -384,6 +384,10 @@ Runs on the server. Input: a period, the family settings, the existing slots.
    - **Dish type balance**: favor the type furthest below the admin's target split for the period so far.
 4. **Pick** randomly among the best-scored recipes (weighted), so regenerating gives variety.
 5. **Shortage**: if every eligible recipe was used recently, pick the one served the longest ago. A slot stays empty only when no recipe suits the meal at all.
+
+**Generation request** (implemented 2026-10-31): the app asks for a **number of meals** from a start day (`POST /api/v1/menu/generate` with `start`, `meals` 1–42, `plan`). The plan decides which meals each day gets: `default` (family default meals per weekday), `lunch_dinner` or `dinner`; slots are taken day after day until the count is reached (60 days at most). Locked slots in the period are kept and count among the meals; other slots of the period are refilled, and unlocked slots the new plan leaves out are removed. Seasons are meteorological (northern hemisphere: winter = Dec–Feb…). Below the family's minimum recipe count, the server answers `409 not_enough_recipes` with `have` / `need`. `GET /api/v1/menu?from&to` returns the planned meals (default: today onwards) and the generation info (recipe count, minimum, horizon, default meals). Weights live in `server/internal/menu/plan.go`.
+
+**Generation screen** (app, "Générer" tab): Butter sheet titled "Nouveau menu"; a card with a +/− meal count stepper on its left (default: meals of the family horizon), a white face summarizing the count and the period, and a Slate band of plan choices (Réglages famille / Midi & soir / Soir seulement, selected one Butter with a check); start day choices below (Aujourd'hui, Demain, Lundi prochain), then "Générer le menu". The "Nouvelle semaine" button of the home screen opens it; after generation the app returns to the menus.
 
 **Swap** (FR-ADJ-01) runs steps 2–5 for one slot, excluding its current recipe.
 **Regenerate** re-fills every non-locked slot of the period.

@@ -9,7 +9,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import app.mijote.R
+import app.mijote.data.GenerationInfo
 import app.mijote.data.User
+import java.time.LocalDate
 import org.junit.Rule
 import org.junit.Test
 
@@ -68,6 +70,22 @@ class ScreenshotTest {
                 androidx.compose.foundation.Image(painterResource(R.drawable.ic_launcher_monochrome), null,
                     colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(androidx.compose.ui.graphics.Color(0xFFCFE6C4)))
             }
+        }
+    }
+
+    @Test
+    fun generate() = paparazzi.snapshot {
+        MijoteTheme {
+            GenerateScreen(GenerationInfo(24, 10, 7, listOf("dinner", "dinner", "dinner", "dinner", "dinner", "lunch_dinner", "lunch_dinner")),
+                LocalDate.of(2026, 10, 31), busy = false, error = null, onGenerate = { _, _, _ -> })
+        }
+    }
+
+    @Test
+    fun generateNotEnoughRecipes() = paparazzi.snapshot {
+        MijoteTheme {
+            GenerateScreen(GenerationInfo(4, 10, 7, List(7) { "lunch_dinner" }), LocalDate.of(2026, 10, 31),
+                busy = false, error = null, onGenerate = { _, _, _ -> })
         }
     }
 

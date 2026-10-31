@@ -26,6 +26,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import app.mijote.data.Menu
+import app.mijote.data.MenuSlot
 import app.mijote.data.User
 
 enum class Tab(val label: String) { MENUS("Menus"), RECIPES("Recettes"), GENERATE("Générer") }
@@ -35,38 +37,50 @@ enum class DishType(val label: String, val colors: Pair<Color, Color>) {
 }
 
 /** A planned meal as shown on the home screen. [picture] stands in for the recipe image. */
-data class MealUi(val slot: String, val title: String, val dish: DishType, val prepMinutes: Int, val picture: String, val locked: Boolean)
+data class MealUi(val slot: String, val title: String, val dish: DishType?, val prepMinutes: Int?, val picture: String, val locked: Boolean)
 
 data class DayUi(val label: String, val date: String, val meals: List<MealUi>)
 
-/** Sheet color, header text color and corner action color, cycled over the days. */
-private data class SheetStyle(val sheet: Color, val text: Color, val action: Color)
-
-private val sheetStyles = listOf(
-    SheetStyle(Sunny.Butter, Sunny.Ink, Sunny.Peach),
-    SheetStyle(Sunny.Peach, Sunny.Ink, Sunny.Butter),
-    SheetStyle(Sunny.Slate, Color.White, Sunny.Butter),
-)
-
-/** Signed-in shell: white header with the user corner block, stacked day sheets, floating bottom bar. */
+/** Signed-in shell on the Butter background: white header, the days as a list, corner tabs. */
 @Composable
-fun HomeScreen(user: User, onLogout: () -> Unit, period: String? = null, days: List<DayUi> = emptyList()) {
+fun HomeScreen(
+    user: User,
+    onLogout: () -> Unit,
+    period: String? = null,
+    days: List<DayUi> = emptyList(),
+    generatedCount: Int = 0,
+    onNewWeek: (() -> Unit)? = null,
+    generate: @Composable () -> Unit = {},
+) {
     var tab by rememberSaveable { mutableStateOf(Tab.MENUS) }
-    Box(Modifier.fillMaxSize().background(Sunny.Cream)) {
+    // A successful generation brings the user back to the menus.
+    LaunchedEffect(generatedCount) { if (generatedCount > 0) tab = Tab.MENUS }
+    if (tab == Tab.GENERATE) {
+        Box(Modifier.fillMaxSize()) {
+            generate()
+            BottomBar(tab, Modifier.align(Alignment.BottomEnd)) { tab = it }
+        }
+        return
+    }
+    Box(Modifier.fillMaxSize().background(Sunny.Butter)) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-            Header(user, onLogout, tab.label.takeIf { tab != Tab.MENUS }, period.takeIf { tab == Tab.MENUS })
+            Header(user, onLogout, tab.label.takeIf { tab != Tab.MENUS }, period.takeIf { tab == Tab.MENUS },
+                onNewWeek = { onNewWeek?.invoke(); tab = Tab.GENERATE })
             if (tab == Tab.MENUS && days.isNotEmpty()) {
-                days.forEachIndexed { i, day ->
-                    DaySheet(day, sheetStyles[i % sheetStyles.size], first = i == 0, last = i == days.lastIndex)
+                Column(Modifier.padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 120.dp)) {
+                    days.forEachIndexed { i, day ->
+                        if (i > 0) Box(Modifier.fillMaxWidth().padding(top = 22.dp).height(2.dp).background(Color.White.copy(alpha = 0.8f), CircleShape))
+                        DaySection(day)
+                    }
                 }
             } else {
                 Text(
                     when (tab) {
-                        Tab.MENUS -> "Les menus de la semaine arriveront ici."
+                        Tab.MENUS -> "Aucun repas prévu : touchez « Générer » pour créer le menu."
                         Tab.RECIPES -> "Les recettes arriveront ici."
                         Tab.GENERATE -> "La génération de menus arrivera ici."
                     },
-                    color = Sunny.InkSoft, textAlign = TextAlign.Center,
+                    color = Sunny.InkTitle, textAlign = TextAlign.Center,
                     modifier = Modifier.fillMaxWidth().padding(top = 160.dp),
                 )
             }
@@ -77,7 +91,7 @@ fun HomeScreen(user: User, onLogout: () -> Unit, period: String? = null, days: L
 
 @Composable
 /** Big header: logo and wordmark on the Menus tab, a plain title on the other tabs. */
-private fun Header(user: User, onLogout: () -> Unit, title: String?, period: String?) {
+private fun Header(user: User, onLogout: () -> Unit, title: String?, period: String?, onNewWeek: () -> Unit) {
     Box(
         Modifier.fillMaxWidth().zIndexShadow()
             .background(Sunny.Card, RoundedCornerShape(bottomStart = 40.dp, bottomEnd = 40.dp)),
@@ -91,11 +105,12 @@ private fun Header(user: User, onLogout: () -> Unit, title: String?, period: Str
                 BrandTitle()
                 period?.let { Text(it, fontSize = 15.sp, color = Sunny.InkTitle, modifier = Modifier.padding(start = 4.dp, top = 14.dp)) }
             }
-            if (period != null) {
+            if (title == null) {
                 Spacer(Modifier.height(24.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Row(
-                        Modifier.weight(1f).height(64.dp).clip(Shapes.Control).background(Sunny.Peach).padding(horizontal = 14.dp),
+                        Modifier.weight(1f).height(64.dp).clip(Shapes.Control).background(Sunny.Peach)
+                            .clickable(onClick = onNewWeek).padding(horizontal = 14.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Box(Modifier.size(36.dp).background(Color.White.copy(alpha = 0.3f), CircleShape), contentAlignment = Alignment.Center) {
@@ -118,27 +133,18 @@ private fun Header(user: User, onLogout: () -> Unit, title: String?, period: Str
 private fun Modifier.zIndexShadow() =
     shadow(6.dp, RoundedCornerShape(bottomStart = 40.dp, bottomEnd = 40.dp), ambientColor = Sunny.PeachDeep, spotColor = Sunny.PeachDeep)
 
-/** One day: a colored sheet with a handle, its title and date, and the meal cards. Sheets overlap. */
+/** One day: its title and date on the Butter background, then the meal cards. */
 @Composable
-private fun DaySheet(day: DayUi, style: SheetStyle, first: Boolean, last: Boolean) {
-    Column(
-        Modifier.fillMaxWidth()
-            .padding(top = if (first) 20.dp else 0.dp)
-            .offset(y = if (first) 0.dp else (-36).dp)
-            .shadow(12.dp, Shapes.Sheet, ambientColor = Sunny.PeachDeep, spotColor = Sunny.PeachDeep)
-            .background(style.sheet, Shapes.Sheet)
-            .padding(horizontal = 20.dp)
-            .padding(bottom = if (last) 140.dp else 64.dp),
-    ) {
-        SheetHandle()
-        Row(Modifier.fillMaxWidth().padding(top = 14.dp, bottom = 16.dp, start = 4.dp, end = 4.dp),
+private fun DaySection(day: DayUi) {
+    Column {
+        Row(Modifier.fillMaxWidth().padding(top = 18.dp, bottom = 14.dp, start = 4.dp, end = 4.dp),
             verticalAlignment = Alignment.CenterVertically) {
-            Text(day.label, fontSize = 19.sp, fontWeight = FontWeight.Bold, color = style.text, modifier = Modifier.weight(1f))
+            Text(day.label, fontSize = 19.sp, fontWeight = FontWeight.Bold, color = Sunny.Ink, modifier = Modifier.weight(1f))
             Text(day.date.uppercase(), fontSize = 12.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 1.sp,
-                color = style.text.copy(alpha = 0.7f))
+                color = Sunny.Ink.copy(alpha = 0.6f))
         }
         Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            day.meals.forEach { MealCard(it, style.action) }
+            day.meals.forEach { MealCard(it, Sunny.Peach) }
         }
     }
 }
@@ -157,8 +163,10 @@ private fun MealCard(meal: MealUi, accent: Color) {
                 Text(meal.title, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Sunny.Ink, maxLines = 2,
                     overflow = TextOverflow.Ellipsis, lineHeight = 19.sp, modifier = Modifier.padding(vertical = 3.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    DishTag(meal.dish.label, meal.dish.colors)
-                    Text("${meal.prepMinutes} min", fontSize = 12.sp, color = Sunny.InkSoft, modifier = Modifier.padding(start = 8.dp))
+                    meal.dish?.let { DishTag(it.label, it.colors) }
+                    meal.prepMinutes?.let {
+                        Text("$it min", fontSize = 12.sp, color = Sunny.InkSoft, modifier = Modifier.padding(start = 8.dp))
+                    }
                 }
             }
         }
@@ -198,10 +206,10 @@ private fun BottomBar(selected: Tab, modifier: Modifier, onSelect: (Tab) -> Unit
     val icons = mapOf(Tab.MENUS to Icons.Filled.Home, Tab.RECIPES to Icons.Filled.Search, Tab.GENERATE to Icons.Filled.Refresh)
     // Shades from the leftmost tab to the rightmost one, lighter towards the screen edge.
     val shades = listOf(Sunny.PeachDeep, Color(0xFFF89A7D), Color(0xFFFCAF94))
-    val radius = 36.dp
+    val radius = 28.dp
     val navInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-    val tabHeight = 76.dp + navInset
-    fun width(t: Tab) = if (t == selected) 176.dp else 112.dp
+    val tabHeight = 56.dp + navInset
+    fun width(t: Tab) = if (t == selected) 164.dp else 96.dp
     val tabs = Tab.entries
     Box(modifier.fillMaxWidth().height(tabHeight)) {
         // Drawn left to right so each tab covers the one on its left.
@@ -222,10 +230,34 @@ private fun BottomBar(selected: Tab, modifier: Modifier, onSelect: (Tab) -> Unit
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Icon(icons.getValue(t), contentDescription = t.label,
-                    tint = if (on) Color.White else Color.White.copy(alpha = 0.8f), modifier = Modifier.size(26.dp))
+                    tint = if (on) Color.White else Color.White.copy(alpha = 0.8f), modifier = Modifier.size(24.dp))
                 if (on) Text(t.label, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp,
                     modifier = Modifier.padding(start = 10.dp))
             }
         }
     }
+}
+
+/** Groups the planned meals by day for the home screen. */
+fun menuDays(menu: Menu): List<DayUi> = menu.slots.groupBy { it.date }.toSortedMap().map { (date, slots) ->
+    DayUi(dayLabel(date, menu.today), shortDate(date), slots.sortedBy { it.meal != "lunch" }.map(::mealUi))
+}
+
+/** "2 → 8 novembre · 11 repas", null without planned meals. */
+fun menuPeriod(menu: Menu): String? {
+    val dates = menu.slots.map { it.date }
+    if (dates.isEmpty()) return null
+    return "${periodLabel(dates.min(), dates.max())} · ${menu.slots.size} repas"
+}
+
+private fun mealUi(s: MenuSlot): MealUi {
+    val dish = when (s.recipe?.dishType) {
+        "meat" -> DishType.MEAT
+        "fish" -> DishType.FISH
+        "vegetarian" -> DishType.VEGETARIAN
+        else -> null
+    }
+    val picture = when (dish) { DishType.MEAT -> "🍗"; DishType.FISH -> "🐟"; DishType.VEGETARIAN -> "🥗"; null -> "🍽️" }
+    return MealUi(if (s.meal == "lunch") "Midi" else "Soir", s.recipe?.title ?: "Aucune recette disponible",
+        dish, s.recipe?.minutes, picture, s.locked)
 }
