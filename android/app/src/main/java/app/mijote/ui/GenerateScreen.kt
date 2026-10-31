@@ -45,7 +45,7 @@ private fun StartChoice.date(today: LocalDate) = when (this) {
 
 /**
  * Menu generation, shaped like the reference "Add basket" card: a big Butter sheet with the title,
- * a white card carrying the meal count stepper on its left, a Slate band of meal plan choices
+ * a white card with the meal count stepper on its right, a Slate band of meal plan choices
  * under it, then the start day choices and the generate button.
  */
 @Composable
@@ -89,8 +89,9 @@ fun GenerateScreen(
                 .background(Sunny.Slate, Shapes.Sheet),
         ) {
             Box(Modifier.fillMaxWidth().height(232.dp).background(Color(0xFFF4F4F5), Shapes.Sheet)) {
+                // Stepper on the right edge, within reach of the right thumb.
                 Column(
-                    Modifier.width(76.dp).fillMaxHeight(),
+                    Modifier.align(Alignment.CenterEnd).width(76.dp).fillMaxHeight(),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.SpaceEvenly,
                 ) {
@@ -102,7 +103,7 @@ fun GenerateScreen(
                     StepButton("−", "Un repas de moins", enabled = count > 1) { count-- }
                 }
                 Column(
-                    Modifier.padding(start = 76.dp).fillMaxSize()
+                    Modifier.padding(end = 76.dp).fillMaxSize()
                         .background(Sunny.Card, Shapes.Sheet).padding(horizontal = 24.dp, vertical = 22.dp),
                 ) {
                     Text("🥗", fontSize = 40.sp)
