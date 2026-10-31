@@ -22,6 +22,9 @@ class FakeServer : Http {
     @Synchronized
     override fun send(method: String, url: String, body: String?, bearer: String?): Pair<Int, String> = when {
         url.endsWith("/api/versions") -> 200 to """{"versions":["v1"]}"""
+        url.endsWith("/invitations/redeem") ->
+            if (body!!.contains("\"code\":\"goodcode1\"")) { gen++; 201 to pair() }
+            else 404 to """{"error":"invalid_invitation","message":"nope"}"""
         url.endsWith("/auth/login") ->
             if (body!!.contains("\"password\":\"good\"")) { gen++; 200 to pair() }
             else 401 to """{"error":"invalid_credentials","message":"wrong"}"""
@@ -47,6 +50,25 @@ class SessionTest {
         val u = session.login("julien", "good", "test")
         assertEquals("Julien", u.displayName)
         assertEquals("r1", store.tokens?.refresh)
+    }
+
+    @Test
+    fun redeemingAnInvitationSignsIn() = runTest {
+        val empty = MemoryStore(serverUrl = null)
+        val s = Session(empty) { Api(it, server) }
+        s.redeemInvitation("https://srv", "goodcode1", "lea", "Léa", "secret-pass", "test")
+        assertEquals("https://srv", empty.serverUrl)
+        assertEquals("r1", empty.tokens?.refresh)
+    }
+
+    @Test
+    fun badInvitationSavesNothing() = runTest {
+        val empty = MemoryStore(serverUrl = null)
+        val s = Session(empty) { Api(it, server) }
+        val e = runCatching { s.redeemInvitation("https://srv", "badcode12", "lea", "", "secret-pass", "test") }.exceptionOrNull()
+        assertTrue(e is ApiException && e.code == "invalid_invitation")
+        assertNull(empty.serverUrl)
+        assertNull(empty.tokens)
     }
 
     @Test

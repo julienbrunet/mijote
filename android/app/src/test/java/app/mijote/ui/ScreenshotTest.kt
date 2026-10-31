@@ -12,11 +12,25 @@ class ScreenshotTest {
     val paparazzi = Paparazzi(deviceConfig = DeviceConfig.PIXEL_6, showSystemUi = true)
 
     @Test
-    fun server() = paparazzi.snapshot { MijoteTheme { ServerScreen(busy = false, error = null) {} } }
+    fun server() = paparazzi.snapshot { MijoteTheme { ServerScreen(busy = false, error = null, onSubmit = {}, onInvite = {}) } }
 
     @Test
     fun loginWithError() = paparazzi.snapshot {
-        MijoteTheme { LoginScreen("https://mesrepas.example.fr", false, "Identifiant ou mot de passe incorrect.", { _, _ -> }, {}) }
+        MijoteTheme { LoginScreen("https://mesrepas.example.fr", false, "Identifiant ou mot de passe incorrect.", { _, _ -> }, {}, {}) }
+    }
+
+    @Test
+    fun inviteFromLink() = paparazzi.snapshot {
+        MijoteTheme {
+            InviteScreen("https://mesrepas.example.fr", "abcdefghijklmnop", false,
+                "Cette invitation est invalide, déjà utilisée ou expirée : demandez-en une nouvelle.",
+                { _, _, _, _, _, _ -> }, {})
+        }
+    }
+
+    @Test
+    fun inviteByHand() = paparazzi.snapshot {
+        MijoteTheme { InviteScreen(null, null, false, null, { _, _, _, _, _, _ -> }, {}) }
     }
 
     @Test

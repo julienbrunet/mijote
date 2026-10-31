@@ -86,6 +86,14 @@ class Api(private val baseUrl: String, private val http: Http = UrlConnectionHtt
             .put("username", username).put("password", password).put("deviceName", deviceName)),
     )
 
+    /** Creates a member account from an invitation code and signs the device in (FR-ONB-03). */
+    fun redeemInvitation(code: String, username: String, displayName: String, password: String, deviceName: String): Tokens =
+        Tokens.fromJson(
+            call("POST", "/api/v1/invitations/redeem", JSONObject()
+                .put("code", code).put("username", username).put("displayName", displayName)
+                .put("password", password).put("deviceName", deviceName)),
+        )
+
     fun refresh(refreshToken: String): Tokens =
         Tokens.fromJson(call("POST", "/api/v1/auth/refresh", JSONObject().put("refreshToken", refreshToken)))
 

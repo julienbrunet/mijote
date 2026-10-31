@@ -37,6 +37,21 @@ class Session(
         t.user
     }
 
+    /**
+     * Joins the family: checks the server, then creates the member account with the
+     * invitation code. Nothing is saved unless the account was created.
+     */
+    suspend fun redeemInvitation(
+        serverUrl: String, code: String, username: String, displayName: String, password: String, deviceName: String,
+    ): User = withContext(Dispatchers.IO) {
+        val client = api(serverUrl)
+        if (!client.supportsV1()) throw ApiException(0, "not_mijote", "not a Mijote server")
+        val t = client.redeemInvitation(code, username, displayName, password, deviceName)
+        store.serverUrl = serverUrl
+        store.tokens = t
+        t.user
+    }
+
     /** Closes the session on the server when reachable, and always forgets it locally. */
     suspend fun logout() = withContext(Dispatchers.IO) {
         val t = store.tokens

@@ -9,7 +9,9 @@ import app.mijote.data.PrefsSessionStore
 import app.mijote.data.Session
 import app.mijote.data.SessionExpiredException
 import app.mijote.data.User
+import app.mijote.data.normalizeInvitationCode
 import app.mijote.data.normalizeServerUrl
+import app.mijote.data.parseInvitationLink
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -22,6 +24,9 @@ sealed interface Screen {
     data object Server : Screen
     data class Login(val serverUrl: String) : Screen
     data class Home(val user: User) : Screen
+
+    /** Join the family with an invitation; server and code are prefilled when they come from a link. */
+    data class Invite(val serverUrl: String? = null, val code: String? = null) : Screen
 }
 
 data class UiState(
@@ -102,6 +107,45 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** An invitation link was opened (QR code scanned with the camera, message…). */
+    fun openInvitationLink(link: String?) {
+        if (_state.value.screen is Screen.Home) return // already signed in: never replace the session by accident
+        val parsed = parseInvitationLink(link)
+        _state.value = if (parsed != null) UiState(Screen.Invite(parsed.serverUrl, parsed.code))
+        else UiState(_state.value.screen, error = "Ce lien d'invitation n'est pas valide.")
+    }
+
+    /** "I have an invitation" without a link: the server and the code are typed by hand. */
+    fun showInvite() {
+        _state.value = UiState(Screen.Invite())
+    }
+
+    fun backFromInvite() = toLogin()
+
+    fun redeemInvitation(
+        server: String, code: String, username: String, displayName: String, password: String, confirm: String,
+    ) {
+        val url = normalizeServerUrl(server)
+        val cleanCode = normalizeInvitationCode(code)
+        val error = when {
+            url == null -> "Adresse invalide : saisissez une adresse https, par exemple mesrepas.exemple.fr"
+            cleanCode == null -> "Le code d'invitation est incomplet ou invalide."
+            username.isBlank() -> "Choisissez un identifiant."
+            password.length < 8 -> "Le mot de passe doit faire au moins 8 caractères."
+            password != confirm -> "Les deux saisies du mot de passe diffèrent."
+            else -> null
+        }
+        if (error != null || url == null || cleanCode == null) {
+            _state.update { it.copy(error = error) }
+            return
+        }
+        run {
+            val user = session.redeemInvitation(url, cleanCode, username.trim(), displayName.trim(), password,
+                "${Build.MANUFACTURER} ${Build.MODEL}")
+            _state.value = UiState(Screen.Home(user))
+        }
+    }
+
     fun logout() {
         viewModelScope.launch {
             session.logout()
@@ -112,6 +156,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
 internal fun errorMessage(e: IOException): String = when {
     e !is ApiException -> "Serveur injoignable : vérifiez la connexion et l'adresse."
+    e.code == "invalid_invitation" -> "Cette invitation est invalide, déjà utilisée ou expirée : demandez-en une nouvelle."
+    e.code == "validation_error" -> e.message ?: "Données refusées par le serveur."
     e.code == "not_mijote" || e.status == 404 -> "Cette adresse ne répond pas comme un serveur Mijote."
     e.code == "invalid_credentials" -> "Identifiant ou mot de passe incorrect."
     e.code == "too_many_requests" -> "Trop de tentatives : réessayez dans quelques minutes."
