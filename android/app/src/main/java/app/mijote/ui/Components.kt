@@ -3,6 +3,7 @@ package app.mijote.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -11,46 +12,86 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-/** Screen title: uppercase, light, wide letter spacing (Calm Kit). */
+/** Big bold screen title, soft grey (Sunny Kit). */
 @Composable
-fun ScreenTitle(text: String, subtitle: String? = null) {
+fun ScreenTitle(text: String, subtitle: String? = null, size: Int = 30) {
     Column {
-        Text(text.uppercase(), fontSize = 26.sp, letterSpacing = 4.sp, fontWeight = FontWeight.Light,
-            color = MaterialTheme.colorScheme.onBackground)
-        subtitle?.let { Text(it, fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        Text(text, fontSize = size.sp, lineHeight = (size * 1.1).sp, fontWeight = FontWeight.Bold, color = Sunny.InkTitle)
+        subtitle?.let { Text(it, fontSize = 14.sp, color = Sunny.InkTitle, modifier = Modifier.padding(top = 4.dp)) }
     }
 }
 
-/** Centered column on the background, used by the onboarding screens. */
+/**
+ * Colored block glued to the top-right corner of a sheet, rounded on its free bottom-left
+ * corner (the signature shape of the theme). Holds one icon or a short emoji.
+ */
 @Composable
-fun OnboardingScaffold(content: @Composable ColumnScope.() -> Unit) {
+fun CornerBlock(color: Color, size: Dp = 88.dp, modifier: Modifier = Modifier, content: @Composable BoxScope.() -> Unit) {
     Box(
-        Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)
-            .systemBarsPadding().imePadding().verticalScroll(rememberScrollState()),
+        modifier.size(size).background(color, Shapes.CornerBlock),
         contentAlignment = Alignment.Center,
+        content = content,
+    )
+}
+
+/** Small light bar at the top of a stacked sheet. */
+@Composable
+fun SheetHandle() {
+    Box(Modifier.fillMaxWidth().padding(top = 12.dp), contentAlignment = Alignment.Center) {
+        Box(Modifier.width(56.dp).height(5.dp).background(Color.White.copy(alpha = 0.6f), CircleShape))
+    }
+}
+
+/**
+ * Onboarding layout: a butter sheet with a big title and a white corner block, then the
+ * form card overlapping its bottom edge.
+ */
+@Composable
+fun OnboardingScaffold(title: String, subtitle: String?, content: @Composable ColumnScope.() -> Unit) {
+    Column(
+        Modifier.fillMaxSize().background(Sunny.Cream).imePadding().verticalScroll(rememberScrollState()),
     ) {
-        Column(Modifier.widthIn(max = 420.dp).padding(horizontal = 24.dp, vertical = 32.dp), content = content)
+        Box(
+            Modifier.fillMaxWidth()
+                .background(Sunny.Butter, RoundedCornerShape(bottomStart = 40.dp, bottomEnd = 40.dp)),
+        ) {
+            CornerBlock(Sunny.Card, size = 104.dp, modifier = Modifier.align(Alignment.TopEnd)) {
+                Text("🍲", fontSize = 36.sp, modifier = Modifier.statusBarsPadding())
+            }
+            Column(Modifier.statusBarsPadding().padding(start = 28.dp, end = 28.dp, top = 96.dp, bottom = 80.dp)) {
+                ScreenTitle(title, subtitle, size = 40)
+            }
+        }
+        Column(
+            Modifier.offset(y = (-48).dp).widthIn(max = 460.dp).padding(horizontal = 20.dp).navigationBarsPadding(),
+            content = content,
+        )
     }
 }
 
 @Composable
-fun CalmCard(content: @Composable ColumnScope.() -> Unit) {
-    Card(
-        shape = RoundedCornerShape(18.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-    ) { Column(Modifier.padding(20.dp), content = content) }
+fun SunnyCard(content: @Composable ColumnScope.() -> Unit) {
+    Column(
+        Modifier.fillMaxWidth().shadow(10.dp, Shapes.Card, ambientColor = Sunny.PeachDeep, spotColor = Sunny.PeachDeep)
+            .background(Sunny.Card, Shapes.Card).padding(22.dp),
+        content = content,
+    )
 }
 
+/** Underlined, borderless text field, as in the search box of the reference design. */
 @Composable
-fun CalmField(
+fun SunnyField(
     value: String,
     onValueChange: (String) -> Unit,
     label: String,
@@ -60,7 +101,7 @@ fun CalmField(
     visualTransformation: VisualTransformation = VisualTransformation.None,
     enabled: Boolean = true,
 ) {
-    OutlinedTextField(
+    TextField(
         value = value,
         onValueChange = onValueChange,
         label = { Text(label) },
@@ -69,7 +110,16 @@ fun CalmField(
         visualTransformation = visualTransformation,
         keyboardOptions = KeyboardOptions(keyboardType = keyboardType, imeAction = imeAction, autoCorrectEnabled = false),
         keyboardActions = KeyboardActions(onDone = { onDone() }, onGo = { onDone() }),
-        shape = RoundedCornerShape(12.dp),
+        colors = TextFieldDefaults.colors(
+            focusedContainerColor = Color.Transparent,
+            unfocusedContainerColor = Color.Transparent,
+            disabledContainerColor = Color.Transparent,
+            focusedIndicatorColor = Sunny.PeachDeep,
+            unfocusedIndicatorColor = Sunny.Track,
+            focusedLabelColor = Sunny.PeachDeep,
+            unfocusedLabelColor = Sunny.InkSoft,
+            cursorColor = Sunny.PeachDeep,
+        ),
         modifier = Modifier.fillMaxWidth(),
     )
 }
@@ -77,20 +127,37 @@ fun CalmField(
 @Composable
 fun ErrorText(error: String?) {
     if (error == null) return
-    Text(error, color = Calm.Error, fontSize = 14.sp,
-        modifier = Modifier.fillMaxWidth().padding(top = 12.dp)
-            .background(Calm.ErrorBg, RoundedCornerShape(8.dp)).padding(horizontal = 12.dp, vertical = 8.dp))
+    Text(error, color = Sunny.Error, fontSize = 14.sp,
+        modifier = Modifier.fillMaxWidth().padding(top = 16.dp)
+            .background(Sunny.ErrorBg, Shapes.Control).padding(horizontal = 14.dp, vertical = 10.dp))
 }
 
+/** Peach button, bold white label, big radius. */
 @Composable
 fun PrimaryButton(text: String, busy: Boolean, onClick: () -> Unit) {
     Button(
         onClick = onClick,
         enabled = !busy,
-        shape = RoundedCornerShape(12.dp),
-        modifier = Modifier.fillMaxWidth().padding(top = 16.dp).height(48.dp),
+        shape = Shapes.Control,
+        colors = ButtonDefaults.buttonColors(containerColor = Sunny.PeachDeep, contentColor = Color.White),
+        modifier = Modifier.fillMaxWidth().padding(top = 22.dp).height(56.dp),
     ) {
-        if (busy) CircularProgressIndicator(Modifier.size(20.dp), color = MaterialTheme.colorScheme.onPrimary, strokeWidth = 2.dp)
-        else Text(text, fontWeight = FontWeight.Medium)
+        if (busy) CircularProgressIndicator(Modifier.size(20.dp), color = Color.White, strokeWidth = 2.dp)
+        else Text(text, fontWeight = FontWeight.Bold, fontSize = 16.sp)
     }
+}
+
+/** Grey link-like action shown under the onboarding card. */
+@Composable
+fun SecondaryAction(text: String, enabled: Boolean, onClick: () -> Unit) {
+    TextButton(onClick = onClick, enabled = enabled, modifier = Modifier.fillMaxWidth()) {
+        Text(text, color = Sunny.Slate, fontWeight = FontWeight.SemiBold)
+    }
+}
+
+/** Dish type pill. */
+@Composable
+fun DishTag(label: String, colors: Pair<Color, Color>) {
+    Text(label, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = colors.second,
+        modifier = Modifier.clip(RoundedCornerShape(8.dp)).background(colors.first).padding(horizontal = 8.dp, vertical = 3.dp))
 }

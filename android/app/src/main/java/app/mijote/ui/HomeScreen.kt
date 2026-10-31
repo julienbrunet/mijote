@@ -3,11 +3,15 @@ package app.mijote.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
@@ -15,43 +19,153 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.mijote.data.User
 
 enum class Tab(val label: String) { MENUS("Menus"), RECIPES("Recettes"), SETTINGS("Réglages") }
 
-/** Signed-in shell: header with the user button, empty tab content, floating bottom bar. */
+enum class DishType(val label: String, val colors: Pair<Color, Color>) {
+    MEAT("Viande", DishColors.meat), FISH("Poisson", DishColors.fish), VEGETARIAN("Végé", DishColors.veggie)
+}
+
+/** A planned meal as shown on the home screen. [picture] stands in for the recipe image. */
+data class MealUi(val slot: String, val title: String, val dish: DishType, val prepMinutes: Int, val picture: String, val locked: Boolean)
+
+data class DayUi(val label: String, val date: String, val meals: List<MealUi>)
+
+/** Sheet color, header text color and corner action color, cycled over the days. */
+private data class SheetStyle(val sheet: Color, val text: Color, val action: Color)
+
+private val sheetStyles = listOf(
+    SheetStyle(Sunny.Butter, Sunny.Ink, Sunny.Peach),
+    SheetStyle(Sunny.Peach, Sunny.Ink, Sunny.Butter),
+    SheetStyle(Sunny.Slate, Color.White, Sunny.Butter),
+)
+
+/** Signed-in shell: white header with the user corner block, stacked day sheets, floating bottom bar. */
 @Composable
-fun HomeScreen(user: User, onLogout: () -> Unit) {
+fun HomeScreen(user: User, onLogout: () -> Unit, period: String? = null, days: List<DayUi> = emptyList()) {
     var tab by rememberSaveable { mutableStateOf(Tab.MENUS) }
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
-        bottomBar = { BottomBar(tab) { tab = it } },
-    ) { padding ->
-        Column(
-            Modifier.fillMaxSize().padding(top = padding.calculateTopPadding(), bottom = padding.calculateBottomPadding())
-                .padding(horizontal = 20.dp, vertical = 16.dp),
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.weight(1f)) {
-                    ScreenTitle(if (tab == Tab.MENUS) "Ça mijote" else tab.label)
+    Box(Modifier.fillMaxSize().background(Sunny.Cream)) {
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+            Header(user, onLogout, if (tab == Tab.MENUS) "Ça mijote" else tab.label, period.takeIf { tab == Tab.MENUS })
+            if (tab == Tab.MENUS && days.isNotEmpty()) {
+                days.forEachIndexed { i, day ->
+                    DaySheet(day, sheetStyles[i % sheetStyles.size], first = i == 0, last = i == days.lastIndex)
                 }
-                UserButton(user, onLogout)
-            }
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            } else {
                 Text(
                     when (tab) {
                         Tab.MENUS -> "Les menus de la semaine arriveront ici."
                         Tab.RECIPES -> "Les recettes arriveront ici."
                         Tab.SETTINGS -> "Les réglages arriveront ici."
                     },
-                    color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center,
+                    color = Sunny.InkSoft, textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth().padding(top = 160.dp),
                 )
             }
+        }
+        BottomBar(tab, Modifier.align(Alignment.BottomCenter)) { tab = it }
+    }
+}
+
+@Composable
+private fun Header(user: User, onLogout: () -> Unit, title: String, period: String?) {
+    Box(
+        Modifier.fillMaxWidth().zIndexShadow()
+            .background(Sunny.Card, RoundedCornerShape(bottomStart = 40.dp, bottomEnd = 40.dp)),
+    ) {
+        CornerBlock(Sunny.Butter, size = 96.dp, modifier = Modifier.align(Alignment.TopEnd)) {
+            Box(Modifier.statusBarsPadding()) { UserButton(user, onLogout) }
+        }
+        Column(Modifier.statusBarsPadding().padding(start = 24.dp, end = 24.dp, top = 40.dp, bottom = 28.dp)) {
+            ScreenTitle(title, period, size = 32)
+            if (period != null) {
+                Spacer(Modifier.height(22.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        Modifier.weight(1f).height(64.dp).clip(Shapes.Control).background(Sunny.Peach).padding(horizontal = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Box(Modifier.size(36.dp).background(Color.White.copy(alpha = 0.3f), CircleShape), contentAlignment = Alignment.Center) {
+                            Icon(Icons.Filled.Refresh, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
+                        }
+                        Text("Nouvelle\nsemaine", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp,
+                            lineHeight = 17.sp, modifier = Modifier.padding(start = 12.dp))
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Box(
+                        Modifier.size(64.dp).clip(Shapes.Control).background(Sunny.Slate),
+                        contentAlignment = Alignment.Center,
+                    ) { Icon(Icons.Filled.Search, contentDescription = "Rechercher", tint = Color.White) }
+                }
+            }
+        }
+    }
+}
+
+private fun Modifier.zIndexShadow() =
+    shadow(6.dp, RoundedCornerShape(bottomStart = 40.dp, bottomEnd = 40.dp), ambientColor = Sunny.PeachDeep, spotColor = Sunny.PeachDeep)
+
+/** One day: a colored sheet with a handle, its title and date, and the meal cards. Sheets overlap. */
+@Composable
+private fun DaySheet(day: DayUi, style: SheetStyle, first: Boolean, last: Boolean) {
+    Column(
+        Modifier.fillMaxWidth()
+            .padding(top = if (first) 20.dp else 0.dp)
+            .offset(y = if (first) 0.dp else (-36).dp)
+            .shadow(12.dp, Shapes.Sheet, ambientColor = Sunny.PeachDeep, spotColor = Sunny.PeachDeep)
+            .background(style.sheet, Shapes.Sheet)
+            .padding(horizontal = 20.dp)
+            .padding(bottom = if (last) 140.dp else 64.dp),
+    ) {
+        SheetHandle()
+        Row(Modifier.fillMaxWidth().padding(top = 14.dp, bottom = 16.dp, start = 4.dp, end = 4.dp),
+            verticalAlignment = Alignment.CenterVertically) {
+            Text(day.label, fontSize = 19.sp, fontWeight = FontWeight.Bold, color = style.text, modifier = Modifier.weight(1f))
+            Text(day.date.uppercase(), fontSize = 12.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 1.sp,
+                color = style.text.copy(alpha = 0.7f))
+        }
+        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            day.meals.forEach { MealCard(it, style.action) }
+        }
+    }
+}
+
+@Composable
+private fun MealCard(meal: MealUi, accent: Color) {
+    Box(
+        Modifier.fillMaxWidth().height(104.dp)
+            .shadow(4.dp, Shapes.Card, ambientColor = Color.Black, spotColor = Color.Black)
+            .background(Sunny.Card, Shapes.Card),
+    ) {
+        Row(Modifier.fillMaxSize().padding(start = 12.dp, end = 52.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(68.dp), contentAlignment = Alignment.Center) { Text(meal.picture, fontSize = 44.sp) }
+            Column(Modifier.padding(start = 12.dp)) {
+                Text(meal.slot.uppercase(), fontSize = 10.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold, color = Sunny.InkSoft)
+                Text(meal.title, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Sunny.Ink, maxLines = 2,
+                    overflow = TextOverflow.Ellipsis, lineHeight = 19.sp, modifier = Modifier.padding(vertical = 3.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    DishTag(meal.dish.label, meal.dish.colors)
+                    Text("${meal.prepMinutes} min", fontSize = 12.sp, color = Sunny.InkSoft, modifier = Modifier.padding(start = 8.dp))
+                }
+            }
+        }
+        // Corner action glued to the card's bottom-right corner, as the basket buttons of the reference.
+        Box(
+            Modifier.align(Alignment.BottomEnd).size(46.dp)
+                .background(accent, RoundedCornerShape(topStart = 16.dp, bottomEnd = 22.dp)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(if (meal.locked) Icons.Filled.Lock else Icons.Filled.Refresh,
+                contentDescription = if (meal.locked) "Verrouillé" else "Changer", tint = Color.White, modifier = Modifier.size(20.dp))
         }
     }
 }
@@ -60,38 +174,37 @@ fun HomeScreen(user: User, onLogout: () -> Unit) {
 private fun UserButton(user: User, onLogout: () -> Unit) {
     var open by remember { mutableStateOf(false) }
     Box {
-        IconButton(onClick = { open = true }, modifier = Modifier.size(44.dp).background(Calm.Card, CircleShape)) {
-            Icon(Icons.Filled.Person, contentDescription = "Utilisateur", tint = Calm.Sage)
+        IconButton(onClick = { open = true }, modifier = Modifier.size(48.dp)) {
+            Icon(Icons.Filled.Person, contentDescription = "Utilisateur", tint = Sunny.Ink)
         }
-        DropdownMenu(expanded = open, onDismissRequest = { open = false }, containerColor = Calm.Card) {
-            Text(user.displayName, fontWeight = FontWeight.Medium, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }, containerColor = Sunny.Card) {
+            Text(user.displayName, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
             DropdownMenuItem(text = { Text("Se déconnecter") }, onClick = { open = false; onLogout() })
         }
     }
 }
 
+/** Floating white bar; the selected tab is a peach pill with its label. */
 @Composable
-private fun BottomBar(selected: Tab, onSelect: (Tab) -> Unit) {
+private fun BottomBar(selected: Tab, modifier: Modifier, onSelect: (Tab) -> Unit) {
     val icons = mapOf(Tab.MENUS to Icons.Filled.Home, Tab.RECIPES to Icons.Filled.Search, Tab.SETTINGS to Icons.Filled.Settings)
-    Card(
-        Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 16.dp, vertical = 12.dp),
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(containerColor = Calm.Card),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+    Row(
+        modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 20.dp, vertical = 14.dp)
+            .shadow(14.dp, RoundedCornerShape(28.dp), ambientColor = Sunny.PeachDeep, spotColor = Sunny.PeachDeep)
+            .background(Sunny.Card, RoundedCornerShape(28.dp)).padding(8.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), horizontalArrangement = Arrangement.SpaceEvenly) {
-            Tab.entries.forEach { t ->
-                val on = t == selected
-                val color = if (on) Calm.Sage else Calm.InkSoft
-                Column(
-                    Modifier.clickable { onSelect(t) }.padding(horizontal = 12.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    Icon(icons.getValue(t), contentDescription = t.label, tint = color)
-                    Text(t.label, fontSize = 12.sp, color = color, fontWeight = if (on) FontWeight.Medium else FontWeight.Normal)
-                    Spacer(Modifier.height(3.dp))
-                    Box(Modifier.size(4.dp).background(if (on) Calm.Sage else Color.Transparent, CircleShape))
-                }
+        Tab.entries.forEach { t ->
+            val on = t == selected
+            Row(
+                Modifier.clip(RoundedCornerShape(20.dp)).background(if (on) Sunny.PeachDeep else Color.Transparent)
+                    .clickable { onSelect(t) }.padding(horizontal = 18.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(icons.getValue(t), contentDescription = t.label, tint = if (on) Color.White else Sunny.Slate)
+                if (on) Text(t.label, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp,
+                    modifier = Modifier.padding(start = 8.dp))
             }
         }
     }

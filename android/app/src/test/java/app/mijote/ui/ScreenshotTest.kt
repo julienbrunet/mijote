@@ -35,6 +35,24 @@ class ScreenshotTest {
 
     @Test
     fun home() = paparazzi.snapshot {
-        MijoteTheme { HomeScreen(User("u1", "julien", "Julien", "admin")) {} }
+        MijoteTheme { HomeScreen(User("u1", "julien", "Julien", "admin"), onLogout = {}) }
     }
+
+    @Test
+    fun homeWithMenu() = paparazzi.snapshot {
+        MijoteTheme { HomeScreen(User("u1", "julien", "Julien", "admin"), onLogout = {}, period = "2 → 8 novembre · 11 repas", days = sampleDays) }
+    }
+
+    private val sampleDays = listOf(
+        DayUi("Aujourd'hui", "lun. 2 nov.", listOf(
+            MealUi("Midi", "Poulet au pesto et tomates rôties", DishType.MEAT, 25, "🍗", locked = true),
+            MealUi("Soir", "Velouté de potimarron", DishType.VEGETARIAN, 35, "🥣", locked = false),
+        )),
+        DayUi("Demain", "mar. 3 nov.", listOf(
+            MealUi("Soir", "Saumon, riz et brocolis", DishType.FISH, 20, "🐟", locked = false),
+        )),
+        DayUi("Mercredi", "4 nov.", listOf(
+            MealUi("Midi", "Gratin de pâtes aux légumes", DishType.VEGETARIAN, 40, "🧀", locked = false),
+        )),
+    )
 }

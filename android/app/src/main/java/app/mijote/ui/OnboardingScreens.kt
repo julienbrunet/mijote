@@ -5,6 +5,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -15,21 +16,17 @@ import androidx.compose.ui.unit.sp
 @Composable
 fun ServerScreen(busy: Boolean, error: String?, onSubmit: (String) -> Unit, onInvite: () -> Unit) {
     var url by rememberSaveable { mutableStateOf("") }
-    OnboardingScaffold {
-        ScreenTitle("Ça mijote", "Vos menus de la semaine, en famille")
-        Spacer(Modifier.height(32.dp))
-        CalmCard {
-            Text("Adresse du serveur", fontSize = 17.sp, color = MaterialTheme.colorScheme.onSurface)
+    OnboardingScaffold("Ça\nmijote", "Vos menus de la semaine, en famille") {
+        SunnyCard {
+            Text("Adresse du serveur", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Sunny.Ink)
             Text("Celle de l'instance Mijote de votre famille.", fontSize = 14.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp, bottom = 16.dp))
-            CalmField(url, { url = it }, "Adresse (ex. mesrepas.exemple.fr)", KeyboardType.Uri, ImeAction.Go,
+            SunnyField(url, { url = it }, "Adresse (ex. mesrepas.exemple.fr)", KeyboardType.Uri, ImeAction.Go,
                 onDone = { onSubmit(url) }, enabled = !busy)
             ErrorText(error)
             PrimaryButton("Continuer", busy) { onSubmit(url) }
         }
-        TextButton(onClick = onInvite, enabled = !busy, modifier = Modifier.padding(top = 8.dp)) {
-            Text("J'ai une invitation")
-        }
+        SecondaryAction("J'ai une invitation", !busy, onInvite)
     }
 }
 
@@ -45,22 +42,18 @@ fun LoginScreen(
 ) {
     var username by rememberSaveable { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
-    OnboardingScaffold {
-        ScreenTitle("Connexion", serverUrl.removePrefix("https://"))
-        Spacer(Modifier.height(32.dp))
-        CalmCard {
-            CalmField(username, { username = it }, "Identifiant", enabled = !busy)
-            Spacer(Modifier.height(12.dp))
-            CalmField(password, { password = it }, "Mot de passe", KeyboardType.Password, ImeAction.Go,
+    OnboardingScaffold("Bon\nretour", serverUrl.removePrefix("https://")) {
+        SunnyCard {
+            SunnyField(username, { username = it }, "Identifiant", enabled = !busy)
+            Spacer(Modifier.height(4.dp))
+            SunnyField(password, { password = it }, "Mot de passe", KeyboardType.Password, ImeAction.Go,
                 onDone = { onLogin(username, password) },
                 visualTransformation = PasswordVisualTransformation(), enabled = !busy)
             ErrorText(error)
             PrimaryButton("Se connecter", busy) { onLogin(username, password) }
         }
-        TextButton(onClick = onChangeServer, enabled = !busy, modifier = Modifier.padding(top = 8.dp)) {
-            Text("Changer de serveur")
-        }
-        TextButton(onClick = onInvite, enabled = !busy) { Text("J'ai une invitation") }
+        SecondaryAction("Changer de serveur", !busy, onChangeServer)
+        SecondaryAction("J'ai une invitation", !busy, onInvite)
     }
 }
 
@@ -84,32 +77,28 @@ fun InviteScreen(
     var password by remember { mutableStateOf("") }
     var confirm by remember { mutableStateOf("") }
     val submit = { onSubmit(server, inviteCode, username, displayName, password, confirm) }
-    OnboardingScaffold {
-        ScreenTitle("Rejoindre", serverUrl?.removePrefix("https://") ?: "avec une invitation")
-        Spacer(Modifier.height(32.dp))
-        CalmCard {
+    OnboardingScaffold("Rejoindre\nla famille", serverUrl?.removePrefix("https://") ?: "avec une invitation") {
+        SunnyCard {
             if (serverUrl == null) {
-                CalmField(server, { server = it }, "Adresse du serveur", KeyboardType.Uri, enabled = !busy)
-                Spacer(Modifier.height(12.dp))
+                SunnyField(server, { server = it }, "Adresse du serveur", KeyboardType.Uri, enabled = !busy)
+                Spacer(Modifier.height(4.dp))
             }
             if (code == null) {
-                CalmField(inviteCode, { inviteCode = it }, "Code d'invitation", enabled = !busy)
-                Spacer(Modifier.height(12.dp))
+                SunnyField(inviteCode, { inviteCode = it }, "Code d'invitation", enabled = !busy)
+                Spacer(Modifier.height(4.dp))
             }
-            CalmField(username, { username = it }, "Identifiant", enabled = !busy)
-            Spacer(Modifier.height(12.dp))
-            CalmField(displayName, { displayName = it }, "Nom affiché (facultatif)", enabled = !busy)
-            Spacer(Modifier.height(12.dp))
-            CalmField(password, { password = it }, "Mot de passe (8+ caractères)", KeyboardType.Password,
+            SunnyField(username, { username = it }, "Identifiant", enabled = !busy)
+            Spacer(Modifier.height(4.dp))
+            SunnyField(displayName, { displayName = it }, "Nom affiché (facultatif)", enabled = !busy)
+            Spacer(Modifier.height(4.dp))
+            SunnyField(password, { password = it }, "Mot de passe (8+ caractères)", KeyboardType.Password,
                 visualTransformation = PasswordVisualTransformation(), enabled = !busy)
-            Spacer(Modifier.height(12.dp))
-            CalmField(confirm, { confirm = it }, "Confirmation", KeyboardType.Password, ImeAction.Go,
+            Spacer(Modifier.height(4.dp))
+            SunnyField(confirm, { confirm = it }, "Confirmation", KeyboardType.Password, ImeAction.Go,
                 onDone = { submit() }, visualTransformation = PasswordVisualTransformation(), enabled = !busy)
             ErrorText(error)
             PrimaryButton("Créer mon compte", busy) { submit() }
         }
-        TextButton(onClick = onBack, enabled = !busy, modifier = Modifier.padding(top = 8.dp)) {
-            Text("J'ai déjà un compte")
-        }
+        SecondaryAction("J'ai déjà un compte", !busy, onBack)
     }
 }
