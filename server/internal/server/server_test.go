@@ -1,16 +1,22 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"image"
+	"image/jpeg"
+	"image/png"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -113,7 +119,7 @@ var csrfRe = regexp.MustCompile(`name="csrf" value="([0-9a-f]+)"`)
 func TestAuthFlow(t *testing.T) {
 	pool := testDB(t)
 	ctx := context.Background()
-	h, err := New(ctx, pool, nil)
+	h, err := New(ctx, pool, nil, t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -210,7 +216,7 @@ func TestAuthFlow(t *testing.T) {
 func TestInvitationFlow(t *testing.T) {
 	pool := testDB(t)
 	ctx := context.Background()
-	h, err := New(ctx, pool, nil)
+	h, err := New(ctx, pool, nil, t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -310,7 +316,7 @@ func (c *client) api(method, path, token string, v any) (*http.Response, map[str
 func TestRecipes(t *testing.T) {
 	pool := testDB(t)
 	ctx := context.Background()
-	h, err := New(ctx, pool, nil)
+	h, err := New(ctx, pool, nil, t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -467,6 +473,98 @@ func TestRecipes(t *testing.T) {
 	}
 	res, _ = web.do("GET", "/admin/tags", "", "")
 	expect(t, res, http.StatusOK, "tags page")
+}
+
+func TestRecipeImages(t *testing.T) {
+	pool := testDB(t)
+	ctx := context.Background()
+	dir := t.TempDir()
+	h, err := New(ctx, pool, nil, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(h)
+	defer srv.Close()
+	st := store.New(pool)
+	web := newClient(t, srv.URL)
+	web.form("/admin/setup", url.Values{"username": {"julien"}, "password": {"secret-pass"}, "confirm": {"secret-pass"}})
+	web.form("/admin/login", url.Values{"password": {"secret-pass"}})
+	_, page := web.do("GET", "/admin/recipes", "", "")
+	csrf := csrfRe.FindStringSubmatch(page)[1]
+	app := newClient(t, srv.URL)
+	_, tok := app.json("/api/v1/auth/login", map[string]string{"username": "julien", "password": "secret-pass"})
+	token := tok["accessToken"].(string)
+	_, rec := app.api("POST", "/api/v1/recipes", token, map[string]any{"title": "Quiche", "dishType": "meat"})
+	id := rec["id"].(string)
+	if rec["image"] != nil {
+		t.Fatal("new recipe has an image")
+	}
+
+	pic := func(w, h int) []byte {
+		var b bytes.Buffer
+		png.Encode(&b, image.NewRGBA(image.Rect(0, 0, w, h)))
+		return b.Bytes()
+	}
+	put := func(body []byte) (*http.Response, map[string]any) {
+		res, out := app.do("PUT", "/api/v1/recipes/"+id+"/image", "image/png", string(body), "Authorization", "Bearer "+token)
+		var m map[string]any
+		json.Unmarshal([]byte(out), &m)
+		return res, m
+	}
+	res, _ := put([]byte("not an image"))
+	expect(t, res, http.StatusUnprocessableEntity, "garbage upload")
+	res, rec = put(pic(2000, 1000))
+	expect(t, res, http.StatusOK, "upload")
+	img, _ := rec["image"].(string)
+	if !strings.HasPrefix(img, "/api/v1/recipes/"+id+"/image?v=") {
+		t.Fatalf("image url: %v", rec["image"])
+	}
+	res, jpg := app.do("GET", img, "", "", "Authorization", "Bearer "+token)
+	expect(t, res, http.StatusOK, "download")
+	cfg, err := jpeg.DecodeConfig(strings.NewReader(jpg))
+	if err != nil || cfg.Width != 800 || cfg.Height != 400 {
+		t.Fatalf("thumbnail: %v %+v", err, cfg)
+	}
+	res, _ = app.do("GET", img, "", "")
+	expect(t, res, http.StatusUnauthorized, "image needs a token")
+
+	// Replacing deletes the previous file; the admin sees the picture too.
+	if _, err := os.Stat(filepath.Join(dir, filepath.Base(mustPath(t, st, id)))); err != nil {
+		t.Fatal(err)
+	}
+	first := mustPath(t, st, id)
+	res, _ = put(pic(300, 600))
+	expect(t, res, http.StatusOK, "replace")
+	if _, err := os.Stat(filepath.Join(dir, first)); !os.IsNotExist(err) {
+		t.Fatal("previous thumbnail not deleted")
+	}
+	res, _ = web.do("GET", "/admin/recipes/"+id+"/image", "", "")
+	expect(t, res, http.StatusOK, "admin image")
+
+	// Admin upload through the form, then removal.
+	var mp bytes.Buffer
+	w := multipart.NewWriter(&mp)
+	w.WriteField("csrf", csrf)
+	fw, _ := w.CreateFormFile("image", "p.png")
+	fw.Write(pic(100, 100))
+	w.Close()
+	res, _ = web.do("POST", "/admin/recipes/"+id+"/image", w.FormDataContentType(), mp.String())
+	expect(t, res, http.StatusSeeOther, "admin upload")
+	res, _ = web.form("/admin/recipes/"+id+"/image/remove", url.Values{"csrf": {csrf}})
+	expect(t, res, http.StatusSeeOther, "admin remove")
+	res, _ = app.do("GET", img, "", "", "Authorization", "Bearer "+token)
+	expect(t, res, http.StatusNotFound, "no image after removal")
+	if files, _ := os.ReadDir(dir); len(files) != 0 {
+		t.Fatalf("files left in the image directory: %v", files)
+	}
+}
+
+func mustPath(t *testing.T, st *store.Store, id string) string {
+	p, err := st.RecipeImagePath(context.Background(), id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return p
 }
 
 func mustAdmin(t *testing.T, st *store.Store) store.User {

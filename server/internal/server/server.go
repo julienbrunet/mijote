@@ -12,6 +12,7 @@ import (
 	"github.com/julienbrunet/mijote/server/internal/admin"
 	"github.com/julienbrunet/mijote/server/internal/api"
 	"github.com/julienbrunet/mijote/server/internal/auth"
+	"github.com/julienbrunet/mijote/server/internal/images"
 	"github.com/julienbrunet/mijote/server/internal/store"
 )
 
@@ -20,7 +21,7 @@ var APIVersions = []string{"v1"}
 
 // New returns the root HTTP handler. Signing keys are generated on first start
 // and kept in the database (server_secret).
-func New(ctx context.Context, pool *pgxpool.Pool, proxies auth.Proxies) (http.Handler, error) {
+func New(ctx context.Context, pool *pgxpool.Pool, proxies auth.Proxies, imageDir string) (http.Handler, error) {
 	st := store.New(pool)
 	jwtKey, err := st.Secret(ctx, "jwt_key", 32)
 	if err != nil {
@@ -32,7 +33,8 @@ func New(ctx context.Context, pool *pgxpool.Pool, proxies auth.Proxies) (http.Ha
 	}
 	// One guard for the app and the admin: the limits apply to both.
 	guard := auth.NewGuard()
-	adm, err := admin.New(st, guard, proxies, adminKey)
+	imgs := images.Dir{Path: imageDir}
+	adm, err := admin.New(st, guard, proxies, adminKey, imgs)
 	if err != nil {
 		return nil, err
 	}
@@ -51,7 +53,7 @@ func New(ctx context.Context, pool *pgxpool.Pool, proxies auth.Proxies) (http.Ha
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
 	mux.Handle("GET /admin", http.RedirectHandler("/admin/", http.StatusMovedPermanently))
-	(&api.API{Store: st, Tokens: &auth.Tokens{Key: jwtKey}, Guard: guard, Proxies: proxies}).Routes(mux)
+	(&api.API{Store: st, Tokens: &auth.Tokens{Key: jwtKey}, Guard: guard, Proxies: proxies, Images: imgs}).Routes(mux)
 	adm.Routes(mux)
 	return securityHeaders(proxies, mux), nil
 }

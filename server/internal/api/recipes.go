@@ -3,8 +3,11 @@ package api
 import (
 	"errors"
 	"net/http"
+	"os"
 	"strconv"
+	"time"
 
+	"github.com/julienbrunet/mijote/server/internal/images"
 	"github.com/julienbrunet/mijote/server/internal/store"
 )
 
@@ -92,4 +95,48 @@ func (a *API) listTags(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"tags": tags})
+}
+
+// ServeImage writes a thumbnail; the URL carries the content hash, so it can be cached for good.
+func serveImage(w http.ResponseWriter, r *http.Request, st *store.Store, dir images.Dir, id string) {
+	name, err := st.RecipeImagePath(r.Context(), id)
+	if err != nil {
+		recipeError(w, r, err)
+		return
+	}
+	f, err := dir.Open(name)
+	if errors.Is(err, os.ErrNotExist) {
+		problem(w, http.StatusNotFound, "not_found", "image file missing")
+		return
+	} else if err != nil {
+		fail(w, r, err)
+		return
+	}
+	defer f.Close()
+	w.Header().Set("Content-Type", "image/jpeg")
+	w.Header().Set("Cache-Control", "private, max-age=31536000, immutable")
+	http.ServeContent(w, r, name, time.Time{}, f)
+}
+
+func (a *API) getImage(w http.ResponseWriter, r *http.Request) {
+	serveImage(w, r, a.Store, a.Images, r.PathValue("id"))
+}
+
+// putImage takes the picture as the raw request body (JPEG, PNG or GIF, 10 MB at most).
+func (a *API) putImage(w http.ResponseWriter, r *http.Request) {
+	rec, err := a.Store.ChangeRecipeImage(r.Context(), a.Images, r.PathValue("id"),
+		http.MaxBytesReader(w, r.Body, images.MaxUpload+1))
+	if err != nil {
+		recipeError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, rec)
+}
+
+func (a *API) deleteImage(w http.ResponseWriter, r *http.Request) {
+	if err := a.Store.RemoveRecipeImage(r.Context(), a.Images, r.PathValue("id")); err != nil {
+		recipeError(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }

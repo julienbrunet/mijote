@@ -10,7 +10,7 @@
 </form></section>
 <section class="card scroll"><table>
 <tr><th>Titre</th><th>Type</th><th>Temps</th><th>Étiquettes</th><th></th></tr>
-{{range .Recipes}}<tr><td><a href="/admin/recipes/{{.ID}}">{{.Title}}</a></td><td>{{label $.Data.DishOpts .DishType}}</td>
+{{range .Recipes}}<tr><td>{{if .ImagePath}}<img src="/admin/recipes/{{.ID}}/image?v={{.Version}}" alt="" width="40" height="30" style="object-fit:cover;border-radius:6px;vertical-align:middle;margin-right:8px">{{end}}<a href="/admin/recipes/{{.ID}}">{{.Title}}</a></td><td>{{label $.Data.DishOpts .DishType}}</td>
 <td>{{if .TotalMinutes}}{{intp .TotalMinutes}} min{{else}}<span class="muted">—</span>{{end}}</td>
 <td>{{range $i, $t := .Tags}}{{if $i}}, {{end}}{{$t}}{{end}}</td>
 <td>{{if .ArchivedAt}}<form class="inline" method="post" action="/admin/recipes/{{.ID}}/restore"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button>Restaurer</button></form>

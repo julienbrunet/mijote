@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"io"
 	"math"
 	"net/url"
 	"slices"
@@ -13,6 +14,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+
+	"github.com/julienbrunet/mijote/server/internal/images"
 )
 
 // Recipes and tags (FR-REC-10..20, FR-ADM-04), data model in requirements.md §9.
@@ -72,10 +75,13 @@ type Ingredient struct {
 // Recipe is a recipe with its ingredients, steps and tags. It is also the
 // shape of the create / update requests (read-only fields are ignored).
 type Recipe struct {
-	ID           string       `json:"id"`
-	Title        string       `json:"title"`
-	SourceURL    *string      `json:"sourceUrl"`
-	ImageURL     *string      `json:"imageUrl"`
+	ID        string  `json:"id"`
+	Title     string  `json:"title"`
+	SourceURL *string `json:"sourceUrl"`
+	// Image is the API path of the thumbnail, null without image. Thumbnails are
+	// uploaded to the server, never linked from elsewhere.
+	Image        *string      `json:"image"`
+	ImagePath    *string      `json:"-"` // file name in the image directory
 	PrepMinutes  *int         `json:"prepMinutes"`
 	CookMinutes  *int         `json:"cookMinutes"`
 	TotalMinutes *int         `json:"totalMinutes"`
@@ -142,8 +148,8 @@ func (r *Recipe) normalize() error {
 	case utf8.RuneCountInString(r.Title) > maxTitleLen:
 		return invalid("le titre est trop long")
 	}
-	r.SourceURL, r.ImageURL, r.Notes = blankToNil(r.SourceURL), blankToNil(r.ImageURL), blankToNil(r.Notes)
-	for label, p := range map[string]*string{"le lien de la recette": r.SourceURL, "l'adresse de l'image": r.ImageURL} {
+	r.SourceURL, r.Notes = blankToNil(r.SourceURL), blankToNil(r.Notes)
+	for label, p := range map[string]*string{"le lien de la recette": r.SourceURL} {
 		if p == nil {
 			continue
 		}
@@ -268,17 +274,23 @@ func normalizeTags(tags []string) ([]string, error) {
 
 // ---------- Reading ----------
 
-const recipeCols = `r.id::text, r.title, r.source_url, r.image_url, r.prep_minutes, r.cook_minutes, r.total_minutes,
+const recipeCols = `r.id::text, r.title, r.source_url, r.image_path, r.prep_minutes, r.cook_minutes, r.total_minutes,
 	r.servings, r.dish_type::text, r.seasons::text[], r.meal_types::text[], r.notes,
 	array(SELECT t.name FROM recipe_tag rt JOIN tag t ON t.id = rt.tag_id WHERE rt.recipe_id = r.id ORDER BY lower(t.name)),
 	r.created_at, r.updated_at, r.version, r.archived_at`
 
 func scanRecipe(row pgx.Row) (Recipe, error) {
 	var r Recipe
-	err := row.Scan(&r.ID, &r.Title, &r.SourceURL, &r.ImageURL, &r.PrepMinutes, &r.CookMinutes, &r.TotalMinutes,
+	err := row.Scan(&r.ID, &r.Title, &r.SourceURL, &r.ImagePath, &r.PrepMinutes, &r.CookMinutes, &r.TotalMinutes,
 		&r.Servings, &r.DishType, &r.Seasons, &r.MealTypes, &r.Notes, &r.Tags,
 		&r.CreatedAt, &r.UpdatedAt, &r.Version, &r.ArchivedAt)
 	r.Ingredients, r.Steps = []Ingredient{}, []string{}
+	if r.ImagePath != nil {
+		// "<id>-<hash>.jpg": the hash makes the URL change with the picture.
+		v := strings.TrimSuffix(strings.TrimPrefix(*r.ImagePath, r.ID+"-"), ".jpg")
+		img := "/api/v1/recipes/" + r.ID + "/image?v=" + v
+		r.Image = &img
+	}
 	return r, err
 }
 
@@ -402,10 +414,10 @@ func (s *Store) CreateRecipe(ctx context.Context, userID string, in Recipe) (Rec
 	var out Recipe
 	err := s.tx(ctx, func(tx pgx.Tx) error {
 		var id string
-		err := tx.QueryRow(ctx, `INSERT INTO recipe (title, source_url, image_url, prep_minutes, cook_minutes, total_minutes,
+		err := tx.QueryRow(ctx, `INSERT INTO recipe (title, source_url, prep_minutes, cook_minutes, total_minutes,
 				servings, dish_type, seasons, meal_types, notes, created_by)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8::dish_type,$9::season[],$10::meal[],$11,$12) RETURNING id::text`,
-			in.Title, in.SourceURL, in.ImageURL, in.PrepMinutes, in.CookMinutes, in.TotalMinutes, in.Servings,
+			VALUES ($1,$2,$3,$4,$5,$6,$7::dish_type,$8::season[],$9::meal[],$10,$11) RETURNING id::text`,
+			in.Title, in.SourceURL, in.PrepMinutes, in.CookMinutes, in.TotalMinutes, in.Servings,
 			in.DishType, in.Seasons, in.MealTypes, in.Notes, userID).Scan(&id)
 		if err != nil {
 			return duplicateURL(err)
@@ -429,11 +441,11 @@ func (s *Store) UpdateRecipe(ctx context.Context, id string, in Recipe) (Recipe,
 	}
 	var out Recipe
 	err := s.tx(ctx, func(tx pgx.Tx) error {
-		tag, err := tx.Exec(ctx, `UPDATE recipe SET title=$2, source_url=$3, image_url=$4, prep_minutes=$5, cook_minutes=$6,
-				total_minutes=$7, servings=$8, dish_type=$9::dish_type, seasons=$10::season[], meal_types=$11::meal[], notes=$12,
+		tag, err := tx.Exec(ctx, `UPDATE recipe SET title=$2, source_url=$3, prep_minutes=$4, cook_minutes=$5,
+				total_minutes=$6, servings=$7, dish_type=$8::dish_type, seasons=$9::season[], meal_types=$10::meal[], notes=$11,
 				version = version + 1, updated_at = now()
 			WHERE id = $1`,
-			id, in.Title, in.SourceURL, in.ImageURL, in.PrepMinutes, in.CookMinutes, in.TotalMinutes, in.Servings,
+			id, in.Title, in.SourceURL, in.PrepMinutes, in.CookMinutes, in.TotalMinutes, in.Servings,
 			in.DishType, in.Seasons, in.MealTypes, in.Notes)
 		if err != nil {
 			return duplicateURL(err)
@@ -591,4 +603,69 @@ func (s *Store) DeleteTag(ctx context.Context, id string) error {
 		}
 		return nil
 	})
+}
+
+// SetRecipeImage records the thumbnail file of a recipe (nil removes it) and
+// returns the previous file name, which the caller deletes from disk.
+func (s *Store) SetRecipeImage(ctx context.Context, id string, name *string) (old *string, err error) {
+	if !validUUID(id) {
+		return nil, ErrNotFound
+	}
+	err = s.Pool.QueryRow(ctx, `UPDATE recipe n SET image_path = $2, version = n.version + 1, updated_at = now()
+		FROM recipe o WHERE n.id = $1 AND o.id = n.id RETURNING o.image_path`, id, name).Scan(&old)
+	return old, notFound(err)
+}
+
+// RecipeImagePath returns the thumbnail file name of a recipe (ErrNotFound without image).
+func (s *Store) RecipeImagePath(ctx context.Context, id string) (string, error) {
+	if !validUUID(id) {
+		return "", ErrNotFound
+	}
+	var p *string
+	if err := s.Pool.QueryRow(ctx, `SELECT image_path FROM recipe WHERE id = $1`, id).Scan(&p); err != nil {
+		return "", notFound(err)
+	}
+	if p == nil {
+		return "", ErrNotFound
+	}
+	return *p, nil
+}
+
+// ChangeRecipeImage replaces the picture of a recipe with an uploaded one,
+// stored as a thumbnail in dir. The previous file is deleted.
+func (s *Store) ChangeRecipeImage(ctx context.Context, dir images.Dir, id string, upload io.Reader) (Recipe, error) {
+	if !validUUID(id) {
+		return Recipe{}, ErrNotFound
+	}
+	if _, err := s.RecipeImagePath(ctx, id); err != nil && err != ErrNotFound {
+		return Recipe{}, err
+	}
+	data, hash, err := images.Thumbnail(upload)
+	if errors.Is(err, images.ErrInvalid) {
+		return Recipe{}, invalid("image refusée : " + strings.TrimPrefix(err.Error(), "invalid image: "))
+	} else if err != nil {
+		return Recipe{}, err
+	}
+	name, err := dir.Save(id, hash, data)
+	if err != nil {
+		return Recipe{}, err
+	}
+	old, err := s.SetRecipeImage(ctx, id, &name)
+	if err != nil {
+		dir.Remove(name)
+		return Recipe{}, err
+	}
+	if old != nil && *old != name {
+		dir.Remove(*old)
+	}
+	return s.Recipe(ctx, id)
+}
+
+// RemoveRecipeImage deletes the picture of a recipe.
+func (s *Store) RemoveRecipeImage(ctx context.Context, dir images.Dir, id string) error {
+	old, err := s.SetRecipeImage(ctx, id, nil)
+	if err == nil && old != nil {
+		dir.Remove(*old)
+	}
+	return err
 }

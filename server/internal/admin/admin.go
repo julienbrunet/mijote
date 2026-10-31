@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/julienbrunet/mijote/server/internal/auth"
+	"github.com/julienbrunet/mijote/server/internal/images"
 	"github.com/julienbrunet/mijote/server/internal/store"
 )
 
@@ -69,14 +70,15 @@ type Admin struct {
 	Guard   *auth.Guard
 	Proxies auth.Proxies
 	// Key signs CSRF tokens and the two-factor challenge cookie.
-	Key []byte
+	Key    []byte
+	Images images.Dir
 
 	pages map[string]*template.Template
 }
 
 // New parses the templates.
-func New(st *store.Store, guard *auth.Guard, proxies auth.Proxies, key []byte) (*Admin, error) {
-	a := &Admin{Store: st, Guard: guard, Proxies: proxies, Key: key, pages: map[string]*template.Template{}}
+func New(st *store.Store, guard *auth.Guard, proxies auth.Proxies, key []byte, imgs images.Dir) (*Admin, error) {
+	a := &Admin{Store: st, Guard: guard, Proxies: proxies, Key: key, Images: imgs, pages: map[string]*template.Template{}}
 	for _, p := range []string{"setup", "login", "login_2fa", "home", "account", "sessions", "journal", "accounts", "invitations", "recipes", "recipe", "tags", "error"} {
 		t, err := template.New("layout.html").Funcs(funcs).ParseFS(templateFS, "templates/layout.html", "templates/"+p+".html")
 		if err != nil {
@@ -97,36 +99,39 @@ func (a *Admin) Routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /admin/login/2fa", a.twoFALogin)
 
 	protected := map[string]http.HandlerFunc{
-		"GET /admin/{$}":                      a.home,
-		"POST /admin/logout":                  a.logout,
-		"GET /admin/account":                  a.accountPage,
-		"POST /admin/password":                a.changePassword,
-		"POST /admin/logout-everywhere":       a.logoutEverywhere,
-		"POST /admin/2fa/setup":               a.twoFASetup,
-		"POST /admin/2fa/enable":              a.twoFAEnable,
-		"POST /admin/2fa/disable":             a.twoFADisable,
-		"POST /admin/2fa/backup":              a.twoFABackup,
-		"GET /admin/sessions":                 a.sessionsPage,
-		"POST /admin/sessions/app/{id}":       a.revokeAppSession,
-		"POST /admin/sessions/admin/{id}":     a.revokeAdminSession,
-		"GET /admin/journal":                  a.journalPage,
-		"GET /admin/accounts":                 a.accountsPage,
-		"POST /admin/accounts/{id}/disable":   a.disableAccount,
-		"POST /admin/accounts/{id}/enable":    a.enableAccount,
-		"POST /admin/accounts/{id}/password":  a.resetAccountPassword,
-		"GET /admin/invitations":              a.invitationsPage,
-		"POST /admin/invitations":             a.createInvitation,
-		"POST /admin/invitations/{id}/revoke": a.revokeInvitation,
-		"GET /admin/recipes":                  a.recipesPage,
-		"GET /admin/recipes/new":              a.newRecipePage,
-		"POST /admin/recipes":                 a.saveRecipe,
-		"GET /admin/recipes/{id}":             a.editRecipePage,
-		"POST /admin/recipes/{id}":            a.saveRecipe,
-		"POST /admin/recipes/{id}/archive":    a.setRecipeArchived(true, "recipe_archived"),
-		"POST /admin/recipes/{id}/restore":    a.setRecipeArchived(false, "recipe_restored"),
-		"GET /admin/tags":                     a.tagsPage,
-		"POST /admin/tags/{id}/rename":        a.renameTag,
-		"POST /admin/tags/{id}/delete":        a.deleteTag,
+		"GET /admin/{$}":                        a.home,
+		"POST /admin/logout":                    a.logout,
+		"GET /admin/account":                    a.accountPage,
+		"POST /admin/password":                  a.changePassword,
+		"POST /admin/logout-everywhere":         a.logoutEverywhere,
+		"POST /admin/2fa/setup":                 a.twoFASetup,
+		"POST /admin/2fa/enable":                a.twoFAEnable,
+		"POST /admin/2fa/disable":               a.twoFADisable,
+		"POST /admin/2fa/backup":                a.twoFABackup,
+		"GET /admin/sessions":                   a.sessionsPage,
+		"POST /admin/sessions/app/{id}":         a.revokeAppSession,
+		"POST /admin/sessions/admin/{id}":       a.revokeAdminSession,
+		"GET /admin/journal":                    a.journalPage,
+		"GET /admin/accounts":                   a.accountsPage,
+		"POST /admin/accounts/{id}/disable":     a.disableAccount,
+		"POST /admin/accounts/{id}/enable":      a.enableAccount,
+		"POST /admin/accounts/{id}/password":    a.resetAccountPassword,
+		"GET /admin/invitations":                a.invitationsPage,
+		"POST /admin/invitations":               a.createInvitation,
+		"POST /admin/invitations/{id}/revoke":   a.revokeInvitation,
+		"GET /admin/recipes":                    a.recipesPage,
+		"GET /admin/recipes/new":                a.newRecipePage,
+		"POST /admin/recipes":                   a.saveRecipe,
+		"GET /admin/recipes/{id}":               a.editRecipePage,
+		"POST /admin/recipes/{id}":              a.saveRecipe,
+		"POST /admin/recipes/{id}/archive":      a.setRecipeArchived(true, "recipe_archived"),
+		"POST /admin/recipes/{id}/restore":      a.setRecipeArchived(false, "recipe_restored"),
+		"GET /admin/recipes/{id}/image":         a.recipeImage,
+		"POST /admin/recipes/{id}/image":        a.uploadRecipeImage,
+		"POST /admin/recipes/{id}/image/remove": a.removeRecipeImage,
+		"GET /admin/tags":                       a.tagsPage,
+		"POST /admin/tags/{id}/rename":          a.renameTag,
+		"POST /admin/tags/{id}/delete":          a.deleteTag,
 	}
 	for pattern, h := range protected {
 		mux.Handle(pattern, a.requireSession(h))

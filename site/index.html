@@ -74,8 +74,8 @@
       </div>
       <div class="card">
         <h3 data-l="en">Self-hosted and light</h3><h3 data-l="fr">Auto-hébergé et léger</h3>
-        <p data-l="en">A single Go binary plus PostgreSQL, with a very small memory footprint. Web admin to manage the recipe base and tags, create family accounts with invitation links or QR codes, and manage security (optional 2FA).</p>
-        <p data-l="fr">Un binaire Go et PostgreSQL, avec une très faible empreinte mémoire. Interface web d'administration pour gérer les recettes et les étiquettes, créer les comptes de la famille par lien ou QR code d'invitation, et gérer la sécurité (2FA optionnelle).</p>
+        <p data-l="en">A single Go binary plus PostgreSQL, with a very small memory footprint. All your data, recipe images included, stays on your server. Web admin to manage the recipe base and tags, create family accounts with invitation links or QR codes, and manage security (optional 2FA).</p>
+        <p data-l="fr">Un binaire Go et PostgreSQL, avec une très faible empreinte mémoire. Toutes vos données, images de recettes comprises, restent sur votre serveur. Interface web d'administration pour gérer les recettes et les étiquettes, créer les comptes de la famille par lien ou QR code d'invitation, et gérer la sécurité (2FA optionnelle).</p>
       </div>
     </div>
     <div class="note">
@@ -124,7 +124,7 @@ MIJOTE_IMAGE_DIR=/var/lib/mijote/images \
       <tr><th>Variable</th><th><span data-l="en">Default</span><span data-l="fr">Défaut</span></th><th>Description</th></tr>
       <tr><td><code>MIJOTE_DATABASE_URL</code></td><td><span data-l="en">required</span><span data-l="fr">obligatoire</span></td><td><span data-l="en">PostgreSQL URL</span><span data-l="fr">URL PostgreSQL</span></td></tr>
       <tr><td><code>MIJOTE_LISTEN_ADDR</code></td><td><code>:8080</code></td><td><span data-l="en">HTTP listen address</span><span data-l="fr">Adresse d'écoute HTTP</span></td></tr>
-      <tr><td><code>MIJOTE_IMAGE_DIR</code></td><td><code>/data/images</code></td><td><span data-l="en">Thumbnail directory</span><span data-l="fr">Dossier des miniatures</span></td></tr>
+      <tr><td><code>MIJOTE_IMAGE_DIR</code></td><td><code>/data/images</code></td><td><span data-l="en">Recipe thumbnails</span><span data-l="fr">Miniatures des recettes</span></td></tr>
       <tr><td><code>MIJOTE_TRUSTED_PROXIES</code></td><td><span data-l="en">none</span><span data-l="fr">aucun</span></td><td><span data-l="en">Reverse proxies whose <code>X-Forwarded-*</code> headers are trusted</span><span data-l="fr">Proxys inverses dont les en-têtes <code>X-Forwarded-*</code> sont de confiance</span></td></tr>
     </table></div>
     <ol class="steps" start="6">

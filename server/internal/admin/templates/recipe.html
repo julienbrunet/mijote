@@ -4,7 +4,6 @@
 <section class="card"><h2>Général</h2>
 <label>Titre<input type="text" name="title" value="{{.R.Title}}" required maxlength="200"></label>
 <label>Lien de la recette (source)<input type="url" name="source_url" value="{{deref .R.SourceURL}}" maxlength="2000"></label>
-<label>Adresse de l'image<input type="url" name="image_url" value="{{deref .R.ImageURL}}" maxlength="2000"></label>
 <div class="grid">
 <label>Type de plat<select name="dish_type" required><option value="">Choisir…</option>{{range .DishOpts}}<option value="{{.Code}}" {{if eq .Code $.Data.R.DishType}}selected{{end}}>{{.Label}}</option>{{end}}</select></label>
 <label>Personnes<input type="number" name="servings" min="1" value="{{intp .R.Servings}}"></label>
@@ -32,9 +31,18 @@
 <label>Une étape par ligne<textarea name="steps" rows="8">{{.Steps}}</textarea></label></section>
 <section class="card"><h2>Notes</h2>
 <label>Notes de la famille<textarea name="notes" rows="3">{{deref .R.Notes}}</textarea></label></section>
+{{if .New}}<p class="muted">L'image pourra être ajoutée une fois la recette créée.</p>{{end}}
 <p><button>Enregistrer</button> <a href="/admin/recipes" style="margin-left:12px">Retour à la liste</a></p>
 </form>
-{{if not .New}}<section class="card">
+{{if not .New}}<section class="card"><h2>Image</h2>
+{{if .R.ImagePath}}<p><img src="/admin/recipes/{{.R.ID}}/image?v={{.R.Version}}" alt="" style="max-width:320px;border-radius:12px"></p>{{end}}
+<form method="post" action="/admin/recipes/{{.R.ID}}/image" enctype="multipart/form-data"><input type="hidden" name="csrf" value="{{$.CSRF}}">
+<label>{{if .R.ImagePath}}Remplacer l'image{{else}}Ajouter une image{{end}} (JPEG, PNG ou GIF, 10 Mo maximum)<input type="file" name="image" accept="image/jpeg,image/png,image/gif" required></label>
+<button>Envoyer</button></form>
+{{if .R.ImagePath}}<form method="post" action="/admin/recipes/{{.R.ID}}/image/remove" style="margin-top:8px"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button>Retirer l'image</button></form>{{end}}
+<p class="muted">L'image est réduite (800 px maximum) et conservée sur le serveur ; aucune image n'est chargée depuis un site extérieur.</p>
+</section>
+<section class="card">
 {{if .R.ArchivedAt}}<p>Cette recette est archivée.</p>
 <form method="post" action="/admin/recipes/{{.R.ID}}/restore"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button>Restaurer</button></form>
 {{else}}<form method="post" action="/admin/recipes/{{.R.ID}}/archive"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button>Archiver la recette</button></form>{{end}}

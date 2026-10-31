@@ -1,9 +1,11 @@
 package admin
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/julienbrunet/mijote/server/internal/store"
 )
@@ -129,7 +131,7 @@ func optInt(s string) (v *int, bad bool) {
 // in msg; the rest of the form is still returned so it can be shown again.
 func parseRecipeForm(r *http.Request) (rec store.Recipe, qty []string, msg string) {
 	f := func(k string) string { return r.PostFormValue(k) }
-	rec = store.Recipe{Title: f("title"), SourceURL: optString(f("source_url")), ImageURL: optString(f("image_url")),
+	rec = store.Recipe{Title: f("title"), SourceURL: optString(f("source_url")),
 		DishType: f("dish_type"), Seasons: r.PostForm["season"], MealTypes: r.PostForm["meal"],
 		Notes: optString(f("notes")), Tags: strings.Split(f("tags"), ","), Steps: strings.Split(f("steps"), "\n")}
 	for label, dst := range map[string]struct {
@@ -260,4 +262,65 @@ func (a *Admin) renameTag(w http.ResponseWriter, r *http.Request) {
 
 func (a *Admin) deleteTag(w http.ResponseWriter, r *http.Request) {
 	a.tagAction(w, r, "tag_deleted", func(id string) error { return a.Store.DeleteTag(r.Context(), id) })
+}
+
+// ---------- Image ----------
+
+func (a *Admin) recipeImage(w http.ResponseWriter, r *http.Request) {
+	name, err := a.Store.RecipeImagePath(r.Context(), r.PathValue("id"))
+	if err == store.ErrNotFound {
+		http.NotFound(w, r)
+		return
+	} else if err != nil {
+		a.fail(w, r, err)
+		return
+	}
+	f, err := a.Images.Open(name)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	defer f.Close()
+	w.Header().Set("Content-Type", "image/jpeg")
+	w.Header().Set("Cache-Control", "private, max-age=3600")
+	http.ServeContent(w, r, name, time.Time{}, f)
+}
+
+func (a *Admin) uploadRecipeImage(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	file, _, err := r.FormFile("image")
+	if err != nil {
+		a.imageResult(w, r, id, errors.New("choisissez un fichier image"))
+		return
+	}
+	defer file.Close()
+	_, err = a.Store.ChangeRecipeImage(r.Context(), a.Images, id, file)
+	a.imageResult(w, r, id, err)
+}
+
+func (a *Admin) removeRecipeImage(w http.ResponseWriter, r *http.Request) {
+	a.imageResult(w, r, r.PathValue("id"), a.Store.RemoveRecipeImage(r.Context(), a.Images, r.PathValue("id")))
+}
+
+func (a *Admin) imageResult(w http.ResponseWriter, r *http.Request, id string, err error) {
+	if err == nil {
+		redirect(w, r, "/admin/recipes/"+id, "recipe_saved")
+		return
+	}
+	if err == store.ErrNotFound {
+		a.recipeNotFound(w, r)
+		return
+	}
+	msg := err.Error()
+	if m, ok := validationMsg(err); !ok && err.Error() != "choisissez un fichier image" {
+		_ = m
+		a.fail(w, r, err)
+		return
+	}
+	rec, gerr := a.Store.Recipe(r.Context(), id)
+	if gerr != nil {
+		a.fail(w, r, gerr)
+		return
+	}
+	a.renderRecipeForm(w, r, http.StatusUnprocessableEntity, rec, false, nil, strings.ToUpper(msg[:1])+msg[1:])
 }
