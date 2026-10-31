@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Mijote — family weekly menu planner</title>
-<meta name="description" content="Mijote is a self-hosted family weekly menu planner: Android app and lightweight Go server. / Planificateur de menus familial auto-hébergé.">
+<title>Mijote — weekly menu planner</title>
+<meta name="description" content="Mijote is a self-hosted weekly menu planner: Android app and lightweight Go server. / Planificateur de menus auto-hébergé.">
 <meta name="theme-color" content="#FFF5E6">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="style.css">
@@ -35,8 +35,8 @@
   <main>
   <div class="hero">
     <h1>Ça mijote</h1>
-    <p class="lead" data-l="en">The weekly menu planner for your family. Import recipes from the web, generate balanced menus, adjust them with a swipe — on your own server.</p>
-    <p class="lead" data-l="fr">Le planificateur de menus de la semaine pour votre famille. Importez des recettes du web, générez des menus équilibrés, ajustez-les d'un geste — sur votre propre serveur.</p>
+    <p class="lead" data-l="en">The weekly menu planner. Import recipes from the web, generate balanced menus, adjust them with a swipe — on your own server.</p>
+    <p class="lead" data-l="fr">Le planificateur de menus de la semaine. Importez des recettes du web, générez des menus équilibrés, ajustez-les d'un geste — sur votre propre serveur.</p>
     <div class="btns">
       <a class="btn" href="#download"><span data-l="en">Download</span><span data-l="fr">Télécharger</span></a>
       <a class="btn alt" href="#install"><span data-l="en">Install guide</span><span data-l="fr">Guide d'installation</span></a>
@@ -53,14 +53,14 @@
       </div>
       <div class="card">
         <h3 data-l="en">Shared recipe base</h3><h3 data-l="fr">Base de recettes partagée</h3>
-        <p data-l="en">One collection for the whole family, organised with tags.</p>
-        <p data-l="fr">Une seule collection pour toute la famille, organisée avec des tags.</p>
+        <p data-l="en">One shared collection, organised with tags.</p>
+        <p data-l="fr">Une collection partagée, organisée avec des tags.</p>
         <p style="margin-top:10px"><span class="tag meat" data-l="en">Meat</span><span class="tag meat" data-l="fr">Viande</span><span class="tag fish" data-l="en">Fish</span><span class="tag fish" data-l="fr">Poisson</span><span class="tag veg" data-l="en">Vegetarian</span><span class="tag veg" data-l="fr">Végétarien</span></p>
       </div>
       <div class="card">
         <h3 data-l="en">Menu generation</h3><h3 data-l="fr">Génération de menus</h3>
-        <p data-l="en">Pick how many meals you need (family settings, lunch and dinner, or dinner only) and a start day; the server proposes a varied menu that favors in-season recipes not served recently and fits your preparation time.</p>
-        <p data-l="fr">Choisissez le nombre de repas (réglages de la famille, midi et soir, ou soir seulement) et le jour de départ ; le serveur propose un menu varié qui privilégie les recettes de saison et pas servies récemment, adapté à votre temps de préparation.</p>
+        <p data-l="en">Pick how many meals you need (your settings, lunch and dinner, or dinner only) and a start day; the server proposes a varied menu that favors in-season recipes not served recently and fits your preparation time.</p>
+        <p data-l="fr">Choisissez le nombre de repas (vos réglages, midi et soir, ou soir seulement) et le jour de départ ; le serveur propose un menu varié qui privilégie les recettes de saison et pas servies récemment, adapté à votre temps de préparation.</p>
       </div>
       <div class="card">
         <h3 data-l="en">Easy adjustments</h3><h3 data-l="fr">Ajustements faciles</h3>
@@ -69,8 +69,8 @@
       </div>
       <div class="card">
         <h3 data-l="en">Shared and offline</h3><h3 data-l="fr">Partagé et hors ligne</h3>
-        <p data-l="en">Every family member sees the same menu. Recipes and current menus stay readable offline.</p>
-        <p data-l="fr">Chaque membre de la famille voit le même menu. Les recettes et les menus en cours restent lisibles hors ligne.</p>
+        <p data-l="en">Every member sees the same menu. Recipes and current menus stay readable offline.</p>
+        <p data-l="fr">Chaque membre voit le même menu. Les recettes et les menus en cours restent lisibles hors ligne.</p>
       </div>
       <div class="card">
         <h3 data-l="en">Self-hosted and light</h3><h3 data-l="fr">Auto-hébergé et léger</h3>
@@ -128,8 +128,8 @@ MIJOTE_IMAGE_DIR=/var/lib/mijote/images \
       <tr><td><code>MIJOTE_TRUSTED_PROXIES</code></td><td><span data-l="en">none</span><span data-l="fr">aucun</span></td><td><span data-l="en">Reverse proxies whose <code>X-Forwarded-*</code> headers are trusted</span><span data-l="fr">Proxys inverses dont les en-têtes <code>X-Forwarded-*</code> sont de confiance</span></td></tr>
     </table></div>
     <ol class="steps" start="6">
-      <li data-l="en">Open <code>http://your-server:8080/admin/</code> and follow the setup wizard to create the administrator account. Then add family members from the <em>Invitations</em> page: each invitation is a single-use link or QR code that creates a member account. The <em>API tokens</em> page creates tokens (read-only or read/write, with an expiry) so that scripts or an assistant can use the API.</li>
-      <li data-l="fr">Ouvrez <code>http://votre-serveur:8080/admin/</code> et suivez l'assistant pour créer le compte administrateur. Ajoutez ensuite les membres de la famille depuis la page <em>Invitations</em> : chaque invitation est un lien ou un QR code à usage unique qui crée un compte membre. La page <em>Jetons API</em> permet de créer des jetons (lecture seule ou lecture/écriture, avec expiration) pour que des scripts ou un assistant accèdent à l'API.</li>
+      <li data-l="en">Open <code>http://your-server:8080/admin/</code> and follow the setup wizard to create the administrator account. Then add members from the <em>Invitations</em> page: each invitation is a single-use link or QR code that creates a member account. The <em>API tokens</em> page creates tokens (read-only or read/write, with an expiry) so that scripts or an assistant can use the API.</li>
+      <li data-l="fr">Ouvrez <code>http://votre-serveur:8080/admin/</code> et suivez l'assistant pour créer le compte administrateur. Ajoutez ensuite les membres depuis la page <em>Invitations</em> : chaque invitation est un lien ou un QR code à usage unique qui crée un compte membre. La page <em>Jetons API</em> permet de créer des jetons (lecture seule ou lecture/écriture, avec expiration) pour que des scripts ou un assistant accèdent à l'API.</li>
       <li data-l="en">Put a reverse proxy with HTTPS (Caddy, nginx…) in front of it: the Android app only talks HTTPS. Keep a regular backup (<code>pg_dump</code> + image directory) and back up before every upgrade.</li>
       <li data-l="fr">Placez un proxy inverse HTTPS (Caddy, nginx…) devant : l'application Android ne parle qu'en HTTPS. Faites des sauvegardes régulières (<code>pg_dump</code> + dossier des images), et avant chaque mise à jour.</li>
     </ol>
@@ -142,8 +142,8 @@ MIJOTE_IMAGE_DIR=/var/lib/mijote/images \
       <li data-l="fr">Téléchargez le fichier <code>.apk</code> sur votre téléphone (Android 8.0 ou plus).</li>
       <li data-l="en">Open it and allow installing from this source when Android asks.</li>
       <li data-l="fr">Ouvrez-le et autorisez l'installation depuis cette source quand Android le demande.</li>
-      <li data-l="en">Launch Mijote, enter your server address (<code>https://…</code>), then sign in. New family member? Scan the invitation QR code with your phone's camera (or open the invitation link): Mijote opens and lets you choose your username and password. You can also tap <em>I have an invitation</em> and type the server address and the code.</li>
-      <li data-l="fr">Lancez Mijote, saisissez l'adresse de votre serveur (<code>https://…</code>), puis connectez-vous. Nouveau membre de la famille ? Scannez le QR code d'invitation avec l'appareil photo (ou ouvrez le lien d'invitation) : Mijote s'ouvre et vous laisse choisir votre identifiant et votre mot de passe. Vous pouvez aussi toucher <em>J'ai une invitation</em> et saisir l'adresse du serveur et le code.</li>
+      <li data-l="en">Launch Mijote, enter your server address (<code>https://…</code>), then sign in. New member? Scan the invitation QR code with your phone's camera (or open the invitation link): Mijote opens and lets you choose your username and password. You can also tap <em>I have an invitation</em> and type the server address and the code.</li>
+      <li data-l="fr">Lancez Mijote, saisissez l'adresse de votre serveur (<code>https://…</code>), puis connectez-vous. Nouveau membre ? Scannez le QR code d'invitation avec l'appareil photo (ou ouvrez le lien d'invitation) : Mijote s'ouvre et vous laisse choisir votre identifiant et votre mot de passe. Vous pouvez aussi toucher <em>J'ai une invitation</em> et saisir l'adresse du serveur et le code.</li>
       <li data-l="en">Updates: at launch, Mijote checks for a newer version and offers to install it (the download is verified, then Android asks you to confirm). The first time, allow Mijote to install apps when Android asks.</li>
       <li data-l="fr">Mises à jour : au lancement, Mijote vérifie s'il existe une version plus récente et propose de l'installer (le téléchargement est vérifié, puis Android vous demande de confirmer). La première fois, autorisez Mijote à installer des applications quand Android le demande.</li>
     </ol>

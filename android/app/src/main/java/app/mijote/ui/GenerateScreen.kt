@@ -116,7 +116,7 @@ fun GenerateScreen(
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                PlanChip("Réglages", "famille", plan == MealPlan.DEFAULT) { plan = MealPlan.DEFAULT }
+                PlanChip("Mes", "réglages", plan == MealPlan.DEFAULT) { plan = MealPlan.DEFAULT }
                 PlanChip("Midi", "& soir", plan == MealPlan.LUNCH_DINNER) { plan = MealPlan.LUNCH_DINNER }
                 PlanChip("Soir", "seulement", plan == MealPlan.DINNER) { plan = MealPlan.DINNER }
             }
@@ -189,7 +189,7 @@ private fun PlanChip(title: String, subtitle: String, selected: Boolean, onClick
 }
 
 private fun planDescription(plan: MealPlan) = when (plan) {
-    MealPlan.DEFAULT -> "Repas prévus selon les réglages de la famille. Recettes de saison et pas servies récemment en priorité."
+    MealPlan.DEFAULT -> "Repas prévus selon vos réglages. Recettes de saison et pas servies récemment en priorité."
     MealPlan.LUNCH_DINNER -> "Midi et soir chaque jour. Recettes de saison et pas servies récemment en priorité."
     MealPlan.DINNER -> "Le soir uniquement. Recettes de saison et pas servies récemment en priorité."
 }
