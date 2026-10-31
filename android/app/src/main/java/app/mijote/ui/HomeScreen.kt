@@ -9,7 +9,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -22,7 +22,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.mijote.data.User
 
-enum class Tab(val label: String) { MENUS("Menus"), RECIPES("Recettes"), SETTINGS("Réglages") }
+enum class Tab(val label: String) { MENUS("Menus"), RECIPES("Recettes"), GENERATE("Générer") }
 
 /** Signed-in shell: header with the user button, empty tab content, floating bottom bar. */
 @Composable
@@ -47,7 +47,7 @@ fun HomeScreen(user: User, onLogout: () -> Unit) {
                     when (tab) {
                         Tab.MENUS -> "Les menus de la semaine arriveront ici."
                         Tab.RECIPES -> "Les recettes arriveront ici."
-                        Tab.SETTINGS -> "Les réglages arriveront ici."
+                        Tab.GENERATE -> "La génération de menus arrivera ici."
                     },
                     color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center,
                 )
@@ -72,7 +72,7 @@ private fun UserButton(user: User, onLogout: () -> Unit) {
 
 @Composable
 private fun BottomBar(selected: Tab, onSelect: (Tab) -> Unit) {
-    val icons = mapOf(Tab.MENUS to Icons.Filled.Home, Tab.RECIPES to Icons.Filled.Search, Tab.SETTINGS to Icons.Filled.Settings)
+    val icons = mapOf(Tab.MENUS to Icons.Filled.Home, Tab.RECIPES to Icons.Filled.Search, Tab.GENERATE to Icons.Filled.Refresh)
     Card(
         Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 16.dp, vertical = 12.dp),
         shape = RoundedCornerShape(24.dp),
