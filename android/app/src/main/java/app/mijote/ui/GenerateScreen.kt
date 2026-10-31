@@ -1,5 +1,8 @@
 package app.mijote.ui
 
+import app.mijote.R
+import androidx.compose.ui.res.painterResource
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -69,7 +72,7 @@ fun GenerateScreen(
     ) {
         Box(Modifier.fillMaxWidth()) {
             CornerBlock(Sunny.Card, size = 88.dp, modifier = Modifier.align(Alignment.TopEnd)) {
-                Text("🍲", fontSize = 30.sp)
+                Image(painterResource(R.drawable.ic_mijote_cocotte), contentDescription = null, modifier = Modifier.size(60.dp))
             }
             Column(Modifier.padding(start = 28.dp, top = 40.dp, end = 100.dp)) {
                 Text("🧺", fontSize = 34.sp)

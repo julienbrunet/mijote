@@ -1,0 +1,18 @@
+{{define "content"}}{{with .Data}}
+<section class="card"><h2>Vous êtes invité(e) à rejoindre la famille sur Mijote</h2>
+<p>Mijote est le planificateur de menus de la semaine de la famille. Cette invitation est à usage unique : elle vous permet de créer votre compte.</p>
+</section>
+<section class="card"><h2>1. J'ai déjà l'application</h2>
+<p><a class="btn" href="{{.AppLink}}">Ouvrir dans Mijote</a></p>
+<p class="muted">Sur votre téléphone Android. L'application s'ouvre avec l'adresse du serveur et le code déjà remplis ; il ne reste qu'à choisir un identifiant et un mot de passe.</p>
+</section>
+<section class="card"><h2>2. Je n'ai pas encore l'application</h2>
+<ol>
+<li>Installez l'application Android depuis <a href="{{.DownloadPage}}" rel="noopener">la page de téléchargement</a>.</li>
+<li>Revenez sur cette page, puis touchez « Ouvrir dans Mijote » ci-dessus.</li>
+</ol>
+<p class="muted">Ou, dans l'application, touchez « J'ai une invitation » et saisissez :</p>
+<p>Adresse du serveur : <code>{{.Server}}</code></p>
+<p>Code d'invitation : <code>{{.Code}}</code></p>
+</section>
+{{end}}{{end}}

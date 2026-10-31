@@ -1,10 +1,12 @@
 package app.mijote
 
 import android.content.Intent
+import android.graphics.Color
 import android.os.Bundle
 import java.time.LocalDate
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.runtime.getValue
@@ -31,7 +33,11 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+        // Light-only app: dark status and navigation bar icons whatever the system theme.
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT),
+            navigationBarStyle = SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT),
+        )
         // A link that launched the app (not a re-creation after rotation).
         if (savedInstanceState == null) intent?.data?.let { vm.openInvitationLink(it.toString()) }
         setContent {

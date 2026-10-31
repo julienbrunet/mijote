@@ -200,17 +200,17 @@ Theme name: **Sunny Kit** (2026-10-31, replaces the former "Calm Kit") — warm 
 
 ### Theme
 - **Light mode only** for now. A dark variant is out of scope until requested.
-- Edge-to-edge display: content scrolls behind the system bars and the bottom navigation.
+- Edge-to-edge display: content scrolls behind the system bars and the bottom navigation. System bar icons are always dark (light style), whatever the system theme.
 
 ### Color palette
 | Token | Hex | Usage |
 |---|---|---|
-| Butter | `#FFD88C` | Onboarding header sheet, first day sheet, user corner block |
+| Butter | `#FFD88C` | **App screen background** (all screens), user corner block |
 | Butter light | `#FFEBC2` | Surface variant |
-| Peach | `#FFA98B` | Second day sheet, "new week" button, card corner actions |
+| Peach | `#FFA98B` | "New week" button, card corner actions |
 | Peach deep | `#F4876A` | Primary: main buttons, focused fields, first bottom tab |
-| Slate | `#8E8E93` | Neutral accent: third day sheet, search tile, secondary actions |
-| Cream | `#FFF5E6` | Screen background |
+| Slate | `#8E8E93` | Neutral accent: search tile, secondary actions |
+| Cream | `#FFF5E6` | Background of the presentation site and the web admin |
 | Card | `#FFFFFF` | Cards, header, dialogs |
 | Ink | `#4A4A4A` | Main text |
 | Ink title | `#6B6B6B` | Titles |
@@ -226,6 +226,11 @@ Dish type tags (background / text):
 | Fish | `#DDEBF4` | `#4A7391` |
 | Vegetarian | `#E4F1D8` | `#5A7F45` |
 
+### Logo and wordmark
+- Logo: a coral cocotte with a green sprout as the lid knob, on a butter rounded square (`android/app/src/main/res/drawable/ic_mijote_logo.xml`).
+- The same cocotte is the launcher icon (adaptive: butter background, cocotte foreground in the safe zone, monochrome variant for themed icons), sits in the white corner blocks (onboarding, web admin, presentation site) and is the favicon of the site and the web admin.
+- Wordmark "Mijote" in **Grandstander ExtraBold** (SIL OFL, bundled), Ink title; used only for the brand name.
+
 ### Typography
 - Font: **Inter** (Light 300, Regular 400, Medium 500, SemiBold 600, Bold 700), bundled with the app.
 - Screen title: Bold, ~32 sp (40 sp on onboarding, on two lines), Ink title, sentence case.
@@ -234,7 +239,7 @@ Dish type tags (background / text):
 - Buttons: Bold ~15–16 sp.
 
 ### Shapes and elevation
-- Sheets: 36 dp radius, warm (peach-tinted) shadow; day sheets overlap the previous one by ~36 dp and carry a small white handle bar on top.
+- Sheets (generation screen): 36 dp radius, warm (peach-tinted) shadow.
 - **Corner block**: a colored square glued to the top-right corner of a sheet, only its bottom-left corner rounded (36 dp); holds the user button (home) or the app emoji (onboarding).
 - Cards: 22 dp radius, white, soft shadow. Buttons and tiles: 18 dp radius.
 - Card corner action: 46 dp square glued to the card's bottom-right corner (rounded top-left 16 dp), lock icon when the meal is locked, swap icon otherwise.
@@ -248,10 +253,10 @@ Dish type tags (background / text):
 - Butter header sheet (rounded bottom corners 40 dp) with a white corner block and a big two-line title; the form is a white card overlapping the sheet's bottom edge; secondary actions in Slate below.
 
 ### Home screen layout
-- White header (rounded bottom corners 40 dp) with title **"Ça mijote"**, the period summary below (e.g. "2 → 8 novembre · 11 repas"), a wide Peach **"Nouvelle semaine"** button and a square Slate search tile; the user button sits in a Butter corner block.
-- Upcoming days as stacked colored sheets cycling Butter, Peach, Slate, each with a header (e.g. "Aujourd'hui", "Demain", weekday) and its planned meals.
+- Big white header (rounded bottom corners 40 dp) with the logo (76 dp) next to the **"Mijote"** wordmark (54 sp) on the Menus tab (a plain title on the other tabs), the period summary below (e.g. "2 → 8 novembre · 11 repas"), a wide Peach **"Nouvelle semaine"** button and a square Slate search tile; the user button sits in a Butter corner block.
+- Upcoming days as a plain list on the Butter background (no colored sheets), each with a header (e.g. "Aujourd'hui", "Demain", weekday) and its planned meals; days are separated by a short centered white pill (56 × 5 dp).
 - Meals shown as **full-width horizontal cards**: recipe image on the left, meal slot, recipe title, dish type tag and prep time, and the corner action. (Replaces the former 2-column grid.)
-- **Bottom navigation**: stacked tabs anchored to the bottom-right corner of the screen, laid out from the right (Generate, Recipes, Menus) in three peach shades lighter towards the edge; each tab overlaps its left neighbour with a rounded top-left corner (36 dp) and extends behind the system navigation bar. The selected tab widens and shows its label next to the icon; the others show the icon only.
+- **Bottom navigation**: stacked tabs anchored to the bottom-right corner of the screen, laid out from the right (Generate, Recipes, Menus) in three peach shades lighter towards the edge; tabs are 56 dp high (plus the system navigation bar inset they extend behind); each tab overlaps its left neighbour with a rounded top-left corner (28 dp). The selected tab widens and shows its label next to the icon; the others show the icon only.
 
 ## 9. Data model (decided)
 
@@ -412,7 +417,7 @@ Modeled on the author's paper-stacks project.
 
 - **Passwords**: argon2id (19 MiB, 3 passes), 8 characters minimum. The first admin is created by the setup wizard (`/admin/setup`, only while the instance has no account).
 - **App tokens**: JWT access token (HS256, 15 min, `Authorization: Bearer`) + random 256-bit refresh token (60 days) used only on `POST /api/v1/auth/refresh`. Each refresh rotates the token within its device session; presenting an already rotated token revokes the whole session and is logged. Every request checks that the device session is still open and the account active, so a revocation takes effect immediately. Endpoints: `POST /api/v1/auth/login`, `/refresh`, `/logout`, `GET /api/v1/me`.
-- **Invitations**: the admin creates one in the web admin (`/admin/invitations`), valid 1, 7 (default) or 30 days. The clear code (128-bit, base32) is shown once; only its SHA-256 hash is stored. The invitation link is `mijote://invite?server=<server URL>&code=<code>` (also rendered as a QR code); the app opens it directly (the phone's camera app scans the QR code and hands the link to Mijote; there is no in-app scanner, to avoid a camera/ML dependency) and also accepts the server URL and the code typed by hand ("J'ai une invitation"). An invitation link never replaces an open session. `POST /api/v1/invitations/redeem` (`code`, `username`, `displayName`, `password`, `deviceName`) creates the **member** account, consumes the code in one transaction and signs the device in (answers `201` with the same token pair as login). Unknown, used, revoked and expired codes all answer `404 invalid_invitation`; failures count against the per-address limit. A refused username or password (`422`) leaves the code usable.
+- **Invitations**: the admin creates one in the web admin (`/admin/invitations`), valid 1, 7 (default) or 30 days. The clear code (128-bit, base32) is shown once; only its SHA-256 hash is stored. The admin shares a plain web link, `https://<server>/invite/<code>` (also rendered as a QR code): it works with or without the app. That public page (no session, never reads the database, so it neither consumes the code nor reveals whether it is valid) offers an "Open in Mijote" button and, for people without the app, the install steps with a link to the project download page and the server address and code to type. The button uses the deep link `mijote://invite?server=<server URL>&code=<code>`, which the app handles directly; the app also accepts the server URL and the code typed by hand ("J'ai une invitation"). There is no in-app QR scanner (camera/ML dependency avoided): the phone's camera app scans the QR code and opens the web page. An invitation link never replaces an open session. `POST /api/v1/invitations/redeem` (`code`, `username`, `displayName`, `password`, `deviceName`) creates the **member** account, consumes the code in one transaction and signs the device in (answers `201` with the same token pair as login). Unknown, used, revoked and expired codes all answer `404 invalid_invitation`; failures count against the per-address limit. A refused username or password (`422`) leaves the code usable.
 - **Accounts** (`/admin/accounts`): list, deactivate/reactivate a member (closes its sessions), set a new password for a member (closes its sessions). The admin account cannot be disabled; its password changes from "Mon compte".
 - **Web admin session**: cookie `mijote_admin` (HttpOnly, SameSite=Strict, Secure over HTTPS, path `/admin`); 12 h max and 2 h idle, or 15 days max and 5 days idle with "stay signed in". Every form carries a CSRF token derived from the session. Changing the password closes the account's other sessions.
 - **Admin sign-in**: password only (single admin). Optional **TOTP** (RFC 6238, 6 digits, 30 s, ±1 step, each code accepted once) set up from *Mon compte* with a QR code, plus 10 single-use backup codes. Two steps: password → signed 5-min challenge cookie → code → session. Disabling 2FA or regenerating backup codes requires the password and a code. Recovery: `mijote reset-2fa <username>` on the server. 2FA covers the web admin only.

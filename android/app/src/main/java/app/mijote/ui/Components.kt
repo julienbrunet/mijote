@@ -1,5 +1,6 @@
 package app.mijote.ui
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -15,6 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -22,6 +24,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import app.mijote.R
 
 /** Big bold screen title, soft grey (Sunny Kit). */
 @Composable
@@ -29,6 +32,16 @@ fun ScreenTitle(text: String, subtitle: String? = null, size: Int = 30) {
     Column {
         Text(text, fontSize = size.sp, lineHeight = (size * 1.1).sp, fontWeight = FontWeight.Bold, color = Sunny.InkTitle)
         subtitle?.let { Text(it, fontSize = 14.sp, color = Sunny.InkTitle, modifier = Modifier.padding(top = 4.dp)) }
+    }
+}
+
+/** The Mijote logo (cocotte) next to the "Mijote" wordmark. */
+@Composable
+fun BrandTitle(logoSize: Dp = 76.dp, textSize: Int = 54) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Image(painterResource(R.drawable.ic_mijote_logo), contentDescription = null, modifier = Modifier.size(logoSize))
+        Text("Mijote", fontFamily = Grandstander, fontWeight = FontWeight.ExtraBold, fontSize = textSize.sp,
+            lineHeight = textSize.sp, color = Sunny.InkTitle, modifier = Modifier.padding(start = 14.dp))
     }
 }
 
@@ -60,14 +73,15 @@ fun SheetHandle() {
 @Composable
 fun OnboardingScaffold(title: String, subtitle: String?, content: @Composable ColumnScope.() -> Unit) {
     Column(
-        Modifier.fillMaxSize().background(Sunny.Cream).imePadding().verticalScroll(rememberScrollState()),
+        Modifier.fillMaxSize().background(Sunny.Butter).imePadding().verticalScroll(rememberScrollState()),
     ) {
         Box(
             Modifier.fillMaxWidth()
                 .background(Sunny.Butter, RoundedCornerShape(bottomStart = 40.dp, bottomEnd = 40.dp)),
         ) {
             CornerBlock(Sunny.Card, size = 104.dp, modifier = Modifier.align(Alignment.TopEnd)) {
-                Text("🍲", fontSize = 36.sp, modifier = Modifier.statusBarsPadding())
+                Image(painterResource(R.drawable.ic_mijote_cocotte), contentDescription = null,
+                    modifier = Modifier.statusBarsPadding().size(72.dp))
             }
             Column(Modifier.statusBarsPadding().padding(start = 28.dp, end = 28.dp, top = 96.dp, bottom = 80.dp)) {
                 ScreenTitle(title, subtitle, size = 40)
