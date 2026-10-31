@@ -80,7 +80,7 @@ type Admin struct {
 // New parses the templates.
 func New(st *store.Store, guard *auth.Guard, proxies auth.Proxies, key []byte, imgs images.Dir) (*Admin, error) {
 	a := &Admin{Store: st, Guard: guard, Proxies: proxies, Key: key, Images: imgs, pages: map[string]*template.Template{}}
-	for _, p := range []string{"setup", "login", "login_2fa", "home", "account", "sessions", "journal", "accounts", "invitations", "tokens", "recipes", "recipe", "tags", "error"} {
+	for _, p := range []string{"setup", "login", "login_2fa", "home", "account", "sessions", "journal", "accounts", "invitations", "invite", "tokens", "recipes", "recipe", "tags", "error"} {
 		t, err := template.New("layout.html").Funcs(funcs).ParseFS(templateFS, "templates/layout.html", "templates/"+p+".html")
 		if err != nil {
 			return nil, err
@@ -98,6 +98,8 @@ func (a *Admin) Routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /admin/login", a.login)
 	mux.HandleFunc("GET /admin/login/2fa", a.twoFALoginPage)
 	mux.HandleFunc("POST /admin/login/2fa", a.twoFALogin)
+	// Public page behind the shared invitation link (no session).
+	mux.HandleFunc("GET /invite/{code}", a.invitePage)
 
 	protected := map[string]http.HandlerFunc{
 		"GET /admin/{$}":                        a.home,

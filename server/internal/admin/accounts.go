@@ -115,9 +115,14 @@ func (a *Admin) serverURL(r *http.Request) string {
 	return scheme + "://" + r.Host
 }
 
-// InvitationLink is what the QR code and the "open on the phone" link contain:
-// the server URL and the single-use code.
-func InvitationLink(serverURL, code string) string {
+// invitationPageURL is the link the admin shares (message, mail, QR code): a plain
+// web page that works with or without the app installed.
+func invitationPageURL(serverURL, code string) string {
+	return serverURL + "/invite/" + url.PathEscape(code)
+}
+
+// appInvitationLink opens the app directly, with the server address and the code.
+func appInvitationLink(serverURL, code string) string {
 	return "mijote://invite?server=" + url.QueryEscape(serverURL) + "&code=" + url.QueryEscape(code)
 }
 
@@ -138,7 +143,7 @@ func (a *Admin) createInvitation(w http.ResponseWriter, r *http.Request) {
 	}
 	a.Store.LogAuthEvent(r.Context(), &s.user.ID, s.user.Username, "admin", "invite_created",
 		"valable "+strconv.Itoa(days)+" j", a.client(r))
-	link := InvitationLink(a.serverURL(r), code)
+	link := invitationPageURL(a.serverURL(r), code)
 	n := &newInvitation{Code: code, Link: link, Days: days}
 	if img, err := qr.Encode(link, qr.M); err == nil {
 		n.QR = template.URL("data:image/png;base64," + base64.StdEncoding.EncodeToString(img.PNG()))
