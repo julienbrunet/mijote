@@ -55,6 +55,9 @@ val Inter = FontFamily(
     Font(R.font.inter_700, FontWeight.Bold),
 )
 
+/** Brand font of the "Mijote" wordmark only (Grandstander ExtraBold, SIL OFL). */
+val Grandstander = FontFamily(Font(R.font.grandstander_800, FontWeight.ExtraBold))
+
 private val Colors = lightColorScheme(
     primary = Sunny.PeachDeep,
     onPrimary = Color.White,

@@ -225,6 +225,10 @@ Dish type tags (background / text):
 | Fish | `#DDEBF4` | `#4A7391` |
 | Vegetarian | `#E4F1D8` | `#5A7F45` |
 
+### Logo and wordmark
+- Logo: a coral cocotte with a green sprout as the lid knob, on a butter rounded square (`android/app/src/main/res/drawable/ic_mijote_logo.xml`).
+- Wordmark "Mijote" in **Grandstander ExtraBold** (SIL OFL, bundled), Ink title; used only for the brand name.
+
 ### Typography
 - Font: **Inter** (Light 300, Regular 400, Medium 500, SemiBold 600, Bold 700), bundled with the app.
 - Screen title: Bold, ~32 sp (40 sp on onboarding, on two lines), Ink title, sentence case.
@@ -247,7 +251,7 @@ Dish type tags (background / text):
 - Butter header sheet (rounded bottom corners 40 dp) with a white corner block and a big two-line title; the form is a white card overlapping the sheet's bottom edge; secondary actions in Slate below.
 
 ### Home screen layout
-- White header (rounded bottom corners 40 dp) with title **"Ça mijote"**, the period summary below (e.g. "2 → 8 novembre · 11 repas"), a wide Peach **"Nouvelle semaine"** button and a square Slate search tile; the user button sits in a Butter corner block.
+- Big white header (rounded bottom corners 40 dp) with the logo (76 dp) next to the **"Mijote"** wordmark (54 sp) on the Menus tab (a plain title on the other tabs), the period summary below (e.g. "2 → 8 novembre · 11 repas"), a wide Peach **"Nouvelle semaine"** button and a square Slate search tile; the user button sits in a Butter corner block.
 - Upcoming days as stacked colored sheets cycling Butter, Peach, Slate, each with a header (e.g. "Aujourd'hui", "Demain", weekday) and its planned meals.
 - Meals shown as **full-width horizontal cards**: recipe image on the left, meal slot, recipe title, dish type tag and prep time, and the corner action. (Replaces the former 2-column grid.)
 - **Bottom navigation**: stacked tabs anchored to the bottom-right corner of the screen, laid out from the right (Generate, Recipes, Menus) in three peach shades lighter towards the edge; each tab overlaps its left neighbour with a rounded top-left corner (36 dp) and extends behind the system navigation bar. The selected tab widens and shows its label next to the icon; the others show the icon only.

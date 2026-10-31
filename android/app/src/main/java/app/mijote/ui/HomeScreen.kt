@@ -13,7 +13,6 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -55,7 +54,7 @@ fun HomeScreen(user: User, onLogout: () -> Unit, period: String? = null, days: L
     var tab by rememberSaveable { mutableStateOf(Tab.MENUS) }
     Box(Modifier.fillMaxSize().background(Sunny.Cream)) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-            Header(user, onLogout, if (tab == Tab.MENUS) "Ça mijote" else tab.label, period.takeIf { tab == Tab.MENUS })
+            Header(user, onLogout, tab.label.takeIf { tab != Tab.MENUS }, period.takeIf { tab == Tab.MENUS })
             if (tab == Tab.MENUS && days.isNotEmpty()) {
                 days.forEachIndexed { i, day ->
                     DaySheet(day, sheetStyles[i % sheetStyles.size], first = i == 0, last = i == days.lastIndex)
@@ -77,7 +76,8 @@ fun HomeScreen(user: User, onLogout: () -> Unit, period: String? = null, days: L
 }
 
 @Composable
-private fun Header(user: User, onLogout: () -> Unit, title: String, period: String?) {
+/** Big header: logo and wordmark on the Menus tab, a plain title on the other tabs. */
+private fun Header(user: User, onLogout: () -> Unit, title: String?, period: String?) {
     Box(
         Modifier.fillMaxWidth().zIndexShadow()
             .background(Sunny.Card, RoundedCornerShape(bottomStart = 40.dp, bottomEnd = 40.dp)),
@@ -85,10 +85,14 @@ private fun Header(user: User, onLogout: () -> Unit, title: String, period: Stri
         CornerBlock(Sunny.Butter, size = 96.dp, modifier = Modifier.align(Alignment.TopEnd)) {
             Box(Modifier.statusBarsPadding()) { UserButton(user, onLogout) }
         }
-        Column(Modifier.statusBarsPadding().padding(start = 24.dp, end = 24.dp, top = 40.dp, bottom = 28.dp)) {
-            ScreenTitle(title, period, size = 32)
+        Column(Modifier.statusBarsPadding().padding(start = 22.dp, end = 24.dp, top = 44.dp, bottom = 30.dp)) {
+            if (title != null) ScreenTitle(title, period, size = 32)
+            else {
+                BrandTitle()
+                period?.let { Text(it, fontSize = 15.sp, color = Sunny.InkTitle, modifier = Modifier.padding(start = 4.dp, top = 14.dp)) }
+            }
             if (period != null) {
-                Spacer(Modifier.height(22.dp))
+                Spacer(Modifier.height(24.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Row(
                         Modifier.weight(1f).height(64.dp).clip(Shapes.Control).background(Sunny.Peach).padding(horizontal = 14.dp),
