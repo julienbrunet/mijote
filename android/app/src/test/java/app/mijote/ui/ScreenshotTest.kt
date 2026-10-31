@@ -46,6 +46,15 @@ class ScreenshotTest {
     }
 
     @Test
+    fun preferences() = paparazzi.snapshot {
+        MijoteTheme {
+            PreferencesScreen(User("u1", "julien", "Julien", "admin", people = 4), "https://mesrepas.example.fr", "0.1.31",
+                checkingUpdate = false, updateMessage = "L'application est à jour.",
+                onPeople = {}, onCheckUpdate = {}, onChangeServer = {}, onLogout = {}, onBack = {})
+        }
+    }
+
+    @Test
     fun generate() = paparazzi.snapshot {
         MijoteTheme {
             GenerateScreen(GenerationInfo(24, 10, 7, listOf("dinner", "dinner", "dinner", "dinner", "dinner", "lunch_dinner", "lunch_dinner")),

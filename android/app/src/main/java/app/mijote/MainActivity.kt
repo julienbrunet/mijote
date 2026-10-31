@@ -14,6 +14,8 @@ import app.mijote.ui.HomeScreen
 import app.mijote.ui.InviteScreen
 import app.mijote.ui.LoginScreen
 import app.mijote.ui.MijoteTheme
+import app.mijote.ui.PreferencesScreen
+import androidx.activity.compose.BackHandler
 import app.mijote.ui.ServerScreen
 import app.mijote.ui.UpdateDialog
 import app.mijote.ui.menuDays
@@ -36,6 +38,7 @@ class MainActivity : ComponentActivity() {
             val state by vm.state.collectAsStateWithLifecycle()
             val update by vm.update.collectAsStateWithLifecycle()
             val menu by vm.menu.collectAsStateWithLifecycle()
+            val check by vm.updateCheck.collectAsStateWithLifecycle()
             MijoteTheme {
                 UpdateDialog(update, vm.currentVersion, onInstall = vm::installUpdate, onDismiss = vm::dismissUpdate)
                 when (val s = state.screen) {
@@ -45,12 +48,18 @@ class MainActivity : ComponentActivity() {
                         onLogin = vm::login, onChangeServer = vm::changeServer, onInvite = vm::showInvite)
                     is Screen.Invite -> InviteScreen(s.serverUrl, s.code, state.busy, state.error,
                         onSubmit = vm::redeemInvitation, onBack = vm::backFromInvite)
+                    is Screen.Preferences -> {
+                        BackHandler(onBack = vm::closePreferences)
+                        PreferencesScreen(s.user, vm.serverUrl, vm.currentVersion, check.checking, check.message ?: state.error,
+                            onPeople = vm::setPeople, onCheckUpdate = vm::checkForUpdate, onChangeServer = vm::leaveServer,
+                            onLogout = vm::logout, onBack = vm::closePreferences)
+                    }
                     is Screen.Home -> {
                         val m = menu.menu
                         HomeScreen(
                             s.user, onLogout = vm::logout,
                             period = m?.let(::menuPeriod), days = m?.let(::menuDays).orEmpty(),
-                            generatedCount = menu.generated, onNewWeek = vm::loadMenu, onPeople = vm::setPeople,
+                            generatedCount = menu.generated, onNewWeek = vm::loadMenu, onPreferences = vm::openPreferences,
                         ) {
                             GenerateScreen(m?.info, m?.today ?: LocalDate.now(), s.user.people, menu.generating, menu.error,
                                 onGenerate = vm::generateMenu)

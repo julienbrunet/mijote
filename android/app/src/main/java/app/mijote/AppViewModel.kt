@@ -32,6 +32,7 @@ sealed interface Screen {
     data object Server : Screen
     data class Login(val serverUrl: String) : Screen
     data class Home(val user: User) : Screen
+    data class Preferences(val user: User) : Screen
 
     /** Join the family with an invitation; server and code are prefilled when they come from a link. */
     data class Invite(val serverUrl: String? = null, val code: String? = null) : Screen
@@ -51,6 +52,9 @@ data class UiState(
 )
 
 /** Planned meals (server-side generation, FR-GEN). [generated] counts successful generations. */
+/** Manual update check from the preferences: [message] tells the result. */
+data class UpdateCheck(val checking: Boolean = false, val message: String? = null)
+
 data class MenuState(
     val menu: Menu? = null,
     val generating: Boolean = false,
@@ -68,6 +72,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val _update = MutableStateFlow<UpdateState>(UpdateState.None)
     val update: StateFlow<UpdateState> = _update.asStateFlow()
     val currentVersion get() = updater.currentVersion
+
+    private val _check = MutableStateFlow(UpdateCheck())
+    val updateCheck: StateFlow<UpdateCheck> = _check.asStateFlow()
+    val serverUrl: String get() = session.serverUrl.orEmpty()
 
     private val _menu = MutableStateFlow(MenuState())
     val menu: StateFlow<MenuState> = _menu.asStateFlow()
@@ -149,7 +157,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     /** An invitation link was opened (QR code scanned with the camera, message…). */
     fun openInvitationLink(link: String?) {
-        if (_state.value.screen is Screen.Home) return // already signed in: never replace the session by accident
+        if (_state.value.screen is Screen.Home || _state.value.screen is Screen.Preferences) return // already signed in: never replace the session by accident
         val parsed = parseInvitationLink(link)
         _state.value = if (parsed != null) UiState(Screen.Invite(parsed.serverUrl, parsed.code))
         else UiState(_state.value.screen, error = "Ce lien d'invitation n'est pas valide.")
@@ -200,11 +208,50 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    fun openPreferences() {
+        val home = _state.value.screen as? Screen.Home ?: return
+        _check.value = UpdateCheck()
+        _state.value = UiState(Screen.Preferences(home.user))
+    }
+
+    fun closePreferences() {
+        val p = _state.value.screen as? Screen.Preferences ?: return
+        _state.value = UiState(Screen.Home(p.user))
+    }
+
+    /** "Change server": signs out, then asks for the new address. */
+    fun leaveServer() {
+        viewModelScope.launch {
+            session.logout()
+            _menu.value = MenuState()
+            _state.value = UiState(Screen.Server)
+        }
+    }
+
+    /** Looks for a newer published version, also in debug builds; a found release opens the update dialog. */
+    fun checkForUpdate() {
+        if (_check.value.checking) return
+        _check.value = UpdateCheck(checking = true)
+        viewModelScope.launch {
+            try {
+                val release = withContext(Dispatchers.IO) { updater.check() }
+                if (release != null) {
+                    _update.value = UpdateState.Available(release)
+                    _check.value = UpdateCheck(message = "Version ${release.version} disponible.")
+                } else {
+                    _check.value = UpdateCheck(message = "L'application est à jour.")
+                }
+            } catch (_: IOException) {
+                _check.value = UpdateCheck(message = "Impossible de vérifier les mises à jour : vérifiez la connexion.")
+            }
+        }
+    }
+
     /** Saves the number of people; the screen shows the new value at once and rolls back on failure. */
     fun setPeople(people: Int) {
-        val home = _state.value.screen as? Screen.Home ?: return
-        val before = home.user
-        _state.update { it.copy(screen = Screen.Home(before.copy(people = people))) }
+        val prefs = _state.value.screen as? Screen.Preferences ?: return
+        val before = prefs.user
+        _state.update { it.copy(screen = Screen.Preferences(before.copy(people = people))) }
         viewModelScope.launch {
             try {
                 val u = session.authed { api, access -> api.setPeople(access, people) }
@@ -212,7 +259,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             } catch (e: SessionExpiredException) {
                 toLogin("Votre session a expiré : reconnectez-vous.")
             } catch (e: IOException) {
-                _state.update { if (it.screen is Screen.Home) it.copy(screen = Screen.Home(before), error = errorMessage(e)) else it }
+                _state.update { if (it.screen is Screen.Preferences) it.copy(screen = Screen.Preferences(before), error = errorMessage(e)) else it }
             }
         }
     }
