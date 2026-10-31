@@ -1,0 +1,10 @@
+{{define "content"}}{{with .Data}}
+<section class="card scroll"><table>
+<tr><th>Étiquette</th><th>Recettes</th><th>Renommer</th><th></th></tr>
+{{range .Tags}}<tr><td>{{.Name}}</td><td>{{.Recipes}}</td>
+<td><form class="inline" method="post" action="/admin/tags/{{.ID}}/rename"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="text" name="name" value="{{.Name}}" maxlength="40" required style="display:inline;width:180px"> <button>Renommer</button></form></td>
+<td><form class="inline" method="post" action="/admin/tags/{{.ID}}/delete"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button>Supprimer</button></form></td></tr>
+{{else}}<tr><td colspan="4" class="muted">Aucune étiquette.</td></tr>{{end}}
+</table></section>
+<p class="muted">Les étiquettes sont créées en saisissant leur nom sur une recette. Supprimer une étiquette la retire de toutes les recettes.</p>
+{{end}}{{end}}

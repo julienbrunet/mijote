@@ -293,3 +293,186 @@ func TestInvitationFlow(t *testing.T) {
 	res, _ = web.form("/admin/accounts/"+lea.ID+"/disable", url.Values{})
 	expect(t, res, http.StatusForbidden, "account action without CSRF")
 }
+
+func (c *client) api(method, path, token string, v any) (*http.Response, map[string]any) {
+	c.t.Helper()
+	var b string
+	if v != nil {
+		raw, _ := json.Marshal(v)
+		b = string(raw)
+	}
+	res, body := c.do(method, path, "application/json", b, "Authorization", "Bearer "+token)
+	var out map[string]any
+	_ = json.Unmarshal([]byte(body), &out)
+	return res, out
+}
+
+func TestRecipes(t *testing.T) {
+	pool := testDB(t)
+	ctx := context.Background()
+	h, err := New(ctx, pool, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(h)
+	defer srv.Close()
+	st := store.New(pool)
+
+	web := newClient(t, srv.URL)
+	web.form("/admin/setup", url.Values{"username": {"julien"}, "password": {"secret-pass"}, "confirm": {"secret-pass"}})
+	web.form("/admin/login", url.Values{"password": {"secret-pass"}})
+	_, page := web.do("GET", "/admin/recipes", "", "")
+	csrf := csrfRe.FindStringSubmatch(page)[1]
+
+	// A member and the admin sign in to the app.
+	code, _ := st.CreateInvitation(ctx, mustAdmin(t, st).ID, time.Hour)
+	app := newClient(t, srv.URL)
+	_, tok := app.json("/api/v1/invitations/redeem", map[string]string{"code": code, "username": "lea", "password": "lea-password"})
+	member := tok["accessToken"].(string)
+	_, tok = app.json("/api/v1/auth/login", map[string]string{"username": "julien", "password": "secret-pass"})
+	adminTok := tok["accessToken"].(string)
+
+	res, _ := app.api("GET", "/api/v1/recipes", "", nil)
+	expect(t, res, http.StatusUnauthorized, "recipes need a token")
+
+	// Create with validation.
+	res, _ = app.api("POST", "/api/v1/recipes", member, map[string]any{"title": "Soupe"})
+	expect(t, res, http.StatusUnprocessableEntity, "dish type is required")
+	res, _ = app.api("POST", "/api/v1/recipes", member, map[string]any{"title": "Soupe", "dishType": "vegetarian",
+		"ingredients": []map[string]any{{"name": "sel", "unit": "bogus"}}})
+	expect(t, res, http.StatusUnprocessableEntity, "unknown unit")
+	res, rec := app.api("POST", "/api/v1/recipes", member, map[string]any{
+		"title": "Gratin de courgettes", "sourceUrl": "https://example.com/gratin", "dishType": "vegetarian",
+		"prepMinutes": 15, "cookMinutes": 30, "seasons": []string{"summer", "spring", "summer"},
+		"tags": []string{"Four", "été", "four"},
+		"ingredients": []map[string]any{
+			{"quantity": 0.5, "unit": "kg", "name": "courgettes", "note": "en rondelles"},
+			{"name": "sel"},
+		},
+		"steps": []string{"Couper.", "  ", "Cuire."},
+	})
+	expect(t, res, http.StatusCreated, "create")
+	id := rec["id"].(string)
+	if rec["totalMinutes"] != float64(45) || rec["version"] != float64(1) {
+		t.Fatalf("defaults: %v", rec)
+	}
+	if got := rec["seasons"].([]any); len(got) != 2 || got[0] != "spring" {
+		t.Fatalf("seasons not normalized: %v", got)
+	}
+	if got := rec["tags"].([]any); len(got) != 2 {
+		t.Fatalf("tags not deduplicated: %v", got)
+	}
+	ings := rec["ingredients"].([]any)
+	if len(ings) != 2 || ings[0].(map[string]any)["rawText"] != "0.5 kg courgettes, en rondelles" {
+		t.Fatalf("ingredients: %v", ings)
+	}
+	if len(rec["steps"].([]any)) != 2 {
+		t.Fatalf("steps: %v", rec["steps"])
+	}
+	res, _ = app.api("POST", "/api/v1/recipes", member, map[string]any{"title": "Doublon", "dishType": "fish", "sourceUrl": "https://example.com/gratin"})
+	expect(t, res, http.StatusUnprocessableEntity, "duplicate source url")
+
+	// Read, search, update.
+	_, list := app.api("GET", "/api/v1/recipes?q=COURG", member, nil)
+	if len(list["recipes"].([]any)) != 1 {
+		t.Fatalf("search by title: %v", list)
+	}
+	_, list = app.api("GET", "/api/v1/recipes?q=%25", member, nil)
+	if len(list["recipes"].([]any)) != 0 {
+		t.Fatal("wildcards must be escaped")
+	}
+	_, list = app.api("GET", "/api/v1/recipes?tag=ÉTÉ&dishType=vegetarian", member, nil)
+	if len(list["recipes"].([]any)) != 1 {
+		t.Fatalf("filter by tag: %v", list)
+	}
+	res, rec = app.api("PUT", "/api/v1/recipes/"+id, member, map[string]any{"title": "Gratin", "dishType": "vegetarian", "version": 1, "tags": []string{"four"}})
+	expect(t, res, http.StatusOK, "update")
+	if rec["version"] != float64(2) || len(rec["ingredients"].([]any)) != 0 {
+		t.Fatalf("update: %v", rec)
+	}
+	res, rec = app.api("PUT", "/api/v1/recipes/"+id, member, map[string]any{"title": "Gratin 2", "dishType": "meat", "version": 1})
+	expect(t, res, http.StatusOK, "last write wins even with an older version")
+	if rec["version"] != float64(3) {
+		t.Fatalf("version after second update: %v", rec["version"])
+	}
+	res, _ = app.api("GET", "/api/v1/recipes/00000000-0000-0000-0000-000000000000", member, nil)
+	expect(t, res, http.StatusNotFound, "unknown recipe")
+	res, _ = app.api("GET", "/api/v1/recipes/nope", member, nil)
+	expect(t, res, http.StatusNotFound, "malformed id")
+
+	// Only the admin deletes (archives).
+	res, _ = app.api("DELETE", "/api/v1/recipes/"+id, member, nil)
+	expect(t, res, http.StatusForbidden, "member cannot delete")
+	res, _ = app.api("DELETE", "/api/v1/recipes/"+id, adminTok, nil)
+	expect(t, res, http.StatusNoContent, "admin archives")
+	_, list = app.api("GET", "/api/v1/recipes", member, nil)
+	if len(list["recipes"].([]any)) != 0 {
+		t.Fatal("archived recipe still listed")
+	}
+
+	// Web admin: archived list, restore, create and edit through the form.
+	_, page = web.do("GET", "/admin/recipes?archived=1", "", "")
+	if !strings.Contains(page, "Gratin 2") {
+		t.Fatal("archived recipe missing from the admin")
+	}
+	res, _ = web.form("/admin/recipes/"+id+"/restore", url.Values{"csrf": {csrf}})
+	expect(t, res, http.StatusSeeOther, "restore")
+	res, _ = web.form("/admin/recipes/"+id+"/restore", url.Values{})
+	expect(t, res, http.StatusForbidden, "restore without CSRF")
+
+	form := url.Values{"csrf": {csrf}, "title": {"Tarte"}, "dish_type": {"fish"}, "meal": {"dinner"}, "tags": {"four, rapide"},
+		"ing_qty": {"1,5", "", ""}, "ing_unit": {"dl", "", ""}, "ing_name": {"lait", "sel", ""}, "ing_note": {"", "", ""},
+		"steps": {"Mélanger\r\nCuire"}, "prep_minutes": {"10"}}
+	res, _ = web.form("/admin/recipes", form)
+	expect(t, res, http.StatusSeeOther, "create from the form")
+	newURL := res.Header.Get("Location")
+	_, page = web.do("GET", strings.SplitN(newURL, "?", 2)[0], "", "")
+	if !strings.Contains(page, `value="1.5"`) || !strings.Contains(page, "Mélanger") {
+		t.Fatal("form values not shown again")
+	}
+	form.Set("title", "")
+	res, page = web.form("/admin/recipes", form)
+	expect(t, res, http.StatusUnprocessableEntity, "missing title")
+	if !strings.Contains(page, "Le titre est obligatoire") || !strings.Contains(page, `value="1,5"`) {
+		t.Fatal("error not shown with the submitted values")
+	}
+	form.Set("title", "Tarte")
+	form.Set("ing_qty", "abc")
+	res, _ = web.form("/admin/recipes", form)
+	expect(t, res, http.StatusUnprocessableEntity, "unreadable quantity")
+
+	// Tags: rename, conflict, delete.
+	tags, _ := st.ListTags(ctx)
+	var four, quick store.Tag
+	for _, tg := range tags {
+		switch strings.ToLower(tg.Name) {
+		case "four":
+			four = tg
+		case "rapide":
+			quick = tg
+		}
+	}
+	if four.Recipes != 1 {
+		t.Fatalf("tag counts: %+v", tags)
+	}
+	res, _ = web.form("/admin/tags/"+quick.ID+"/rename", url.Values{"csrf": {csrf}, "name": {"FOUR"}})
+	expect(t, res, http.StatusUnprocessableEntity, "tag name taken")
+	res, _ = web.form("/admin/tags/"+quick.ID+"/rename", url.Values{"csrf": {csrf}, "name": {"express"}})
+	expect(t, res, http.StatusSeeOther, "rename tag")
+	res, _ = web.form("/admin/tags/"+four.ID+"/delete", url.Values{"csrf": {csrf}})
+	expect(t, res, http.StatusSeeOther, "delete tag")
+	_, got := app.api("GET", "/api/v1/tags", member, nil)
+	if n := len(got["tags"].([]any)); n != 2 { // "été" (now unused) and "express"
+		t.Fatalf("tags after cleanup: %v", got)
+	}
+	res, _ = web.do("GET", "/admin/tags", "", "")
+	expect(t, res, http.StatusOK, "tags page")
+}
+
+func mustAdmin(t *testing.T, st *store.Store) store.User {
+	u, err := st.Admin(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return u
+}

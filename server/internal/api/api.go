@@ -29,6 +29,16 @@ func (a *API) Routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/v1/invitations/redeem", a.redeemInvitation)
 	mux.Handle("POST /api/v1/auth/logout", a.authenticate(http.HandlerFunc(a.logout)))
 	mux.Handle("GET /api/v1/me", a.authenticate(http.HandlerFunc(a.me)))
+	for pattern, h := range map[string]http.HandlerFunc{
+		"GET /api/v1/recipes":         a.listRecipes,
+		"POST /api/v1/recipes":        a.createRecipe,
+		"GET /api/v1/recipes/{id}":    a.getRecipe,
+		"PUT /api/v1/recipes/{id}":    a.updateRecipe,
+		"DELETE /api/v1/recipes/{id}": a.archiveRecipe,
+		"GET /api/v1/tags":            a.listTags,
+	} {
+		mux.Handle(pattern, a.authenticate(h))
+	}
 }
 
 type ctxKey struct{}

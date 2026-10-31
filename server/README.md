@@ -15,7 +15,12 @@ Go server: REST API, database migrations at startup.
 MIJOTE_DATABASE_URL=postgres://... go run .
 ```
 Endpoints so far: `GET /healthz`, `GET /api/versions`, `POST /api/v1/auth/{login,refresh,logout}`,
-`POST /api/v1/invitations/redeem`, `GET /api/v1/me`, and the web admin under `/admin/` (setup wizard on first start, accounts, invitations, sessions, login journal).
+`POST /api/v1/invitations/redeem`, `GET /api/v1/me`, the recipe API and the web admin under `/admin/` (setup wizard on first start, recipes, tags, accounts, invitations, sessions, login journal).
+
+Recipe API (bearer token, JSON, camelCase; shape in `internal/store/recipes.go`):
+`GET /api/v1/recipes?q=&tag=&dishType=&limit=&offset=` (summaries: no ingredients or steps),
+`POST /api/v1/recipes`, `GET|PUT /api/v1/recipes/{id}` (full recipe; `PUT` replaces the content, last write wins),
+`DELETE /api/v1/recipes/{id}` (archives; admin only), `GET /api/v1/tags`.
 Security model: `requirements.md` §13. Lost 2FA phone: `mijote reset-2fa <username>`.
 
 ## Database migrations

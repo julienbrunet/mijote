@@ -1,0 +1,42 @@
+{{define "content"}}{{with .Data}}
+<form method="post" action="{{if .New}}/admin/recipes{{else}}/admin/recipes/{{.R.ID}}{{end}}">
+<input type="hidden" name="csrf" value="{{$.CSRF}}">
+<section class="card"><h2>Général</h2>
+<label>Titre<input type="text" name="title" value="{{.R.Title}}" required maxlength="200"></label>
+<label>Lien de la recette (source)<input type="url" name="source_url" value="{{deref .R.SourceURL}}" maxlength="2000"></label>
+<label>Adresse de l'image<input type="url" name="image_url" value="{{deref .R.ImageURL}}" maxlength="2000"></label>
+<div class="grid">
+<label>Type de plat<select name="dish_type" required><option value="">Choisir…</option>{{range .DishOpts}}<option value="{{.Code}}" {{if eq .Code $.Data.R.DishType}}selected{{end}}>{{.Label}}</option>{{end}}</select></label>
+<label>Personnes<input type="number" name="servings" min="1" value="{{intp .R.Servings}}"></label>
+<label>Préparation (min)<input type="number" name="prep_minutes" min="0" value="{{intp .R.PrepMinutes}}"></label>
+<label>Cuisson (min)<input type="number" name="cook_minutes" min="0" value="{{intp .R.CookMinutes}}"></label>
+<label>Total (min)<input type="number" name="total_minutes" min="0" value="{{intp .R.TotalMinutes}}"></label>
+</div>
+<p class="muted">Le temps total vaut préparation + cuisson s'il est laissé vide ; il sert à classer la recette en rapide ou longue.</p>
+<p>Repas : {{range .Meals}}<label class="check"><input type="checkbox" name="meal" value="{{.Code}}" {{if has $.Data.R.MealTypes .Code}}checked{{end}}> {{.Label}}</label>{{end}}</p>
+<p>Saisons : {{range .Seasons}}<label class="check"><input type="checkbox" name="season" value="{{.Code}}" {{if has $.Data.R.Seasons .Code}}checked{{end}}> {{.Label}}</label>{{end}}<span class="muted">(aucune = toute l'année)</span></p>
+<label>Étiquettes (séparées par des virgules)<input type="text" name="tags" value="{{.Tags}}" list="alltags" maxlength="1000"></label>
+<datalist id="alltags">{{range .AllTags}}<option value="{{.Name}}">{{end}}</datalist>
+</section>
+<section class="card scroll"><h2>Ingrédients</h2>
+<table><tr><th>Quantité</th><th>Unité</th><th>Ingrédient</th><th>Précision</th></tr>
+{{range $i, $ing := .Rows}}<tr>
+<td><input type="text" name="ing_qty" value="{{index $.Data.Quantity $i}}" size="6" inputmode="decimal"></td>
+<td><select name="ing_unit"><option value=""></option>{{range $.Data.Units}}<option value="{{.Code}}" {{if eq .Code (deref $ing.Unit)}}selected{{end}}>{{if .Label}}{{.Label}}{{else}}pièce{{end}}</option>{{end}}</select></td>
+<td><input type="text" name="ing_name" value="{{$ing.Name}}" maxlength="200"></td>
+<td><input type="text" name="ing_note" value="{{deref $ing.Note}}" maxlength="200"></td></tr>
+{{end}}</table>
+<p class="muted">Laissez la quantité vide pour « une pincée de sel ». Des lignes vides supplémentaires apparaissent après chaque enregistrement. Le texte affiché de chaque ligne est recomposé à l'enregistrement.</p>
+</section>
+<section class="card"><h2>Étapes</h2>
+<label>Une étape par ligne<textarea name="steps" rows="8">{{.Steps}}</textarea></label></section>
+<section class="card"><h2>Notes</h2>
+<label>Notes de la famille<textarea name="notes" rows="3">{{deref .R.Notes}}</textarea></label></section>
+<p><button>Enregistrer</button> <a href="/admin/recipes" style="margin-left:12px">Retour à la liste</a></p>
+</form>
+{{if not .New}}<section class="card">
+{{if .R.ArchivedAt}}<p>Cette recette est archivée.</p>
+<form method="post" action="/admin/recipes/{{.R.ID}}/restore"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button>Restaurer</button></form>
+{{else}}<form method="post" action="/admin/recipes/{{.R.ID}}/archive"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button>Archiver la recette</button></form>{{end}}
+</section>{{end}}
+{{end}}{{end}}

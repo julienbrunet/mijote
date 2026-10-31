@@ -48,7 +48,7 @@ Planning a family's weekly menus is repetitive: finding recipes, avoiding repeat
 | Manage accounts and invitations | ✅ | ❌ |
 | Manage family settings (default meals, preferences) | ✅ | ❌ |
 | Add / edit recipes | ✅ | ✅ |
-| Delete recipes, manage tags | ✅ | ❌ (to confirm) |
+| Delete recipes, manage tags | ✅ | ❌ (to confirm; the API currently reserves archiving to the admin, tags are managed in the web admin only) |
 | Generate and adjust menus | ✅ | ✅ |
 | Access web admin | ✅ | ❌ |
 
@@ -133,7 +133,7 @@ Planning a family's weekly menus is repetitive: finding recipes, avoiding repeat
 | FR-ADM-01 | Server-rendered pages with htmx, embedded in the backend binary; no SPA. | Must |
 | FR-ADM-02 | Manage accounts (list, deactivate, reset password) and invitations. | Must |
 | FR-ADM-03 | Manage family settings (default meals, preferences). | Must |
-| FR-ADM-04 | Manage recipes and tags. | Should |
+| FR-ADM-04 | Manage recipes (create, edit, archive, restore) and tags (rename, delete). | Should |
 | FR-ADM-05 | Show instance info (version, API version, DB status). | Could |
 
 ## 5. Non-functional requirements
