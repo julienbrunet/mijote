@@ -50,6 +50,7 @@ fun HomeScreen(
     days: List<DayUi> = emptyList(),
     generatedCount: Int = 0,
     onNewWeek: (() -> Unit)? = null,
+    onPeople: (Int) -> Unit = {},
     generate: @Composable () -> Unit = {},
 ) {
     var tab by rememberSaveable { mutableStateOf(Tab.MENUS) }
@@ -65,7 +66,7 @@ fun HomeScreen(
     Box(Modifier.fillMaxSize().background(Sunny.Butter)) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
             Header(user, onLogout, tab.label.takeIf { tab != Tab.MENUS }, period.takeIf { tab == Tab.MENUS },
-                onNewWeek = { onNewWeek?.invoke(); tab = Tab.GENERATE })
+                onNewWeek = { onNewWeek?.invoke(); tab = Tab.GENERATE }, onPeople = onPeople)
             if (tab == Tab.MENUS && days.isNotEmpty()) {
                 Column(Modifier.padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 120.dp)) {
                     days.forEachIndexed { i, day ->
@@ -94,13 +95,13 @@ fun HomeScreen(
 
 @Composable
 /** Big header: logo and wordmark on the Menus tab, a plain title on the other tabs. */
-private fun Header(user: User, onLogout: () -> Unit, title: String?, period: String?, onNewWeek: () -> Unit) {
+private fun Header(user: User, onLogout: () -> Unit, title: String?, period: String?, onNewWeek: () -> Unit, onPeople: (Int) -> Unit) {
     Box(
         Modifier.fillMaxWidth().zIndexShadow()
             .background(Sunny.Card, RoundedCornerShape(bottomStart = 40.dp, bottomEnd = 40.dp)),
     ) {
         CornerBlock(Sunny.Butter, size = 96.dp, modifier = Modifier.align(Alignment.TopEnd)) {
-            Box(Modifier.statusBarsPadding()) { UserButton(user, onLogout) }
+            Box(Modifier.statusBarsPadding()) { UserButton(user, onLogout, onPeople) }
         }
         Column(Modifier.statusBarsPadding().padding(start = 22.dp, end = 24.dp, top = 44.dp, bottom = 30.dp)) {
             if (title != null) ScreenTitle(title, period, size = 32)
@@ -186,7 +187,7 @@ private fun MealCard(meal: MealUi, accent: Color) {
 }
 
 @Composable
-private fun UserButton(user: User, onLogout: () -> Unit) {
+private fun UserButton(user: User, onLogout: () -> Unit, onPeople: (Int) -> Unit) {
     var open by remember { mutableStateOf(false) }
     Box {
         IconButton(onClick = { open = true }, modifier = Modifier.size(48.dp)) {
@@ -194,6 +195,14 @@ private fun UserButton(user: User, onLogout: () -> Unit) {
         }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }, containerColor = Sunny.Card) {
             Text(user.displayName, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+            // Preference: number of people the menus are cooked for.
+            Row(Modifier.padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("Personnes", color = Sunny.Ink, modifier = Modifier.padding(start = 8.dp, end = 4.dp))
+                TextButton(onClick = { onPeople(user.people - 1) }, enabled = user.people > 1) { Text("−", fontSize = 20.sp) }
+                Text("${user.people}", fontWeight = FontWeight.Bold, color = Sunny.Ink)
+                TextButton(onClick = { onPeople(user.people + 1) }, enabled = user.people < 20) { Text("+", fontSize = 20.sp) }
+            }
+            HorizontalDivider(color = Sunny.Track)
             DropdownMenuItem(text = { Text("Se déconnecter") }, onClick = { open = false; onLogout() })
         }
     }

@@ -9,10 +9,10 @@ import (
 )
 
 type tokenPair struct {
-	AccessToken  string            `json:"accessToken"`
-	ExpiresIn    int               `json:"expiresIn"`
-	RefreshToken string            `json:"refreshToken"`
-	User         map[string]string `json:"user"`
+	AccessToken  string         `json:"accessToken"`
+	ExpiresIn    int            `json:"expiresIn"`
+	RefreshToken string         `json:"refreshToken"`
+	User         map[string]any `json:"user"`
 }
 
 func (a *API) writeTokens(w http.ResponseWriter, r *http.Request, status int, u store.User, sid, refresh string) {

@@ -86,6 +86,11 @@ class Session(
         }
     }
 
+    /** Saves the user returned by the server (e.g. after a preference change). */
+    fun updateUser(u: User) {
+        store.tokens?.let { store.tokens = it.copy(user = u) }
+    }
+
     /** Reloads the user from the server (also proves the session is still valid). */
     suspend fun refreshUser(): User {
         val u = authed { api, access -> api.me(access) }

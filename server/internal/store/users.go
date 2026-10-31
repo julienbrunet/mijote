@@ -23,16 +23,17 @@ type User struct {
 	ID, Username, DisplayName, Role string
 	DisabledAt                      *time.Time
 	CreatedAt                       time.Time
+	People                          int // preference: number of people to cook for
 }
 
 func (u User) IsAdmin() bool  { return u.Role == "admin" }
 func (u User) Disabled() bool { return u.DisabledAt != nil }
 
-const userCols = `id::text, username, display_name, role::text, disabled_at, created_at`
+const userCols = `id::text, username, display_name, role::text, disabled_at, created_at, people`
 
 func scanUser(row pgx.Row, extra ...any) (User, error) {
 	var u User
-	err := row.Scan(append([]any{&u.ID, &u.Username, &u.DisplayName, &u.Role, &u.DisabledAt, &u.CreatedAt}, extra...)...)
+	err := row.Scan(append([]any{&u.ID, &u.Username, &u.DisplayName, &u.Role, &u.DisabledAt, &u.CreatedAt, &u.People}, extra...)...)
 	return u, notFound(err)
 }
 
@@ -136,4 +137,15 @@ func (s *Store) ChangeOwnPassword(ctx context.Context, userID, current, next, ke
 		return err
 	}
 	return s.RevokeUserSessions(ctx, userID, "password", keepAdminSession)
+}
+
+// MaxPeople bounds the "number of people" preference.
+const MaxPeople = 20
+
+// SetPeople changes the number of people a user cooks for.
+func (s *Store) SetPeople(ctx context.Context, userID string, people int) (User, error) {
+	if people < 1 || people > MaxPeople {
+		return User{}, invalid("le nombre de personnes doit être compris entre 1 et 20")
+	}
+	return scanUser(s.Pool.QueryRow(ctx, `UPDATE app_user SET people = $2 WHERE id = $1 RETURNING `+userCols, userID, people))
 }

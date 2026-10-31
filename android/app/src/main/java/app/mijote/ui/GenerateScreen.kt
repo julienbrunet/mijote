@@ -52,6 +52,7 @@ private fun StartChoice.date(today: LocalDate) = when (this) {
 fun GenerateScreen(
     info: GenerationInfo?,
     today: LocalDate,
+    people: Int,
     busy: Boolean,
     error: String?,
     onGenerate: (start: LocalDate, meals: Int, plan: MealPlan) -> Unit,
@@ -108,7 +109,7 @@ fun GenerateScreen(
                     Spacer(Modifier.height(10.dp))
                     Text(if (count > 1) "$count repas" else "1 repas", fontSize = 24.sp, fontWeight = FontWeight.Bold,
                         color = Sunny.InkTitle)
-                    Text(periodLabel(startDate, end), fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Sunny.Ink,
+                    Text("${periodLabel(startDate, end)} · ${if (people > 1) "$people personnes" else "1 personne"}", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Sunny.Ink,
                         modifier = Modifier.padding(top = 4.dp))
                     Text(planDescription(plan), fontSize = 13.sp, color = Sunny.InkSoft, lineHeight = 18.sp,
                         modifier = Modifier.padding(top = 10.dp))

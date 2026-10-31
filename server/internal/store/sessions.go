@@ -145,7 +145,7 @@ func (s *Store) AdminSession(ctx context.Context, raw string, c Client) (u User,
 		FROM app_user u
 		WHERE a.token_hash = $1 AND u.id = a.user_id AND a.revoked_at IS NULL AND a.expires_at > now()
 		  AND a.last_seen_at > now() - a.idle_seconds * interval '1 second' AND u.disabled_at IS NULL AND u.role = 'admin'
-		RETURNING u.id::text, u.username, u.display_name, u.role::text, u.disabled_at, u.created_at, a.id::text`,
+		RETURNING u.id::text, u.username, u.display_name, u.role::text, u.disabled_at, u.created_at, u.people, a.id::text`,
 		hashToken(raw), c.IP), &sessionID)
 	return u, sessionID, err
 }
