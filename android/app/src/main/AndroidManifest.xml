@@ -2,6 +2,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Self-update: hands the downloaded release APK to the system installer (user confirms). -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <!-- Cleartext HTTP is refused (Android default): the server must be reached over HTTPS. -->
     <application
@@ -26,5 +28,6 @@
                 <data android:scheme="mijote" android:host="invite" />
             </intent-filter>
         </activity>
+        <receiver android:name=".data.InstallResultReceiver" android:exported="false" />
     </application>
 </manifest>

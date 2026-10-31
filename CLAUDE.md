@@ -42,7 +42,7 @@ Mijote is a self-hosted family weekly menu planner (native Android app in Kotlin
 - `prototypes/theme-playground/`: throwaway Compose app used to tune the theme.
 
 ## Presentation site (GitHub Pages)
-- `site/`: static page (plain HTML/CSS/JS, no build step) describing the app, with download links and install docs; same "Calm Kit" theme as the app and the same Inter fonts. Published at `https://julienbrunet.github.io/mijote/` by `.github/workflows/pages.yml` (deploys from `main` only; GitHub Pages source must be "GitHub Actions").
+- `site/`: static page (plain HTML/CSS/JS, no build step) describing the app, with download links and install docs; same "Sunny Kit" theme as the app and the same Inter fonts. Published at `https://julienbrunet.github.io/mijote/` by `.github/workflows/pages.yml` (deploys from `main` only; GitHub Pages source must be "GitHub Actions").
 - **Every feature change or addition (app or server) must be reflected in `site/index.html`** (features list, project status note, install guide, environment variables table), in the same commit.
 - Bilingual English/French: every text block exists twice, with `data-l="en"` and `data-l="fr"`; the language is detected from the browser and can be switched (choice saved in `localStorage`). CI fails if the two counts differ.
 - Download links are fetched at runtime from the latest `android-v*` and `server-v*` GitHub releases (`site/app.js`): a release needs no site redeploy.

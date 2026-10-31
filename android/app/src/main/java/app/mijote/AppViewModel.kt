@@ -1,23 +1,28 @@
 package app.mijote
 
 import android.app.Application
+import android.content.pm.ApplicationInfo
 import android.os.Build
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import app.mijote.data.ApiException
+import app.mijote.data.AppRelease
 import app.mijote.data.PrefsSessionStore
 import app.mijote.data.Session
 import app.mijote.data.SessionExpiredException
+import app.mijote.data.Updater
 import app.mijote.data.User
 import app.mijote.data.normalizeInvitationCode
 import app.mijote.data.normalizeServerUrl
 import app.mijote.data.parseInvitationLink
+import java.io.IOException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import java.io.IOException
+import kotlinx.coroutines.withContext
 
 /** What the app shows: server address, sign-in, or the signed-in app. */
 sealed interface Screen {
@@ -27,6 +32,13 @@ sealed interface Screen {
 
     /** Join the family with an invitation; server and code are prefilled when they come from a link. */
     data class Invite(val serverUrl: String? = null, val code: String? = null) : Screen
+}
+
+/** Self-update offer, shown as a dialog over any screen. */
+sealed interface UpdateState {
+    data object None : UpdateState
+    data class Available(val release: AppRelease, val error: String? = null) : UpdateState
+    data class Downloading(val release: AppRelease) : UpdateState
 }
 
 data class UiState(
@@ -41,7 +53,19 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val _state = MutableStateFlow(UiState(initialScreen()))
     val state: StateFlow<UiState> = _state.asStateFlow()
 
+    private val updater = Updater(app)
+    private val _update = MutableStateFlow<UpdateState>(UpdateState.None)
+    val update: StateFlow<UpdateState> = _update.asStateFlow()
+    val currentVersion get() = updater.currentVersion
+
     init {
+        // Release builds look for a newer published version at launch; debug builds never do.
+        if (app.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE == 0) {
+            viewModelScope.launch {
+                val release = runCatching { withContext(Dispatchers.IO) { updater.check() } }.getOrNull()
+                if (release != null) _update.value = UpdateState.Available(release)
+            }
+        }
         // Screens render from local state immediately; the session is checked in the background.
         if (_state.value.screen is Screen.Home) {
             viewModelScope.launch {
@@ -152,6 +176,23 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             toLogin()
         }
     }
+
+    fun installUpdate() {
+        val release = (_update.value as? UpdateState.Available)?.release ?: return
+        _update.value = UpdateState.Downloading(release)
+        viewModelScope.launch {
+            try {
+                withContext(Dispatchers.IO) { updater.downloadAndInstall(release) }
+                _update.value = UpdateState.None
+            } catch (e: IOException) {
+                _update.value = UpdateState.Available(release, e.message ?: "Téléchargement impossible.")
+            }
+        }
+    }
+
+    fun dismissUpdate() {
+        if (_update.value !is UpdateState.Downloading) _update.value = UpdateState.None
+    }
 }
 
 internal fun errorMessage(e: IOException): String = when {
@@ -162,4 +203,5 @@ internal fun errorMessage(e: IOException): String = when {
     e.code == "invalid_credentials" -> "Identifiant ou mot de passe incorrect."
     e.code == "too_many_requests" -> "Trop de tentatives : réessayez dans quelques minutes."
     else -> "Erreur du serveur (${e.status})."
+
 }

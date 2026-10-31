@@ -159,6 +159,7 @@ Planning a family's weekly menus is repetitive: finding recipes, avoiding repeat
 | NFR-17 | Deployment | Database migrations run automatically at startup. |
 | NFR-18 | Deployment | Backend is stateless apart from PostgreSQL and the image directory. |
 | NFR-19 | Backups | Backup and restore documented (`pg_dump` + image directory). |
+| NFR-20 | Deployment | App self-update (release builds): at launch the app reads the GitHub releases of the project, and when an `android-v*` release is newer than the installed version it offers to update. The APK is downloaded, checked against the published SHA-256 and handed to the system installer; Android always asks the user to confirm (no silent install outside a store). Debug builds never check. |
 
 ## 6. Architecture overview
 
@@ -193,7 +194,7 @@ Remaining open points: none.
 
 ## 8. Visual design (decided)
 
-Validated on the theme prototype (`prototypes/theme-playground/`). Theme name: **Calm Kit** — light, soft and calm.
+Theme name: **Sunny Kit** (2026-10-31, replaces the former "Calm Kit") — warm and colorful: butter and peach sheets on a cream background, white cards, a soft slate grey as the neutral accent, very large radii.
 
 ### Theme
 - **Light mode only** for now. A dark variant is out of scope until requested.
@@ -202,44 +203,50 @@ Validated on the theme prototype (`prototypes/theme-playground/`). Theme name: *
 ### Color palette
 | Token | Hex | Usage |
 |---|---|---|
-| Sage | `#6B7F6E` | Primary: main actions, selected navigation item, active toggles, lock icon |
-| Moss | `#A7B8A7` | Secondary accents |
-| Mist | `#D9E1D9` | Light containers, vegetarian tag background |
-| Ivory | `#F4EFE8` | Surface variant |
-| Sand | `#C9BDAF` | Outlines |
-| Background | `#EFEAE3` | Screen background |
-| Card | `#F7F4EF` | Cards, bottom navigation, round buttons |
-| Ink | `#2E3530` | Main text |
-| Ink soft | `#7D847F` | Secondary text, unselected navigation items |
-| Track | `#DDD8D1` | Inactive tracks, dividers |
-| On primary | `#FFFFFF` | Text and icons on Sage |
+| Butter | `#FFD88C` | Onboarding header sheet, first day sheet, user corner block |
+| Butter light | `#FFEBC2` | Surface variant |
+| Peach | `#FFA98B` | Second day sheet, "new week" button, card corner actions |
+| Peach deep | `#F4876A` | Primary: main buttons, focused fields, first bottom tab |
+| Slate | `#8E8E93` | Neutral accent: third day sheet, search tile, secondary actions |
+| Cream | `#FFF5E6` | Screen background |
+| Card | `#FFFFFF` | Cards, header, dialogs |
+| Ink | `#4A4A4A` | Main text |
+| Ink title | `#6B6B6B` | Titles |
+| Ink soft | `#A3A3A3` | Secondary text |
+| Track | `#F0E6D8` | Field underlines, dividers |
+| Error / error background | `#C0583E` / `#FFE3D8` | Error messages |
+| On primary | `#FFFFFF` | Text and icons on Peach, Peach deep and Slate |
 
 Dish type tags (background / text):
 | Dish type | Background | Text |
 |---|---|---|
-| Meat | `#EBDDD6` | `#7E5A4E` |
-| Fish | `#DDE4E8` | `#4F6573` |
-| Vegetarian | `#D9E1D9` | `#4F6552` |
-
-Status colors (success, error, warning, info) are not defined yet; they must stay within the same soft, desaturated tone.
+| Meat | `#FFE3D8` | `#C0583E` |
+| Fish | `#DDEBF4` | `#4A7391` |
+| Vegetarian | `#E4F1D8` | `#5A7F45` |
 
 ### Typography
-- Font: **Inter** (Light 300, Regular 400, Medium 500, SemiBold 600), bundled with the app.
-- Screen title: uppercase, Light, ~26 sp, wide letter spacing (~4 sp).
-- Section headers (days): Medium ~17 sp, followed by the date in secondary text.
-- Card labels (meal slot): uppercase ~11 sp, letter spacing ~1 sp, secondary text.
-- Recipe titles: Medium ~15 sp, max 2 lines with ellipsis.
+- Font: **Inter** (Light 300, Regular 400, Medium 500, SemiBold 600, Bold 700), bundled with the app.
+- Screen title: Bold, ~32 sp (40 sp on onboarding, on two lines), Ink title, sentence case.
+- Day headers: Bold ~19 sp, date on the right in uppercase SemiBold ~12 sp with letter spacing.
+- Meal slot: uppercase ~10 sp, letter spacing ~1 sp, Ink soft. Recipe titles: Bold ~16 sp, max 2 lines with ellipsis.
+- Buttons: Bold ~15–16 sp.
 
 ### Shapes and elevation
-- Cards: 18 dp corner radius, soft shadow (~2 dp).
-- Bottom navigation: floating card, 24 dp radius, ~4 dp shadow, 16 dp side margins.
-- Tags: 8 dp radius pills. Round icon buttons and badges: circles.
+- Sheets: 36 dp radius, warm (peach-tinted) shadow; day sheets overlap the previous one by ~36 dp and carry a small white handle bar on top.
+- **Corner block**: a colored square glued to the top-right corner of a sheet, only its bottom-left corner rounded (36 dp); holds the user button (home) or the app emoji (onboarding).
+- Cards: 22 dp radius, white, soft shadow. Buttons and tiles: 18 dp radius.
+- Card corner action: 46 dp square glued to the card's bottom-right corner (rounded top-left 16 dp), lock icon when the meal is locked, swap icon otherwise.
+- Text fields: borderless with an underline (Peach deep when focused).
+- Tags: 8 dp radius pills.
+
+### Onboarding screens
+- Butter header sheet (rounded bottom corners 40 dp) with a white corner block and a big two-line title; the form is a white card overlapping the sheet's bottom edge; secondary actions in Slate below.
 
 ### Home screen layout
-- Header: title **"ÇA MIJOTE"** with the period summary below (e.g. "2 → 8 novembre · 11 repas"); round **user button** on the top right.
-- Upcoming days listed in order, each with a header (e.g. "Aujourd'hui", "Demain", weekday) and its planned meals.
-- Meals shown as **cards in a 2-column grid**: recipe image on top (aspect ~1.4:1), meal slot, recipe title, dish type tag and prep time. A locked meal (lock icon, Sage) is shown as a round badge on the image's top-right corner.
-- **Bottom navigation** with 3 items (icon + label), selected item in Sage with a small dot below, unselected in Ink soft; no background behind the floating bar.
+- White header (rounded bottom corners 40 dp) with title **"Ça mijote"**, the period summary below (e.g. "2 → 8 novembre · 11 repas"), a wide Peach **"Nouvelle semaine"** button and a square Slate search tile; the user button sits in a Butter corner block.
+- Upcoming days as stacked colored sheets cycling Butter, Peach, Slate, each with a header (e.g. "Aujourd'hui", "Demain", weekday) and its planned meals.
+- Meals shown as **full-width horizontal cards**: recipe image on the left, meal slot, recipe title, dish type tag and prep time, and the corner action. (Replaces the former 2-column grid.)
+- **Bottom navigation**: stacked tabs anchored to the bottom-right corner of the screen, laid out from the right (Settings, Recipes, Menus) in three peach shades lighter towards the edge; each tab overlaps its left neighbour with a rounded top-left corner (36 dp) and extends behind the system navigation bar. The selected tab widens and shows its label next to the icon; the others show the icon only.
 
 ## 9. Data model (decided)
 

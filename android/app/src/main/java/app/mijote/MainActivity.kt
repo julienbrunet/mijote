@@ -13,6 +13,7 @@ import app.mijote.ui.InviteScreen
 import app.mijote.ui.LoginScreen
 import app.mijote.ui.MijoteTheme
 import app.mijote.ui.ServerScreen
+import app.mijote.ui.UpdateDialog
 
 class MainActivity : ComponentActivity() {
     private val vm: AppViewModel by viewModels()
@@ -29,7 +30,9 @@ class MainActivity : ComponentActivity() {
         if (savedInstanceState == null) intent?.data?.let { vm.openInvitationLink(it.toString()) }
         setContent {
             val state by vm.state.collectAsStateWithLifecycle()
+            val update by vm.update.collectAsStateWithLifecycle()
             MijoteTheme {
+                UpdateDialog(update, vm.currentVersion, onInstall = vm::installUpdate, onDismiss = vm::dismissUpdate)
                 when (val s = state.screen) {
                     Screen.Server -> ServerScreen(state.busy, state.error, onSubmit = vm::submitServer,
                         onInvite = vm::showInvite)
