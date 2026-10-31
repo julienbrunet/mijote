@@ -240,6 +240,9 @@ Dish type tags (background / text):
 - Text fields: borderless with an underline (Peach deep when focused).
 - Tags: 8 dp radius pills.
 
+### Web admin
+- Same tokens: Butter header (rounded bottom corners 32 dp) with a white corner block, navigation as pills (selected in Peach deep), white cards on Cream, underlined fields, Peach deep buttons. System font stack with Inter first (no bundled font, to keep the binary small).
+
 ### Onboarding screens
 - Butter header sheet (rounded bottom corners 40 dp) with a white corner block and a big two-line title; the form is a white card overlapping the sheet's bottom edge; secondary actions in Slate below.
 
