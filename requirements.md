@@ -253,7 +253,7 @@ Dish type tags (background / text):
 
 ### Home screen layout
 - Big white header (rounded bottom corners 40 dp) with the logo (76 dp) next to the **"Mijote"** wordmark (54 sp) on the Menus tab (a plain title on the other tabs), the period summary below (e.g. "2 → 8 novembre · 11 repas"), a wide Peach **"Nouvelle semaine"** button and a square Slate search tile; the user button sits in a Butter corner block.
-- Upcoming days as a plain list on the Butter background (no colored sheets), each with a header (e.g. "Aujourd'hui", "Demain", weekday) and its planned meals; days are separated by a thin white line.
+- Upcoming days as a plain list on the Butter background (no colored sheets), each with a header (e.g. "Aujourd'hui", "Demain", weekday) and its planned meals; days are separated by a short centered white pill (56 × 5 dp).
 - Meals shown as **full-width horizontal cards**: recipe image on the left, meal slot, recipe title, dish type tag and prep time, and the corner action. (Replaces the former 2-column grid.)
 - **Bottom navigation**: stacked tabs anchored to the bottom-right corner of the screen, laid out from the right (Generate, Recipes, Menus) in three peach shades lighter towards the edge; tabs are 56 dp high (plus the system navigation bar inset they extend behind); each tab overlaps its left neighbour with a rounded top-left corner (28 dp). The selected tab widens and shows its label next to the icon; the others show the icon only.
 

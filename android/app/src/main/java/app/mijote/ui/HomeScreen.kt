@@ -69,7 +69,10 @@ fun HomeScreen(
             if (tab == Tab.MENUS && days.isNotEmpty()) {
                 Column(Modifier.padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 120.dp)) {
                     days.forEachIndexed { i, day ->
-                        if (i > 0) Box(Modifier.fillMaxWidth().padding(top = 22.dp).height(2.dp).background(Color.White.copy(alpha = 0.8f), CircleShape))
+                        // Short centered pill between days, like the former sheet handle.
+                        if (i > 0) Box(Modifier.fillMaxWidth().padding(top = 26.dp, bottom = 4.dp), contentAlignment = Alignment.Center) {
+                            Box(Modifier.width(56.dp).height(5.dp).background(Color.White.copy(alpha = 0.7f), CircleShape))
+                        }
                         DaySection(day)
                     }
                 }
