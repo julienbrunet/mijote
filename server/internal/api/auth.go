@@ -102,6 +102,10 @@ func (a *API) refresh(w http.ResponseWriter, r *http.Request) {
 // logout closes the device session of the access token.
 func (a *API) logout(w http.ResponseWriter, r *http.Request) {
 	s := current(r)
+	if s.sessionID == "" {
+		problem(w, http.StatusBadRequest, "not_a_device_session", "an API token has no session to close; revoke it in the web admin")
+		return
+	}
 	if err := a.Store.RevokeFamily(r.Context(), s.sessionID, "logout"); err != nil {
 		fail(w, r, err)
 		return

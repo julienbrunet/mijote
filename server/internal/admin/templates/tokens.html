@@ -1,0 +1,26 @@
+{{define "content"}}{{with .Data}}
+{{if .New}}<section class="card"><h2>Jeton créé</h2>
+<p>Jeton « {{.New.Name}} », accès {{if eq .New.Scope "write"}}lecture et écriture{{else}}lecture seule{{end}}, valable {{.New.Days}} jour(s). Il ne sera plus affiché : copiez-le maintenant.</p>
+<p><code>{{.New.Raw}}</code></p>
+<p class="muted">À envoyer dans l'en-tête <code>Authorization: Bearer …</code> des requêtes vers <code>/api/v1</code>. Le jeton agit avec les droits de votre compte.</p>
+</section>{{end}}
+<section class="card"><h2>Nouveau jeton</h2>
+<form method="post" action="/admin/tokens"><input type="hidden" name="csrf" value="{{$.CSRF}}">
+<label>Nom (à quoi il sert)<input name="name" maxlength="60" required placeholder="Import de recettes"></label>
+<label>Accès<select name="scope"><option value="read">Lecture seule</option><option value="write">Lecture et écriture</option></select></label>
+<label>Durée de validité<select name="days">{{range .Days}}<option value="{{.}}" {{if eq . $.Data.DefaultDays}}selected{{end}}>{{.}} jour(s)</option>{{end}}</select></label>
+<button>Créer un jeton</button>
+<p class="muted">Un jeton donne accès à l'API sans mot de passe : gardez-le secret et révoquez-le dès qu'il ne sert plus.</p>
+</form></section>
+<p>{{if .All}}<a href="/admin/tokens">Jetons actifs seulement</a>{{else}}<a href="/admin/tokens?all=1">Afficher aussi les jetons terminés</a>{{end}}</p>
+<section class="card scroll"><table>
+<tr><th>Nom</th><th>Accès</th><th>Créé le</th><th>Expire le</th><th>Dernière utilisation</th><th>État</th><th></th></tr>
+{{range .Tokens}}<tr><td>{{.Name}} <span class="muted"><code>{{.Prefix}}…</code></span></td>
+<td>{{if eq .Scope "write"}}lecture + écriture{{else}}lecture{{end}}</td>
+<td>{{date .CreatedAt}}</td><td>{{date .ExpiresAt}}</td>
+<td>{{with .LastUsedAt}}{{date .}}{{else}}jamais{{end}}</td>
+<td>{{if eq .Status "active"}}actif{{else if eq .Status "revoked"}}révoqué{{else}}expiré{{end}}</td>
+<td>{{if eq .Status "active"}}<form class="inline" method="post" action="/admin/tokens/{{.ID}}/revoke"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button>Révoquer</button></form>{{end}}</td></tr>
+{{else}}<tr><td colspan="7" class="muted">Aucun jeton.</td></tr>{{end}}
+</table></section>
+{{end}}{{end}}

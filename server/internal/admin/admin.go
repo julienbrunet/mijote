@@ -62,6 +62,7 @@ var eventLabels = map[string]string{
 	"invite_created": "Invitation créée", "invite_revoked": "Invitation révoquée",
 	"account_disabled": "Compte désactivé", "account_enabled": "Compte réactivé",
 	"password_reset": "Mot de passe réinitialisé",
+	"token_created":  "Jeton d'API créé", "token_revoked": "Jeton d'API révoqué",
 }
 
 // Admin holds the dependencies of the web admin.
@@ -79,7 +80,7 @@ type Admin struct {
 // New parses the templates.
 func New(st *store.Store, guard *auth.Guard, proxies auth.Proxies, key []byte, imgs images.Dir) (*Admin, error) {
 	a := &Admin{Store: st, Guard: guard, Proxies: proxies, Key: key, Images: imgs, pages: map[string]*template.Template{}}
-	for _, p := range []string{"setup", "login", "login_2fa", "home", "account", "sessions", "journal", "accounts", "invitations", "recipes", "recipe", "tags", "error"} {
+	for _, p := range []string{"setup", "login", "login_2fa", "home", "account", "sessions", "journal", "accounts", "invitations", "tokens", "recipes", "recipe", "tags", "error"} {
 		t, err := template.New("layout.html").Funcs(funcs).ParseFS(templateFS, "templates/layout.html", "templates/"+p+".html")
 		if err != nil {
 			return nil, err
@@ -119,6 +120,9 @@ func (a *Admin) Routes(mux *http.ServeMux) {
 		"GET /admin/invitations":                a.invitationsPage,
 		"POST /admin/invitations":               a.createInvitation,
 		"POST /admin/invitations/{id}/revoke":   a.revokeInvitation,
+		"GET /admin/tokens":                     a.tokensPage,
+		"POST /admin/tokens":                    a.createToken,
+		"POST /admin/tokens/{id}/revoke":        a.revokeToken,
 		"GET /admin/recipes":                    a.recipesPage,
 		"GET /admin/recipes/new":                a.newRecipePage,
 		"POST /admin/recipes":                   a.saveRecipe,
@@ -174,6 +178,7 @@ var notices = map[string]string{
 	"enabled":         "Compte réactivé.",
 	"reset":           "Mot de passe modifié ; les sessions du compte ont été fermées.",
 	"inv_revoked":     "Invitation révoquée.",
+	"token_revoked":   "Jeton révoqué.",
 	"recipe_created":  "Recette créée.",
 	"recipe_saved":    "Recette enregistrée.",
 	"recipe_archived": "Recette archivée : elle n'apparaît plus dans l'app ni dans les menus futurs.",

@@ -574,3 +574,79 @@ func mustAdmin(t *testing.T, st *store.Store) store.User {
 	}
 	return u
 }
+
+func TestAPITokens(t *testing.T) {
+	pool := testDB(t)
+	ctx := context.Background()
+	h, err := New(ctx, pool, nil, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(h)
+	defer srv.Close()
+	st := store.New(pool)
+
+	web := newClient(t, srv.URL)
+	web.form("/admin/setup", url.Values{"username": {"julien"}, "password": {"secret-pass"}, "confirm": {"secret-pass"}})
+	web.form("/admin/login", url.Values{"password": {"secret-pass"}})
+	_, page := web.do("GET", "/admin/tokens", "", "")
+	csrf := csrfRe.FindStringSubmatch(page)[1]
+
+	create := func(name, scope string) string {
+		t.Helper()
+		res, page := web.form("/admin/tokens", url.Values{"csrf": {csrf}, "name": {name}, "scope": {scope}, "days": {"30"}})
+		expect(t, res, http.StatusOK, "create token")
+		m := regexp.MustCompile(`mjt_[A-Za-z0-9_-]+`).FindString(page)
+		if m == "" {
+			t.Fatal("token not shown")
+		}
+		return m
+	}
+	res, _ := web.form("/admin/tokens", url.Values{"csrf": {csrf}, "name": {" "}, "scope": {"read"}, "days": {"30"}})
+	expect(t, res, http.StatusUnprocessableEntity, "name is required")
+
+	reader, writer := create("lecture", "read"), create("écriture", "write")
+	app := newClient(t, srv.URL)
+
+	res, me := app.api("GET", "/api/v1/me", reader, nil)
+	expect(t, res, http.StatusOK, "read token reads")
+	if me["username"] != "julien" {
+		t.Fatalf("token acts as %v", me["username"])
+	}
+	recipe := map[string]any{"title": "Soupe", "dishType": "vegetarian"}
+	res, _ = app.api("POST", "/api/v1/recipes", reader, recipe)
+	expect(t, res, http.StatusForbidden, "read token cannot write")
+	res, rec := app.api("POST", "/api/v1/recipes", writer, recipe)
+	expect(t, res, http.StatusCreated, "write token creates a recipe")
+	res, _ = app.api("GET", "/api/v1/recipes/"+rec["id"].(string), reader, nil)
+	expect(t, res, http.StatusOK, "read token reads the recipe")
+	res, _ = app.api("POST", "/api/v1/auth/logout", writer, nil)
+	expect(t, res, http.StatusBadRequest, "no device session to close")
+	res, _ = app.api("GET", "/api/v1/me", "mjt_unknown", nil)
+	expect(t, res, http.StatusUnauthorized, "unknown token")
+
+	// The page never shows the secret again, and revoking takes effect at once.
+	_, page = web.do("GET", "/admin/tokens", "", "")
+	if strings.Contains(page, writer) {
+		t.Fatal("clear token listed after creation")
+	}
+	id := regexp.MustCompile(`/admin/tokens/([0-9a-f-]+)/revoke`).FindStringSubmatch(page)[1]
+	res, _ = web.form("/admin/tokens/"+id+"/revoke", url.Values{"csrf": {csrf}})
+	expect(t, res, http.StatusSeeOther, "revoke")
+	// The newest token (writer) is the first listed, hence the one revoked.
+	res, _ = app.api("GET", "/api/v1/me", writer, nil)
+	expect(t, res, http.StatusUnauthorized, "revoked token")
+	res, _ = app.api("GET", "/api/v1/me", reader, nil)
+	expect(t, res, http.StatusOK, "other token still works")
+
+	// Expired tokens and disabled accounts are refused.
+	raw, err := st.CreateAPIToken(ctx, mustAdmin(t, st).ID, "court", "read", time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE api_token SET expires_at = now() - interval '1 minute'`); err != nil {
+		t.Fatal(err)
+	}
+	res, _ = app.api("GET", "/api/v1/me", raw, nil)
+	expect(t, res, http.StatusUnauthorized, "expired token")
+}

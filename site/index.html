@@ -79,8 +79,8 @@
       </div>
     </div>
     <div class="note">
-      <span data-l="en"><strong>Project status:</strong> early development. The server (authentication, recipe API, web admin with recipes, tags, accounts and invitations) and the app skeleton (server setup, sign-in, joining with an invitation, new colorful design, in-app updates) are available; the features above are being built.</span>
-      <span data-l="fr"><strong>État du projet :</strong> développement en cours. Le serveur (authentification, API des recettes, interface d'administration avec recettes, étiquettes, comptes et invitations) et la base de l'application (connexion au serveur, identification, inscription par invitation, nouveau design coloré, mises à jour intégrées) sont disponibles ; les fonctionnalités ci-dessus sont en construction.</span>
+      <span data-l="en"><strong>Project status:</strong> early development. The server (authentication, recipe API, web admin with recipes, tags, accounts, invitations and API tokens) and the app skeleton (server setup, sign-in, joining with an invitation, new colorful design, in-app updates) are available; the features above are being built.</span>
+      <span data-l="fr"><strong>État du projet :</strong> développement en cours. Le serveur (authentification, API des recettes, interface d'administration avec recettes, étiquettes, comptes, invitations et jetons d'API) et la base de l'application (connexion au serveur, identification, inscription par invitation, nouveau design coloré, mises à jour intégrées) sont disponibles ; les fonctionnalités ci-dessus sont en construction.</span>
     </div>
   </section>
 
@@ -128,8 +128,8 @@ MIJOTE_IMAGE_DIR=/var/lib/mijote/images \
       <tr><td><code>MIJOTE_TRUSTED_PROXIES</code></td><td><span data-l="en">none</span><span data-l="fr">aucun</span></td><td><span data-l="en">Reverse proxies whose <code>X-Forwarded-*</code> headers are trusted</span><span data-l="fr">Proxys inverses dont les en-têtes <code>X-Forwarded-*</code> sont de confiance</span></td></tr>
     </table></div>
     <ol class="steps" start="6">
-      <li data-l="en">Open <code>http://your-server:8080/admin/</code> and follow the setup wizard to create the administrator account. Then add family members from the <em>Invitations</em> page: each invitation is a single-use link or QR code that creates a member account.</li>
-      <li data-l="fr">Ouvrez <code>http://votre-serveur:8080/admin/</code> et suivez l'assistant pour créer le compte administrateur. Ajoutez ensuite les membres de la famille depuis la page <em>Invitations</em> : chaque invitation est un lien ou un QR code à usage unique qui crée un compte membre.</li>
+      <li data-l="en">Open <code>http://your-server:8080/admin/</code> and follow the setup wizard to create the administrator account. Then add family members from the <em>Invitations</em> page: each invitation is a single-use link or QR code that creates a member account. The <em>API tokens</em> page creates tokens (read-only or read/write, with an expiry) so that scripts or an assistant can use the API.</li>
+      <li data-l="fr">Ouvrez <code>http://votre-serveur:8080/admin/</code> et suivez l'assistant pour créer le compte administrateur. Ajoutez ensuite les membres de la famille depuis la page <em>Invitations</em> : chaque invitation est un lien ou un QR code à usage unique qui crée un compte membre. La page <em>Jetons API</em> permet de créer des jetons (lecture seule ou lecture/écriture, avec expiration) pour que des scripts ou un assistant accèdent à l'API.</li>
       <li data-l="en">Put a reverse proxy with HTTPS (Caddy, nginx…) in front of it: the Android app only talks HTTPS. Keep a regular backup (<code>pg_dump</code> + image directory) and back up before every upgrade.</li>
       <li data-l="fr">Placez un proxy inverse HTTPS (Caddy, nginx…) devant : l'application Android ne parle qu'en HTTPS. Faites des sauvegardes régulières (<code>pg_dump</code> + dossier des images), et avant chaque mise à jour.</li>
     </ol>

@@ -135,6 +135,7 @@ Planning a family's weekly menus is repetitive: finding recipes, avoiding repeat
 | FR-ADM-03 | Manage family settings (default meals, preferences). | Must |
 | FR-ADM-04 | Manage recipes (create, edit, archive, restore) and tags (rename, delete). | Should |
 | FR-ADM-05 | Show instance info (version, API version, DB status). | Could |
+| FR-ADM-06 | Create and revoke personal API tokens (read-only or read/write, with expiry) for scripts and assistants. | Should |
 
 ## 5. Non-functional requirements
 
@@ -337,6 +338,7 @@ Aggregation (shopping list): quantities are summed only for the same ingredient 
 id, username (unique, used to log in; no email), display_name, password_hash, role (`admin` / `member`), created_at, disabled_at (nullable). There is exactly **one admin** per instance.
 
 ### Authentication tables (see §13)
+- `api_token`: personal API tokens (user, name, SHA-256 hash, 8-character display prefix, scope `read`/`write`, expiry, last use, revocation).
 - `refresh_token`: one row per app refresh token; `family_id` groups the tokens of one device session (rotation chain). Only the SHA-256 hash is stored.
 - `admin_session`: web admin sessions (cookie hash, expiry, idle limit).
 - `user_totp` / `user_totp_backup`: TOTP secret (AES-GCM sealed) and hashed backup codes.
@@ -407,5 +409,6 @@ Modeled on the author's paper-stacks project.
 - **Rate limiting** (in memory, app and admin): 5 failures in 15 min on an account (admin: shared key) or 20 from one address block sign-in for 15 min (`429` + `Retry-After`). Same response whether the account exists or not.
 - **Reverse proxy**: `X-Forwarded-For` / `X-Forwarded-Proto` are trusted only from `MIJOTE_TRUSTED_PROXIES`, for real client addresses and HTTPS detection.
 - **Headers** on every response: `X-Content-Type-Options`, `X-Frame-Options: DENY`, `Referrer-Policy`, `Content-Security-Policy`, and HSTS over HTTPS.
+- **Personal API tokens** (`/admin/tokens`, admin only): for scripts and assistants that read or write through `/api/v1` without a device session. Format `mjt_` + 256-bit random (URL-safe base64), sent as `Authorization: Bearer mjt_…`; only the SHA-256 hash is stored, the clear token is shown once. The admin picks a name, a scope (`read`: GET/HEAD only, otherwise `403 read_only_token`; `write`: all methods) and a lifetime of 7, 30, 90 (default) or 365 days (no token without expiry). A token acts with the rights of its creator's account, is checked on every request (revocation and account deactivation are immediate) and has no device session (`/auth/logout` answers `400`). Creation and revocation are logged; last use and address are shown in the list; tokens expired for 30 days are purged.
 - **Tracking in the web admin**: device and admin sessions (revocable one by one, "log out my other sessions"), and the login journal (sign-ins, failures, lockouts, logouts, token reuse, 2FA events) with a "failures only" filter.
 - **Retention**: journal 180 days, expired tokens and sessions 30 days (daily purge).

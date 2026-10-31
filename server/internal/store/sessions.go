@@ -175,6 +175,7 @@ func (s *Store) PurgeAuth(ctx context.Context) error {
 		`DELETE FROM auth_event WHERE at < now() - interval '180 days'`,
 		`DELETE FROM refresh_token WHERE expires_at < now() - interval '30 days'`,
 		`DELETE FROM admin_session WHERE expires_at < now() - interval '30 days'`,
+		`DELETE FROM api_token WHERE expires_at < now() - interval '30 days'`,
 	} {
 		if _, err := s.Pool.Exec(ctx, q); err != nil {
 			return err

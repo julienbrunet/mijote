@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/julienbrunet/mijote/server/internal/auth"
@@ -51,7 +52,7 @@ type ctxKey struct{}
 // session is the authenticated user and the device session of the access token.
 type session struct {
 	user      store.User
-	sessionID string
+	sessionID string // empty for a personal API token
 }
 
 func current(r *http.Request) session {
@@ -67,7 +68,12 @@ func (a *API) client(r *http.Request) store.Client {
 // (revocation from the admin or disabled account take effect immediately).
 func (a *API) authenticate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		userID, sid, err := a.Tokens.Verify(auth.BearerToken(r))
+		raw := auth.BearerToken(r)
+		if strings.HasPrefix(raw, store.APITokenPrefix) {
+			a.authenticateAPIToken(w, r, raw, next)
+			return
+		}
+		userID, sid, err := a.Tokens.Verify(raw)
 		if err != nil {
 			unauthorized(w, "missing, invalid or expired access token")
 			return
@@ -83,6 +89,25 @@ func (a *API) authenticate(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), ctxKey{}, session{u, sid})))
 	})
+}
+
+// authenticateAPIToken handles personal API tokens created in the web admin.
+// A "read" token may only use GET and HEAD.
+func (a *API) authenticateAPIToken(w http.ResponseWriter, r *http.Request, raw string, next http.Handler) {
+	u, scope, ok, err := a.Store.APITokenUser(r.Context(), raw, a.Proxies.ClientIP(r))
+	if err != nil {
+		fail(w, r, err)
+		return
+	}
+	if !ok {
+		unauthorized(w, "invalid, revoked or expired API token")
+		return
+	}
+	if scope == store.ScopeRead && r.Method != http.MethodGet && r.Method != http.MethodHead {
+		problem(w, http.StatusForbidden, "read_only_token", "this API token is read-only")
+		return
+	}
+	next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), ctxKey{}, session{user: u})))
 }
 
 func (a *API) me(w http.ResponseWriter, r *http.Request) {
