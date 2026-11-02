@@ -39,7 +39,7 @@ enum class MealKind(val plan: MealPlan, val perDay: Int) {
 }
 
 /**
- * Step 1 of the menu generation, shaped like the reference "Add basket" card: a big Butter sheet with the title,
+ * Step 1 of the menu generation ("Idées de repas" tab), shaped like the reference "Add basket" card: a big Butter sheet with the title,
  * a white card with the day count stepper on its right, a Slate band to choose lunch, dinner or both,
  * then the start day choices and the button leading to the review screen.
  */
@@ -51,6 +51,7 @@ fun GenerateScreen(
     busy: Boolean,
     error: String?,
     onGenerate: (start: LocalDate, meals: Int, plan: MealPlan) -> Unit,
+    onPreferences: () -> Unit = {},
 ) {
     var startDay by rememberSaveable { mutableLongStateOf(today.plusDays(1).toEpochDay()) }
     var kind by rememberSaveable { mutableStateOf(MealKind.BOTH) }
@@ -61,15 +62,10 @@ fun GenerateScreen(
 
     Column(
         Modifier.fillMaxSize().background(Sunny.Butter).verticalScroll(rememberScrollState())
-            .statusBarsPadding().padding(bottom = 120.dp),
+            .padding(bottom = 120.dp),
     ) {
-        Box(Modifier.fillMaxWidth()) {
-            CornerBlock(Sunny.Card, size = 80.dp, modifier = Modifier.align(Alignment.TopEnd)) {
-                Image(painterResource(R.drawable.ic_mijote_cocotte), contentDescription = null, modifier = Modifier.size(52.dp))
-            }
-            Text("Nouveau menu", fontSize = 34.sp, lineHeight = 38.sp, fontWeight = FontWeight.Bold, color = Sunny.InkTitle,
-                modifier = Modifier.padding(start = 28.dp, top = 22.dp, end = 100.dp))
-        }
+        // Same header as the home screen, so that the tabs look alike.
+        HomeHeader("Idées de repas", "Mijote vous propose un menu varié", onPreferences)
         Spacer(Modifier.height(22.dp))
 
         // The card: day stepper on the right, summary on the white face, meal choices underneath.
@@ -148,7 +144,7 @@ fun GenerateScreen(
                 Spacer(Modifier.height(12.dp))
             }
             ErrorText(error)
-            PrimaryButton(if (busy) "Génération…" else "Voir le menu", busy) {
+            PrimaryButton(if (busy) "Génération…" else "C'est parti", busy) {
                 onGenerate(start, meals, kind.plan)
             }
         }

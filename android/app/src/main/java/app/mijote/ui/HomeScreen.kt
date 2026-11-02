@@ -22,6 +22,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.vectorResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -32,7 +34,7 @@ import app.mijote.data.MenuSlot
 import app.mijote.data.User
 import java.time.LocalDate
 
-enum class Tab(val label: String) { MENUS("Menus"), RECIPES("Recettes"), GENERATE("Générer") }
+enum class Tab(val label: String) { MENUS("Menus"), RECIPES("Recettes"), GENERATE("Idées de repas") }
 
 enum class DishType(val label: String, val colors: Pair<Color, Color>) {
     MEAT("Viande", DishColors.meat), FISH("Poisson", DishColors.fish), VEGETARIAN("Végé", DishColors.veggie)
@@ -91,8 +93,7 @@ fun HomeScreen(
     // Pull down to fetch what other members changed (no real-time, FR-SHR-02).
     PullToRefreshBox(refreshing, onRefresh, Modifier.fillMaxSize().background(Sunny.Butter)) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-            Header(user, onLogout, tab.label.takeIf { tab != Tab.MENUS }, period.takeIf { tab == Tab.MENUS },
-                onNewWeek = { onNewWeek?.invoke(); onTab(Tab.GENERATE) }, onPreferences = onPreferences)
+            HomeHeader(tab.label.takeIf { tab != Tab.MENUS }, period.takeIf { tab == Tab.MENUS }, onPreferences)
             if (tab == Tab.MENUS && days.isNotEmpty()) {
                 Column(Modifier.padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 120.dp)) {
                     ErrorText(error)
@@ -103,7 +104,7 @@ fun HomeScreen(
                 }
             } else {
                 Text(
-                    if (canEdit) "Aucun repas prévu : touchez « Générer » pour créer le menu, ou planifiez une recette depuis « Recettes »."
+                    if (canEdit) "Aucun repas prévu : ouvrez « Idées de repas » pour créer le menu, ou planifiez une recette depuis « Recettes »."
                     else "Aucun repas prévu pour le moment.",
                     color = Sunny.InkTitle, textAlign = TextAlign.Center,
                     modifier = Modifier.fillMaxWidth().padding(top = 120.dp, start = 24.dp, end = 24.dp),
@@ -114,9 +115,13 @@ fun HomeScreen(
     }
 }
 
+/**
+ * Big white header shared by the main screens: logo and wordmark on the Menus tab, a plain [title]
+ * elsewhere (with [subtitle] below), the user button in a Butter corner block.
+ */
 @Composable
-/** Big header: logo and wordmark on the Menus tab, a plain title on the other tabs. */
-private fun Header(user: User, onLogout: () -> Unit, title: String?, period: String?, onNewWeek: () -> Unit, onPreferences: () -> Unit) {
+fun HomeHeader(title: String?, subtitle: String?, onPreferences: () -> Unit) {
+    val period = subtitle
     Box(
         Modifier.fillMaxWidth().zIndexShadow()
             .background(Sunny.Card, RoundedCornerShape(bottomStart = 40.dp, bottomEnd = 40.dp)),
@@ -124,7 +129,7 @@ private fun Header(user: User, onLogout: () -> Unit, title: String?, period: Str
         CornerBlock(Sunny.Butter, size = 96.dp, modifier = Modifier.align(Alignment.TopEnd)) {
             Box(Modifier.statusBarsPadding()) { UserButton(onPreferences) }
         }
-        Column(Modifier.statusBarsPadding().padding(start = 22.dp, end = 24.dp, top = 44.dp, bottom = 30.dp)) {
+        Column(Modifier.statusBarsPadding().padding(start = 22.dp, end = if (title != null) 104.dp else 24.dp, top = 44.dp, bottom = 30.dp)) {
             if (title != null) ScreenTitle(title, period, size = 32)
             else {
                 BrandTitle()
@@ -254,7 +259,8 @@ private fun UserButton(onPreferences: () -> Unit) {
  */
 @Composable
 private fun BottomBar(selected: Tab, tabs: List<Tab> = Tab.entries, modifier: Modifier = Modifier, onSelect: (Tab) -> Unit) {
-    val icons = mapOf(Tab.MENUS to Icons.Filled.Home, Tab.RECIPES to Icons.Filled.Search, Tab.GENERATE to Icons.Filled.Refresh)
+    val icons = mapOf(Tab.MENUS to Icons.Filled.Home, Tab.RECIPES to Icons.Filled.Search,
+        Tab.GENERATE to ImageVector.vectorResource(app.mijote.R.drawable.ic_meal_idea))
     val navInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     Box(modifier.fillMaxWidth().padding(bottom = 20.dp + navInset)) {
         Row(

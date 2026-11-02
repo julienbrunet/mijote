@@ -197,6 +197,19 @@ class ScreenshotTest {
         }
     }
 
+    // Candidate icons for the "Idées de repas" tab, on the navigation pill colour.
+    @Test
+    fun mealIdeaIcons() = paparazzi.snapshot {
+        androidx.compose.foundation.layout.Row(
+            androidx.compose.ui.Modifier.background(Sunny.PeachDeep).padding(24.dp),
+            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(32.dp),
+        ) {
+            listOf(R.drawable.ic_meal_idea, R.drawable.ic_lightbulb).forEach {
+                androidx.compose.foundation.Image(painterResource(it), null, androidx.compose.ui.Modifier.size(72.dp))
+            }
+        }
+    }
+
     private val sampleDays = listOf(
         DayUi("Aujourd'hui", "lun. 2 nov.", listOf(
             MealUi("Midi", "Poulet au pesto et tomates rôties", DishType.MEAT, 25, "🍗", locked = true),
