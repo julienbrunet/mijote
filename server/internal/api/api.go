@@ -35,21 +35,32 @@ func (a *API) Routes(mux *http.ServeMux) {
 	mux.Handle("PUT /api/v1/me/preferences", a.authenticate(http.HandlerFunc(a.setPreferences)))
 	for pattern, h := range map[string]http.HandlerFunc{
 		"GET /api/v1/recipes":               a.listRecipes,
-		"POST /api/v1/recipes":              a.createRecipe,
+		"POST /api/v1/recipes":              a.requireWrite(a.createRecipe),
 		"GET /api/v1/recipes/{id}":          a.getRecipe,
-		"PUT /api/v1/recipes/{id}":          a.updateRecipe,
+		"PUT /api/v1/recipes/{id}":          a.requireWrite(a.updateRecipe),
 		"DELETE /api/v1/recipes/{id}":       a.archiveRecipe,
 		"GET /api/v1/tags":                  a.listTags,
 		"GET /api/v1/recipes/{id}/image":    a.getImage,
-		"PUT /api/v1/recipes/{id}/image":    a.putImage,
-		"DELETE /api/v1/recipes/{id}/image": a.deleteImage,
+		"PUT /api/v1/recipes/{id}/image":    a.requireWrite(a.putImage),
+		"DELETE /api/v1/recipes/{id}/image": a.requireWrite(a.deleteImage),
 		"GET /api/v1/menu":                  a.getMenu,
-		"POST /api/v1/menu/generate":        a.generateMenu,
-		"POST /api/v1/menu/slots":           a.addSlot,
-		"POST /api/v1/menu/slots/{id}/swap": a.swapSlot,
-		"DELETE /api/v1/menu/slots/{id}":    a.removeSlot,
+		"POST /api/v1/menu/generate":        a.requireWrite(a.generateMenu),
+		"POST /api/v1/menu/slots":           a.requireWrite(a.addSlot),
+		"POST /api/v1/menu/slots/{id}/swap": a.requireWrite(a.swapSlot),
+		"DELETE /api/v1/menu/slots/{id}":    a.requireWrite(a.removeSlot),
 	} {
 		mux.Handle(pattern, a.authenticate(h))
+	}
+}
+
+// requireWrite forbids state-changing actions for read-only users.
+func (a *API) requireWrite(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if current(r).user.IsReadonly() {
+			problem(w, http.StatusForbidden, "forbidden", "les utilisateurs en lecture seule ne peuvent pas modifier les menus ou les recettes")
+			return
+		}
+		next(w, r)
 	}
 }
 

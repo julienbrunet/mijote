@@ -1,6 +1,6 @@
 {{define "content"}}{{with .Data}}
 {{if .New}}<section class="card"><h2>Invitation créée</h2>
-<p>Valable {{.New.Days}} jour(s), à usage unique. Ce code ne sera plus affiché : transmettez-le maintenant.</p>
+<p>Valable {{.New.Days}} jour(s), à usage unique (rôle : {{if eq .New.Role "readonly"}}lecture seule{{else}}membre{{end}}). Ce code ne sera plus affiché : transmettez-le maintenant.</p>
 <p><img src="{{.New.QR}}" alt="QR code de l'invitation" width="220" height="220"></p>
 <p>Envoyez ce lien à la personne (message, mail…). Il fonctionne même si elle n'a pas encore l'application : la page explique comment l'installer.</p>
 <p><input type="text" readonly value="{{.New.Link}}" aria-label="Lien d'invitation"></p>
@@ -9,16 +9,18 @@
 </section>{{end}}
 <section class="card"><h2>Nouvelle invitation</h2>
 <form method="post" action="/admin/invitations"><input type="hidden" name="csrf" value="{{$.CSRF}}">
+<label>Rôle<select name="role"><option value="member" selected>Membre (lecture et écriture)</option><option value="readonly">Lecture seule (consultation uniquement)</option></select></label>
 <label>Durée de validité<select name="days">{{range .TTLs}}<option value="{{.}}" {{if eq . $.Data.DefaultDays}}selected{{end}}>{{.}} jour(s)</option>{{end}}</select></label>
 <button>Créer une invitation</button>
-<p class="muted">Une invitation crée un compte membre ; la personne choisit elle-même son identifiant et son mot de passe.</p>
+<p class="muted">Une invitation crée un compte membre ou lecture seule ; la personne choisit elle-même son identifiant et son mot de passe.</p>
 </form></section>
 <p>{{if .All}}<a href="/admin/invitations">Invitations en attente seulement</a>{{else}}<a href="/admin/invitations?all=1">Afficher aussi les invitations terminées</a>{{end}}</p>
 <section class="card scroll"><table>
-<tr><th>Créée le</th><th>Expire le</th><th>État</th><th></th></tr>
+<tr><th>Créée le</th><th>Expire le</th><th>Rôle</th><th>État</th><th></th></tr>
 {{range .Invitations}}<tr><td>{{date .CreatedAt}}</td><td>{{date .ExpiresAt}}</td>
+<td>{{if eq .Role "readonly"}}lecture seule{{else}}membre{{end}}</td>
 <td>{{if eq .Status "pending"}}en attente{{else if eq .Status "used"}}utilisée par {{deref .UsedByName}}{{else if eq .Status "revoked"}}révoquée{{else}}expirée{{end}}</td>
 <td>{{if eq .Status "pending"}}<form class="inline" method="post" action="/admin/invitations/{{.ID}}/revoke"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button>Révoquer</button></form>{{end}}</td></tr>
-{{else}}<tr><td colspan="4" class="muted">Aucune invitation.</td></tr>{{end}}
+{{else}}<tr><td colspan="5" class="muted">Aucune invitation.</td></tr>{{end}}
 </table></section>
 {{end}}{{end}}

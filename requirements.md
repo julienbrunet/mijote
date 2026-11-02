@@ -43,14 +43,16 @@ Planning a family's weekly menus is repetitive: finding recipes, avoiding repeat
 
 ## 3. Roles and permissions
 
-| Capability | Admin | Member |
-|---|---|---|
-| Manage accounts and invitations | ✅ | ❌ |
-| Manage family settings (default meals, preferences) | ✅ | ❌ |
-| Add / edit recipes | ✅ | ✅ |
-| Delete recipes, manage tags | ✅ | ❌ (to confirm; the API currently reserves archiving to the admin, tags are managed in the web admin only) |
-| Generate and adjust menus | ✅ | ✅ |
-| Access web admin | ✅ | ❌ |
+| Capability | Admin | Member | Read-only |
+|---|---|---|---|
+| Manage accounts and invitations | ✅ | ❌ | ❌ |
+| Manage family settings (default meals, preferences) | ✅ | ❌ | ❌ |
+| Add / edit recipes | ✅ | ✅ | ❌ |
+| Delete recipes, manage tags | ✅ | ❌ (to confirm; the API currently reserves archiving to the admin, tags are managed in the web admin only) | ❌ |
+| View recipes and tags | ✅ | ✅ | ✅ |
+| Generate and adjust menus | ✅ | ✅ | ❌ |
+| View shared menus | ✅ | ✅ | ✅ |
+| Access web admin | ✅ | ❌ | ❌ |
 
 ## 4. Functional requirements
 
@@ -344,7 +346,7 @@ Aggregation (shopping list): quantities are summed only for the same ingredient 
 - **Last used date**: derived from menu history (FR-GEN-03).
 
 ### user
-id, username (unique, used to log in; no email), display_name, people (preference: number of people to cook for, 1–20, default 1), password_hash, role (`admin` / `member`), created_at, disabled_at (nullable). There is exactly **one admin** per instance.
+id, username (unique, used to log in; no email), display_name, people (preference: number of people to cook for, 1–20, default 1), password_hash, role (`admin` / `member` / `readonly`), created_at, disabled_at (nullable). There is exactly **one admin** per instance.
 
 ### Authentication tables (see §13)
 - `api_token`: personal API tokens (user, name, SHA-256 hash, 8-character display prefix, scope `read`/`write`, expiry, last use, revocation).
@@ -355,7 +357,7 @@ id, username (unique, used to log in; no email), display_name, people (preferenc
 - `server_secret`: keys generated on first start (JWT, admin cookies, TOTP sealing).
 
 ### invitation
-id, code_hash (single-use, never stored in clear), created_by, created_at, expires_at, used_by, used_at, revoked_at. Invitations always create a **member** (an admin cannot invite another admin).
+id, code_hash (single-use, never stored in clear), created_by, role (`member` / `readonly`, default `member`), created_at, expires_at, used_by, used_at, revoked_at. Invitations create a **member** or a **read-only** account (an admin cannot invite another admin).
 
 ### family_settings (single row)
 - default meals per weekday: `lunch_dinner`, `dinner` or `none`;

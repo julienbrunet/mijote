@@ -18,6 +18,12 @@ var (
 	ErrAlreadySetUp       = errors.New("already_set_up")
 )
 
+const (
+	RoleAdmin    = "admin"
+	RoleMember   = "member"
+	RoleReadonly = "readonly"
+)
+
 // User is an account.
 type User struct {
 	ID, Username, DisplayName, Role string
@@ -26,8 +32,10 @@ type User struct {
 	People                          int // preference: number of people to cook for
 }
 
-func (u User) IsAdmin() bool  { return u.Role == "admin" }
-func (u User) Disabled() bool { return u.DisabledAt != nil }
+func (u User) IsAdmin() bool    { return u.Role == RoleAdmin }
+func (u User) IsReadonly() bool { return u.Role == RoleReadonly }
+func (u User) CanWrite() bool   { return u.Role == RoleAdmin || u.Role == RoleMember }
+func (u User) Disabled() bool   { return u.DisabledAt != nil }
 
 const userCols = `id::text, username, display_name, role::text, disabled_at, created_at, people`
 
@@ -148,4 +156,20 @@ func (s *Store) SetPeople(ctx context.Context, userID string, people int) (User,
 		return User{}, invalid("le nombre de personnes doit être compris entre 1 et 20")
 	}
 	return scanUser(s.Pool.QueryRow(ctx, `UPDATE app_user SET people = $2 WHERE id = $1 RETURNING `+userCols, userID, people))
+}
+
+// SetUserRole changes a user's role (between member and readonly).
+// The admin account cannot be changed.
+func (s *Store) SetUserRole(ctx context.Context, id, role string) (User, error) {
+	if role != RoleMember && role != RoleReadonly {
+		return User{}, invalid("rôle invalide (doit être 'member' ou 'readonly')")
+	}
+	u, err := s.GetUser(ctx, id)
+	if err != nil {
+		return u, err
+	}
+	if u.IsAdmin() {
+		return u, invalid("le rôle du compte administrateur ne peut pas être modifié")
+	}
+	return scanUser(s.Pool.QueryRow(ctx, `UPDATE app_user SET role = $2 WHERE id = $1 RETURNING `+userCols, id, role))
 }

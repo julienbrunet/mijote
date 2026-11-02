@@ -344,7 +344,7 @@ func TestRecipes(t *testing.T) {
 	csrf := csrfRe.FindStringSubmatch(page)[1]
 
 	// A member and the admin sign in to the app.
-	code, _ := st.CreateInvitation(ctx, mustAdmin(t, st).ID, time.Hour)
+	code, _ := st.CreateInvitation(ctx, mustAdmin(t, st).ID, "member", time.Hour)
 	app := newClient(t, srv.URL)
 	_, tok := app.json("/api/v1/invitations/redeem", map[string]string{"code": code, "username": "lea", "password": "lea-password"})
 	member := tok["accessToken"].(string)
@@ -793,4 +793,117 @@ func TestMenuGeneration(t *testing.T) {
 			t.Fatalf("lunch plan gave %v", sl)
 		}
 	}
+}
+
+func TestReadonlyRoleAndSharedMenus(t *testing.T) {
+	pool := testDB(t)
+	ctx := context.Background()
+	h, err := New(ctx, pool, nil, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(h)
+	defer srv.Close()
+	st := store.New(pool)
+
+	web := newClient(t, srv.URL)
+	web.form("/admin/setup", url.Values{"username": {"julien"}, "password": {"secret-pass"}, "confirm": {"secret-pass"}})
+	web.form("/admin/login", url.Values{"password": {"secret-pass"}})
+	_, page := web.do("GET", "/admin/recipes", "", "")
+	csrf := csrfRe.FindStringSubmatch(page)[1]
+
+	app := newClient(t, srv.URL)
+	_, tok := app.json("/api/v1/auth/login", map[string]string{"username": "julien", "password": "secret-pass"})
+	adminAccess := tok["accessToken"].(string)
+
+	// Admin adds a recipe and generates a menu.
+	res, rec := app.api("POST", "/api/v1/recipes", adminAccess, map[string]any{
+		"title": "Soupe potiron", "dishType": "vegetarian", "mealTypes": []string{"dinner"},
+	})
+	expect(t, res, http.StatusCreated, "admin creates recipe")
+	recID := rec["id"].(string)
+
+	for i := range 10 {
+		res, _ = app.api("POST", "/api/v1/recipes", adminAccess, map[string]any{
+			"title": "Recette " + string(rune('A'+i)), "dishType": "vegetarian", "mealTypes": []string{"dinner"},
+		})
+		expect(t, res, http.StatusCreated, "admin creates recipe")
+	}
+
+	res, genOut := app.api("POST", "/api/v1/menu/generate", adminAccess, map[string]any{
+		"start": "2026-11-02", "meals": 2, "plan": "dinner",
+	})
+	expect(t, res, http.StatusOK, "admin generates menu")
+	slots := genOut["slots"].([]any)
+	slotID := slots[0].(map[string]any)["id"].(string)
+
+	// Create a readonly invitation.
+	code, err := st.CreateInvitation(ctx, mustAdmin(t, st).ID, "readonly", time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Readonly user redeems invitation and signs in.
+	_, roTok := app.json("/api/v1/invitations/redeem", map[string]string{
+		"code": code, "username": "enfant", "password": "enfant-password",
+	})
+	if roTok["user"].(map[string]any)["role"] != "readonly" {
+		t.Fatalf("expected role readonly, got %v", roTok["user"])
+	}
+	roAccess := roTok["accessToken"].(string)
+
+	// Readonly user can read the shared recipes and the shared menu!
+	res, recList := app.api("GET", "/api/v1/recipes", roAccess, nil)
+	expect(t, res, http.StatusOK, "readonly can list recipes")
+	if len(recList["recipes"].([]any)) == 0 {
+		t.Fatal("readonly should see recipes")
+	}
+
+	res, menuOut := app.api("GET", "/api/v1/menu", roAccess, nil)
+	expect(t, res, http.StatusOK, "readonly can view shared menu")
+	if len(menuOut["slots"].([]any)) == 0 {
+		t.Fatal("readonly should see the shared menu slots")
+	}
+
+	// Readonly user cannot add or modify recipes.
+	res, _ = app.api("POST", "/api/v1/recipes", roAccess, map[string]any{"title": "Interdit", "dishType": "meat"})
+	expect(t, res, http.StatusForbidden, "readonly cannot create recipe")
+	res, _ = app.api("PUT", "/api/v1/recipes/"+recID, roAccess, map[string]any{"title": "Interdit", "dishType": "meat"})
+	expect(t, res, http.StatusForbidden, "readonly cannot edit recipe")
+	res, _ = app.api("DELETE", "/api/v1/recipes/"+recID, roAccess, nil)
+	expect(t, res, http.StatusForbidden, "readonly cannot delete recipe")
+
+	// Readonly user cannot modify menu slots or generate menus.
+	res, _ = app.api("POST", "/api/v1/menu/generate", roAccess, map[string]any{"start": "2026-11-05", "meals": 2, "plan": "dinner"})
+	expect(t, res, http.StatusForbidden, "readonly cannot generate menu")
+	res, _ = app.api("POST", "/api/v1/menu/slots", roAccess, map[string]any{"date": "2026-11-10", "meal": "dinner"})
+	expect(t, res, http.StatusForbidden, "readonly cannot add menu slot")
+	res, _ = app.api("POST", "/api/v1/menu/slots/"+slotID+"/swap", roAccess, nil)
+	expect(t, res, http.StatusForbidden, "readonly cannot swap slot")
+	res, _ = app.api("DELETE", "/api/v1/menu/slots/"+slotID, roAccess, nil)
+	expect(t, res, http.StatusForbidden, "readonly cannot delete slot")
+
+	// Web admin: admin changes user role between readonly and member.
+	roUser, err := st.UserByUsername(ctx, "enfant")
+	if err != nil {
+		t.Fatal(err)
+	}
+	web.form("/admin/accounts/"+roUser.ID+"/role", url.Values{"csrf": {csrf}, "role": {"member"}})
+	updated, _ := st.GetUser(ctx, roUser.ID)
+	if updated.Role != "member" {
+		t.Fatalf("expected member, got %s", updated.Role)
+	}
+
+	// Now as member, can add a menu slot.
+	res, _ = app.api("POST", "/api/v1/menu/slots", roAccess, map[string]any{"date": "2026-11-10", "meal": "dinner"})
+	expect(t, res, http.StatusCreated, "member can add slot")
+
+	// Switch back to readonly.
+	web.form("/admin/accounts/"+roUser.ID+"/role", url.Values{"csrf": {csrf}, "role": {"readonly"}})
+	updated, _ = st.GetUser(ctx, roUser.ID)
+	if updated.Role != "readonly" {
+		t.Fatalf("expected readonly, got %s", updated.Role)
+	}
+	res, _ = app.api("POST", "/api/v1/menu/slots", roAccess, map[string]any{"date": "2026-11-11", "meal": "dinner"})
+	expect(t, res, http.StatusForbidden, "readonly again cannot add slot")
 }

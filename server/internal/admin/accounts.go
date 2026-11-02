@@ -73,6 +73,13 @@ func (a *Admin) resetAccountPassword(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (a *Admin) changeAccountRole(w http.ResponseWriter, r *http.Request) {
+	role := r.FormValue("role")
+	a.accountAction(w, r, "role_changed", "rôle modifié en "+role, "role_changed", func(id string) (store.User, error) {
+		return a.Store.SetUserRole(r.Context(), id, role)
+	})
+}
+
 // ---------- Invitations ----------
 
 type newInvitation struct {
@@ -80,6 +87,7 @@ type newInvitation struct {
 	Link string
 	QR   template.URL // QR code PNG of the link, as a data: URL
 	Days int
+	Role string
 }
 
 type invitationsPage struct {
@@ -135,16 +143,20 @@ func (a *Admin) createInvitation(w http.ResponseWriter, r *http.Request) {
 	if !valid {
 		days = store.DefaultInvitationDays
 	}
+	role := r.FormValue("role")
+	if role == "" {
+		role = store.RoleMember
+	}
 	s := current(r)
-	code, err := a.Store.CreateInvitation(r.Context(), s.user.ID, time.Duration(days)*24*time.Hour)
+	code, err := a.Store.CreateInvitation(r.Context(), s.user.ID, role, time.Duration(days)*24*time.Hour)
 	if err != nil {
 		a.fail(w, r, err)
 		return
 	}
 	a.Store.LogAuthEvent(r.Context(), &s.user.ID, s.user.Username, "admin", "invite_created",
-		"valable "+strconv.Itoa(days)+" j", a.client(r))
+		"rôle "+role+", valable "+strconv.Itoa(days)+" j", a.client(r))
 	link := invitationPageURL(a.serverURL(r), code)
-	n := &newInvitation{Code: code, Link: link, Days: days}
+	n := &newInvitation{Code: code, Link: link, Days: days, Role: role}
 	if img, err := qr.Encode(link, qr.M); err == nil {
 		n.QR = template.URL("data:image/png;base64," + base64.StdEncoding.EncodeToString(img.PNG()))
 	}

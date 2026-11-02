@@ -10,6 +10,10 @@ class ApiException(val status: Int, val code: String, message: String) : IOExcep
 
 /** [people] is the user's preference: number of people to cook for (recipes are stored for one person). */
 data class User(val id: String, val username: String, val displayName: String, val role: String, val people: Int = 1) {
+    val isAdmin: Boolean get() = role == "admin"
+    val isReadonly: Boolean get() = role == "readonly"
+    val canWrite: Boolean get() = role == "admin" || role == "member"
+
     fun toJson(): JSONObject = JSONObject()
         .put("id", id).put("username", username).put("displayName", displayName).put("role", role)
         .put("preferences", JSONObject().put("people", people))
