@@ -41,7 +41,7 @@ fun BrandTitle(logoSize: Dp = 76.dp, textSize: Int = 54) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Image(painterResource(R.drawable.ic_mijote_logo), contentDescription = null, modifier = Modifier.size(logoSize))
         Text("Mijote", fontFamily = Grandstander, fontWeight = FontWeight.ExtraBold, fontSize = textSize.sp,
-            lineHeight = textSize.sp, color = Sunny.InkTitle, modifier = Modifier.padding(start = 14.dp))
+            lineHeight = textSize.sp, color = Sunny.InkTitle, modifier = Modifier.padding(start = if (logoSize < 60.dp) 12.dp else 14.dp))
     }
 }
 

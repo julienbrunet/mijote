@@ -44,23 +44,19 @@ fun RecipesTab(
     onNew: () -> Unit,
     working: Boolean = false,
     onRefresh: () -> Unit = {},
+    onPreferences: () -> Unit = {},
 ) {
     val list = state.recipes
     PullToRefreshBox(state.refreshing, onRefresh, Modifier.fillMaxSize().background(Sunny.Butter)) {
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 120.dp)) {
         item {
-            Box(
-                Modifier.fillMaxWidth()
-                    .shadow(6.dp, RoundedCornerShape(bottomStart = 40.dp, bottomEnd = 40.dp), ambientColor = Sunny.PeachDeep, spotColor = Sunny.PeachDeep)
-                    .background(Sunny.Card, RoundedCornerShape(bottomStart = 40.dp, bottomEnd = 40.dp)),
-            ) {
-                Column(Modifier.statusBarsPadding().padding(start = 22.dp, end = 22.dp, top = 44.dp, bottom = 24.dp)) {
-                    ScreenTitle("Recettes", list?.let {
-                        when {
-                            state.query.isNotBlank() -> "${it.size} résultat${if (it.size > 1) "s" else ""}"
-                            else -> "${it.size} recette${if (it.size > 1) "s" else ""}"
-                        }
-                    }, size = 32)
+            // Same header as the other tabs, with the search field and the new recipe button below the title.
+            HomeHeader("Recettes", list?.let {
+                when {
+                    state.query.isNotBlank() -> "${it.size} résultat${if (it.size > 1) "s" else ""}"
+                    else -> "${it.size} recette${if (it.size > 1) "s" else ""}"
+                }
+            }, onPreferences) {
                     SearchField(state.query, onQuery)
                     if (canWrite) {
                         Button(
@@ -72,7 +68,6 @@ fun RecipesTab(
                             Text("Nouvelle recette", fontWeight = FontWeight.Bold, fontSize = 15.sp, modifier = Modifier.padding(start = 8.dp))
                         }
                     }
-                }
             }
         }
         item { Box(Modifier.padding(horizontal = 20.dp)) { ErrorText(state.error) } }

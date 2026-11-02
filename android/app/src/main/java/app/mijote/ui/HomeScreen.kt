@@ -116,26 +116,34 @@ fun HomeScreen(
 }
 
 /**
- * Big white header shared by the main screens: logo and wordmark on the Menus tab, a plain [title]
- * elsewhere (with [subtitle] below), the user button in a Butter corner block.
+ * White header shared by the main tabs: logo tile and wordmark on the Menus tab, a plain [title]
+ * elsewhere, [subtitle] below, then optional [extra] content (search field…). The user button sits in
+ * a Butter corner block that starts below the status bar, so nothing coloured runs under the phone's
+ * status icons.
  */
 @Composable
-fun HomeHeader(title: String?, subtitle: String?, onPreferences: () -> Unit) {
-    val period = subtitle
+fun HomeHeader(
+    title: String?, subtitle: String?, onPreferences: () -> Unit,
+    extra: @Composable ColumnScope.() -> Unit = {},
+) {
     Box(
         Modifier.fillMaxWidth().zIndexShadow()
             .background(Sunny.Card, RoundedCornerShape(bottomStart = 40.dp, bottomEnd = 40.dp)),
     ) {
-        CornerBlock(Sunny.Butter, size = 96.dp, modifier = Modifier.align(Alignment.TopEnd)) {
-            Box(Modifier.statusBarsPadding()) { UserButton(onPreferences) }
-        }
-        Column(Modifier.statusBarsPadding().padding(start = 22.dp, end = if (title != null) 104.dp else 24.dp, top = 44.dp, bottom = 30.dp)) {
-            if (title != null) ScreenTitle(title, period, size = 32)
-            else {
-                BrandTitle()
-                period?.let { Text(it, fontSize = 15.sp, color = Sunny.InkTitle, modifier = Modifier.padding(start = 4.dp, top = 14.dp)) }
+        Box(
+            Modifier.align(Alignment.TopEnd).statusBarsPadding().size(84.dp)
+                .background(Sunny.Butter, RoundedCornerShape(bottomStart = 32.dp)),
+            contentAlignment = Alignment.Center,
+        ) { UserButton(onPreferences) }
+        Column(Modifier.statusBarsPadding().padding(start = 22.dp, end = 22.dp, top = 22.dp, bottom = 26.dp)) {
+            Column(Modifier.padding(end = 80.dp)) {
+                if (title != null) ScreenTitle(title, subtitle, size = 32)
+                else {
+                    BrandTitle(logoSize = 48.dp, textSize = 44)
+                    subtitle?.let { Text(it, fontSize = 15.sp, color = Sunny.InkTitle, modifier = Modifier.padding(start = 2.dp, top = 12.dp)) }
+                }
             }
-    
+            extra()
         }
     }
 }

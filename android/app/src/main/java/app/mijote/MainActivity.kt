@@ -161,6 +161,7 @@ class MainActivity : ComponentActivity() {
                                         onPlan = { planning = it.id to it.title },
                                         onNew = { vm.editRecipe(new = true) },
                                         onRefresh = { vm.refreshRecipes() },
+                                        onPreferences = vm::openPreferences,
                                         working = menu.working != null)
                                 },
                             ) {
