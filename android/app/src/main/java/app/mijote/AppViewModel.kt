@@ -351,10 +351,20 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** Saves the number of people; the screen shows the new value at once and rolls back on failure. */
+    /** From the preferences or the "Idées de repas" screen. */
     fun setPeople(people: Int) {
-        val prefs = _state.value.screen as? Screen.Preferences ?: return
-        val before = prefs.user
-        _state.update { it.copy(screen = Screen.Preferences(before.copy(people = people))) }
+        val screen = _state.value.screen
+        val before = when (screen) {
+            is Screen.Preferences -> screen.user
+            is Screen.Home -> screen.user
+            else -> return
+        }
+        fun withUser(s: Screen, u: User) = when (s) {
+            is Screen.Preferences -> Screen.Preferences(u)
+            is Screen.Home -> Screen.Home(u)
+            else -> s
+        }
+        _state.update { it.copy(screen = withUser(it.screen, before.copy(people = people))) }
         viewModelScope.launch {
             try {
                 val u = session.authed { api, access -> api.setPeople(access, people) }
@@ -362,7 +372,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             } catch (e: SessionExpiredException) {
                 toLogin("Votre session a expiré : reconnectez-vous.")
             } catch (e: IOException) {
-                _state.update { if (it.screen is Screen.Preferences) it.copy(screen = Screen.Preferences(before), error = errorMessage(e)) else it }
+                _state.update { it.copy(screen = withUser(it.screen, before), error = errorMessage(e)) }
+                _menu.update { it.copy(error = errorMessage(e)) }
             }
         }
     }

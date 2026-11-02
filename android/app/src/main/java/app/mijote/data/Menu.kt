@@ -91,3 +91,13 @@ fun defaultMealCount(defaults: List<String>, start: LocalDate, days: Int): Int =
 
 /** Next Monday strictly after [d]. */
 fun nextMonday(d: LocalDate): LocalDate = d.plusDays(((DayOfWeek.MONDAY.value - d.dayOfWeek.value + 6) % 7 + 1).toLong())
+
+/**
+ * What generating from [start] to [end] does to the meals already planned there (requirements.md §10):
+ * (replaced, kept). Locked meals and manual meals are kept; the others are replaced or removed.
+ */
+fun periodImpact(slots: List<MenuSlot>, start: LocalDate, end: LocalDate): Pair<Int, Int> {
+    val inPeriod = slots.filter { !it.date.isBefore(start) && !it.date.isAfter(end) }
+    val kept = inPeriod.count { it.locked || it.manual }
+    return (inPeriod.size - kept) to kept
+}

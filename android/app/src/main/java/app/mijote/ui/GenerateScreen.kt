@@ -1,18 +1,16 @@
 package app.mijote.ui
 
-import app.mijote.R
-import androidx.compose.ui.res.painterResource
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
@@ -28,10 +26,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.mijote.data.GenerationInfo
 import app.mijote.data.MealPlan
+import app.mijote.data.MenuSlot
+import app.mijote.data.periodImpact
 import java.time.LocalDate
 
 private const val MAX_DAYS = 21
 private const val START_CHOICES = 14
+private const val MAX_PEOPLE = 20
+private val DAY_SHORTCUTS = listOf(3, 5, 7, 14)
 
 /** Which meals of each day to plan. */
 enum class MealKind(val plan: MealPlan, val perDay: Int) {
@@ -39,9 +41,10 @@ enum class MealKind(val plan: MealPlan, val perDay: Int) {
 }
 
 /**
- * Step 1 of the menu generation ("Idées de repas" tab), shaped like the reference "Add basket" card: a big Butter sheet with the title,
- * a white card with the day count stepper on its right, a Slate band to choose lunch, dinner or both,
- * then the start day choices and the button leading to the review screen.
+ * Step 1 of the menu generation ("Idées de repas" tab): the home header, then four short questions
+ * in the order people think of them (from when, how many days, which meals, for how many people),
+ * and a panel fixed above the navigation with the summary, what happens to the meals already
+ * planned, and "C'est parti".
  */
 @Composable
 fun GenerateScreen(
@@ -52,6 +55,8 @@ fun GenerateScreen(
     error: String?,
     onGenerate: (start: LocalDate, meals: Int, plan: MealPlan) -> Unit,
     onPreferences: () -> Unit = {},
+    onPeople: (Int) -> Unit = {},
+    slots: List<MenuSlot> = emptyList(),
 ) {
     var startDay by rememberSaveable { mutableLongStateOf(today.plusDays(1).toEpochDay()) }
     var kind by rememberSaveable { mutableStateOf(MealKind.BOTH) }
@@ -59,123 +64,129 @@ fun GenerateScreen(
     val start = LocalDate.ofEpochDay(startDay)
     val end = start.plusDays(days - 1L)
     val meals = days * kind.perDay
+    val (replaced, kept) = periodImpact(slots, start, end)
 
-    Column(
-        Modifier.fillMaxSize().background(Sunny.Butter).verticalScroll(rememberScrollState())
-            .padding(bottom = 120.dp),
-    ) {
-        // Same header as the home screen, so that the tabs look alike.
-        HomeHeader("Idées de repas", "Mijote vous propose un menu varié", onPreferences)
-        Spacer(Modifier.height(22.dp))
-
-        // The card: day stepper on the right, summary on the white face, meal choices underneath.
+    Box(Modifier.fillMaxSize().background(Sunny.Butter)) {
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = 330.dp)) {
+            HomeHeader("Idées de repas", "Mijote vous propose un menu varié", onPreferences)
+            Column(Modifier.padding(horizontal = 18.dp).padding(top = 20.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                if (info != null && !info.enoughRecipes) {
+                    Text(
+                        "Il faut au moins ${info.minRecipes} recettes pour générer un menu : il y en a ${info.recipeCount}. " +
+                            "Ajoutez-en ${info.minRecipes - info.recipeCount} de plus.",
+                        color = Sunny.Ink, fontSize = 14.sp,
+                        modifier = Modifier.fillMaxWidth().background(Sunny.ErrorBg, Shapes.Control).padding(14.dp),
+                    )
+                }
+                Question("1", "À partir de quand ?") {
+                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        (0 until START_CHOICES).map { today.plusDays(it.toLong()) }.forEach { d ->
+                            DayTile(if (d == today) "Auj." else dayLabel(d, today), shortDate(d).substringAfter(' '), d == start) {
+                                startDay = d.toEpochDay()
+                            }
+                        }
+                    }
+                }
+                Question("2", "Combien de jours ?") {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Row(Modifier.weight(1f), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            DAY_SHORTCUTS.forEach { n -> Chip("$n", days == n, Modifier.weight(1f)) { days = n } }
+                        }
+                        Spacer(Modifier.width(12.dp))
+                        Stepper(days, 1, MAX_DAYS, "Un jour de moins", "Un jour de plus") { days = it }
+                    }
+                }
+                Question("3", "Quels repas ?") {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Chip("Midi", kind == MealKind.LUNCH, Modifier.weight(1f)) { kind = MealKind.LUNCH }
+                        Chip("Soir", kind == MealKind.DINNER, Modifier.weight(1f)) { kind = MealKind.DINNER }
+                        Chip("Midi & soir", kind == MealKind.BOTH, Modifier.weight(1.3f)) { kind = MealKind.BOTH }
+                    }
+                }
+                Question("4", "Pour combien de personnes ?") {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Les quantités des recettes sont ajustées.", fontSize = 13.sp, color = Sunny.InkSoft, modifier = Modifier.weight(1f))
+                        Stepper(people, 1, MAX_PEOPLE, "Une personne de moins", "Une personne de plus", onPeople)
+                    }
+                }
+            }
+        }
+        // Summary and button fixed right above the navigation pill.
         Column(
-            Modifier.padding(horizontal = 18.dp).fillMaxWidth()
-                .shadow(14.dp, Shapes.Sheet, ambientColor = Sunny.PeachDeep, spotColor = Sunny.PeachDeep)
-                .background(Sunny.Slate, Shapes.Sheet),
+            Modifier.align(Alignment.BottomCenter).fillMaxWidth()
+                .shadow(12.dp, RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp), ambientColor = Sunny.PeachDeep, spotColor = Sunny.PeachDeep)
+                .background(Sunny.Card, RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp))
+                .navigationBarsPadding().padding(start = 22.dp, end = 22.dp, top = 18.dp, bottom = 96.dp),
         ) {
-            Box(Modifier.fillMaxWidth().height(172.dp).background(Color(0xFFF4F4F5), Shapes.Sheet)) {
-                // Stepper on the right edge, within reach of the right thumb.
-                Column(
-                    Modifier.align(Alignment.CenterEnd).width(76.dp).fillMaxHeight(),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.SpaceEvenly,
-                ) {
-                    StepButton("+", "Un jour de plus", enabled = days < MAX_DAYS) { days++ }
-                    Box(
-                        Modifier.size(46.dp).background(Sunny.Card, RoundedCornerShape(14.dp)),
-                        contentAlignment = Alignment.Center,
-                    ) { Text("$days", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = Sunny.Ink) }
-                    StepButton("−", "Un jour de moins", enabled = days > 1) { days-- }
+            Text(periodSummary(start, end), fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Sunny.Ink)
+            Text("${if (meals > 1) "$meals repas" else "1 repas"} · ${if (people > 1) "$people personnes" else "1 personne"}",
+                fontSize = 14.sp, color = Sunny.InkTitle, modifier = Modifier.padding(top = 2.dp))
+            impactText(replaced, kept)?.let {
+                Row(Modifier.padding(top = 10.dp).fillMaxWidth().background(Sunny.ButterLight, Shapes.Control).padding(10.dp),
+                    verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Filled.Info, null, tint = Sunny.PeachDeep, modifier = Modifier.size(18.dp))
+                    Text(it, fontSize = 12.sp, color = Sunny.Ink, lineHeight = 16.sp, modifier = Modifier.padding(start = 8.dp))
                 }
-                Column(
-                    Modifier.padding(end = 76.dp).fillMaxSize()
-                        .background(Sunny.Card, Shapes.Sheet).padding(horizontal = 24.dp, vertical = 20.dp),
-                ) {
-                    Text(if (days > 1) "$days jours" else "1 jour", fontSize = 24.sp, fontWeight = FontWeight.Bold,
-                        color = Sunny.InkTitle)
-                    Text(periodLabel(start, end), fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Sunny.Ink,
-                        modifier = Modifier.padding(top = 4.dp))
-                    Text("${if (meals > 1) "$meals repas" else "1 repas"} · ${if (people > 1) "$people personnes" else "1 personne"}",
-                        fontSize = 13.sp, color = Sunny.InkSoft, modifier = Modifier.padding(top = 8.dp))
-                }
-            }
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
-                horizontalArrangement = Arrangement.SpaceEvenly,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                PlanChip("Midi", "", kind == MealKind.LUNCH) { kind = MealKind.LUNCH }
-                PlanChip("Soir", "", kind == MealKind.DINNER) { kind = MealKind.DINNER }
-                PlanChip("Midi", "& soir", kind == MealKind.BOTH) { kind = MealKind.BOTH }
-            }
-        }
-
-        Text("PREMIER JOUR", fontSize = 11.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold, color = Sunny.InkTitle,
-            modifier = Modifier.padding(start = 30.dp, top = 20.dp, bottom = 8.dp))
-        Row(
-            Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 18.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            (0 until START_CHOICES).map { today.plusDays(it.toLong()) }.forEach { d ->
-                val on = d == start
-                Column(
-                    Modifier.width(78.dp).height(62.dp).clip(Shapes.Control)
-                        .background(if (on) Sunny.Card else Sunny.ButterLight).clickable { startDay = d.toEpochDay() }
-                        .padding(8.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center,
-                ) {
-                    Text(if (d == today) "Auj." else dayLabel(d, today), fontSize = 13.sp, lineHeight = 15.sp, textAlign = TextAlign.Center, maxLines = 1,
-                        fontWeight = if (on) FontWeight.Bold else FontWeight.Medium, color = if (on) Sunny.PeachDeep else Sunny.Ink)
-                    Text(shortDate(d).substringAfter(' '), fontSize = 11.sp, color = Sunny.InkSoft)
-                }
-            }
-        }
-
-        Column(Modifier.padding(horizontal = 18.dp).padding(top = 6.dp)) {
-            if (info != null && !info.enoughRecipes) {
-                Text(
-                    "Il faut au moins ${info.minRecipes} recettes pour générer un menu : il y en a ${info.recipeCount}. " +
-                        "Ajoutez-en ${info.minRecipes - info.recipeCount} de plus.",
-                    color = Sunny.Ink, fontSize = 14.sp,
-                    modifier = Modifier.fillMaxWidth().background(Sunny.ButterLight, Shapes.Control).padding(14.dp),
-                )
-                Spacer(Modifier.height(12.dp))
             }
             ErrorText(error)
-            PrimaryButton(if (busy) "Génération…" else "C'est parti", busy) {
-                onGenerate(start, meals, kind.plan)
+            PrimaryButton(if (busy) "Génération…" else "C'est parti", busy) { onGenerate(start, meals, kind.plan) }
+        }
+    }
+}
+
+/** "Du 3 au 9 novembre", or the single day. */
+private fun periodSummary(start: LocalDate, end: LocalDate): String =
+    if (start == end) "Le ${periodLabel(start, end)}" else "Du ${periodLabel(start, end).replace(" → ", " au ")}"
+
+/** What generating does to the meals already planned in the period, null when there are none. */
+private fun impactText(replaced: Int, kept: Int): String? {
+    val parts = listOfNotNull(
+        when (replaced) { 0 -> null; 1 -> "1 repas déjà prévu sera remplacé."; else -> "$replaced repas déjà prévus seront remplacés." },
+        when (kept) { 0 -> null; 1 -> "1 repas choisi ou libre est conservé."; else -> "$kept repas choisis ou libres sont conservés." },
+    )
+    return parts.joinToString(" ").ifEmpty { null }
+}
+
+@Composable
+private fun Question(n: String, title: String, content: @Composable ColumnScope.() -> Unit) {
+    Column(Modifier.fillMaxWidth().background(Sunny.Card, Shapes.Card).padding(18.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 12.dp)) {
+            Box(Modifier.size(24.dp).background(Sunny.Peach, CircleShape), contentAlignment = Alignment.Center) {
+                Text(n, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
             }
+            Text(title, fontSize = 17.sp, fontWeight = FontWeight.Bold, color = Sunny.Ink, modifier = Modifier.padding(start = 10.dp))
+        }
+        content()
+    }
+}
+
+@Composable
+private fun DayTile(day: String, date: String, on: Boolean, onClick: () -> Unit) {
+    Column(
+        Modifier.width(76.dp).clip(Shapes.Control).background(if (on) Sunny.PeachDeep else Sunny.ButterLight)
+            .clickable(onClick = onClick).padding(vertical = 10.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(day, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = if (on) Color.White else Sunny.Ink, maxLines = 1)
+        Text(date, fontSize = 11.sp, color = if (on) Color.White else Sunny.InkSoft)
+    }
+}
+
+@Composable
+private fun Stepper(value: Int, min: Int, max: Int, less: String, more: String, onChange: (Int) -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        StepTile(value > min, less, { onChange(value - 1) }) { Text("−", fontSize = 22.sp, color = if (value > min) Sunny.Ink else Sunny.InkSoft) }
+        Text("$value", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Sunny.Ink, modifier = Modifier.width(40.dp), textAlign = TextAlign.Center)
+        StepTile(value < max, more, { onChange(value + 1) }) {
+            Icon(Icons.Filled.Add, contentDescription = more, tint = if (value < max) Sunny.Ink else Sunny.InkSoft)
         }
     }
 }
 
 @Composable
-private fun StepButton(sign: String, description: String, enabled: Boolean, onClick: () -> Unit) {
+private fun StepTile(enabled: Boolean, label: String, onClick: () -> Unit, content: @Composable () -> Unit) {
     Box(
-        Modifier.size(44.dp).clip(RoundedCornerShape(14.dp)).clickable(enabled = enabled, onClick = onClick),
+        Modifier.size(40.dp).clip(Shapes.Control).background(Sunny.ButterLight).clickable(enabled = enabled, onClickLabel = label, onClick = onClick),
         contentAlignment = Alignment.Center,
-    ) {
-        if (sign == "+") Icon(Icons.Filled.Add, contentDescription = description, tint = if (enabled) Sunny.Ink else Sunny.InkSoft)
-        else Text(sign, fontSize = 26.sp, color = if (enabled) Sunny.Ink else Sunny.InkSoft)
-    }
-}
-
-/** Meal plan choice in the Slate band; the selected one is a Butter tile with a check, as in the reference. */
-@Composable
-private fun PlanChip(title: String, subtitle: String, selected: Boolean, onClick: () -> Unit) {
-    Row(
-        Modifier.height(52.dp).clip(Shapes.Control)
-            .background(if (selected) Sunny.Butter else Color.Transparent)
-            .clickable(onClick = onClick).padding(horizontal = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(title, color = if (selected) Sunny.InkTitle else Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-            if (subtitle.isNotEmpty()) Text(subtitle, color = if (selected) Sunny.InkTitle else Color.White.copy(alpha = 0.85f), fontSize = 11.sp)
-        }
-        if (selected) Icon(Icons.Filled.Check, contentDescription = null, tint = Sunny.InkTitle,
-            modifier = Modifier.padding(start = 6.dp).size(16.dp))
-    }
+    ) { content() }
 }

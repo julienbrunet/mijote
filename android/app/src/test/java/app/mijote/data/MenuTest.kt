@@ -48,4 +48,17 @@ class MenuTest {
         assertEquals("1,5 c. à soupe pesto", IngredientLine(0.5, "tbsp", "pesto", null).text(3))
         assertEquals("pincée sel", IngredientLine(null, "pinch", "sel", null).text(2))
     }
+
+    @Test
+    fun periodImpactCountsReplacedAndKeptMeals() {
+        val d = LocalDate.of(2026, 11, 3)
+        val slots = listOf(
+            MenuSlot("a", d, "dinner", null, locked = false),
+            MenuSlot("b", d.plusDays(1), "dinner", null, locked = true),
+            MenuSlot("c", d.plusDays(2), "lunch", null, locked = true, title = "Pizza"),
+            MenuSlot("d", d.plusDays(9), "dinner", null, locked = false),
+        )
+        assertEquals(1 to 2, periodImpact(slots, d, d.plusDays(6)))
+        assertEquals(0 to 0, periodImpact(slots, d.minusDays(5), d.minusDays(1)))
+    }
 }

@@ -165,7 +165,8 @@ class MainActivity : ComponentActivity() {
                                 },
                             ) {
                                 GenerateScreen(m?.info, m?.today ?: LocalDate.now(), s.user.people, menu.generating, menu.error,
-                                    onGenerate = vm::generateMenu, onPreferences = vm::openPreferences)
+                                    onGenerate = vm::generateMenu, onPreferences = vm::openPreferences,
+                                    onPeople = vm::setPeople, slots = m?.slots.orEmpty())
                             }
                         }
                     }
