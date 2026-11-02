@@ -30,46 +30,36 @@ private const val PLAN_DAYS = 21
 private val manualExamples = listOf("Commander une pizza", "Passer au McDo", "Repas chez des amis")
 
 /**
- * Picks the day and the meal (midi / soir) where to plan something: a recipe ([manual] false, its
- * [heading] is the recipe title) or a manual meal ([manual] true: a free text is typed too). The meal
- * already planned at the chosen time is shown: confirming replaces it.
+ * Picks the day and the meal (midi / soir) where to plan a recipe ([heading] is its title). The meal
+ * already planned at the chosen time is shown: confirming replaces it. Manual meals are not planned
+ * here: they replace a planned meal from its actions (MealTitleDialog).
  */
 @Composable
 fun PlanMealDialog(
     heading: String,
     today: LocalDate,
     slots: List<MenuSlot>,
-    manual: Boolean,
     onDismiss: () -> Unit,
-    onConfirm: (date: LocalDate, meal: String, text: String?, replace: Boolean) -> Unit,
+    onConfirm: (date: LocalDate, meal: String, replace: Boolean) -> Unit,
     initialDate: LocalDate? = null,
     initialMeal: String? = null,
 ) {
     var date by remember { mutableStateOf(initialDate ?: today) }
     var meal by remember { mutableStateOf(initialMeal ?: "dinner") }
-    var text by remember { mutableStateOf("") }
     val taken = slots.firstOrNull { it.date == date && it.meal == meal }
     val takenTitle = taken?.let { it.title ?: it.recipe?.title ?: "un repas sans recette" }
-    val ready = !manual || text.isNotBlank()
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = Sunny.Card,
         title = {
             Column {
-                Text(if (manual) "Ajouter un repas libre" else "Planifier", fontSize = 13.sp, letterSpacing = 1.sp,
+                Text("Planifier", fontSize = 13.sp, letterSpacing = 1.sp,
                     fontWeight = FontWeight.SemiBold, color = Sunny.PeachDeep)
-                if (!manual) Text(heading, fontWeight = FontWeight.Bold, color = Sunny.Ink, fontSize = 18.sp, maxLines = 2)
+                Text(heading, fontWeight = FontWeight.Bold, color = Sunny.Ink, fontSize = 18.sp, maxLines = 2)
             }
         },
         text = {
             Column {
-                if (manual) {
-                    MealTitleField(text, { text = it })
-                    Row(Modifier.padding(top = 8.dp).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        manualExamples.forEach { ex -> Chip(ex, selected = false) { text = ex } }
-                    }
-                    Spacer(Modifier.height(16.dp))
-                }
                 Text("JOUR", fontSize = 11.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold, color = Sunny.InkSoft)
                 DayRow(today, date) { date = it }
                 Text("REPAS", fontSize = 11.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold, color = Sunny.InkSoft,
@@ -87,8 +77,8 @@ fun PlanMealDialog(
         },
         confirmButton = {
             Button(
-                onClick = { onConfirm(date, meal, if (manual) text.trim() else null, taken != null) },
-                enabled = ready, shape = Shapes.Control,
+                onClick = { onConfirm(date, meal, taken != null) },
+                shape = Shapes.Control,
                 colors = ButtonDefaults.buttonColors(containerColor = Sunny.PeachDeep, contentColor = Color.White),
             ) { Text(if (taken != null) "Remplacer" else "Planifier", fontWeight = FontWeight.Bold) }
         },
@@ -104,7 +94,14 @@ fun MealTitleDialog(initial: String, onDismiss: () -> Unit, onConfirm: (String) 
         onDismissRequest = onDismiss,
         containerColor = Sunny.Card,
         title = { Text("Repas libre", fontWeight = FontWeight.Bold, color = Sunny.Ink, fontSize = 18.sp) },
-        text = { MealTitleField(text, { text = it }) },
+        text = {
+            Column {
+                MealTitleField(text, { text = it })
+                Row(Modifier.padding(top = 8.dp).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    manualExamples.forEach { ex -> Chip(ex, selected = false) { text = ex } }
+                }
+            }
+        },
         confirmButton = {
             Button(onClick = { onConfirm(text.trim()) }, enabled = text.isNotBlank(), shape = Shapes.Control,
                 colors = ButtonDefaults.buttonColors(containerColor = Sunny.PeachDeep, contentColor = Color.White),

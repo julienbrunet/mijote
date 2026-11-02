@@ -69,7 +69,6 @@ fun HomeScreen(
     onSwapMeal: (MealUi) -> Unit = {},
     onRemoveMeal: (MealUi) -> Unit = {},
     onRenameMeal: (MealUi, String) -> Unit = { _, _ -> },
-    onAddManualMeal: () -> Unit = {},
     tab: Tab = Tab.MENUS,
     onTab: (Tab) -> Unit = {},
     refreshing: Boolean = false,
@@ -97,7 +96,6 @@ fun HomeScreen(
             if (tab == Tab.MENUS && days.isNotEmpty()) {
                 Column(Modifier.padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 120.dp)) {
                     ErrorText(error)
-                    if (canEdit) Box(Modifier.padding(top = 18.dp)) { AddMealButton("Ajouter un repas libre", working == "manual", onAddManualMeal) }
                     // No separator between days: the day titles and a wider gap group the meals.
                     days.forEachIndexed { i, day ->
                         DaySection(day, first = i == 0, working = working, onOpen = onOpenMeal, onEdit = { editing = it }, canEdit = canEdit)
@@ -110,9 +108,6 @@ fun HomeScreen(
                     color = Sunny.InkTitle, textAlign = TextAlign.Center,
                     modifier = Modifier.fillMaxWidth().padding(top = 120.dp, start = 24.dp, end = 24.dp),
                 )
-                if (canEdit) Box(Modifier.padding(horizontal = 20.dp, vertical = 24.dp)) {
-                    AddMealButton("Ajouter un repas libre", working == "manual", onAddManualMeal)
-                }
             }
         }
         BottomBar(tab, availableTabs, Modifier.align(Alignment.BottomEnd), onTab)

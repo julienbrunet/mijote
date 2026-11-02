@@ -166,11 +166,16 @@ class ScreenshotTest {
     }
 
     @Test
-    fun planManualMeal() = paparazzi.snapshot {
+    fun planRecipe() = paparazzi.snapshot {
         MijoteTheme {
-            PlanMealDialog("", LocalDate.of(2026, 11, 2), listOf(app.mijote.data.MenuSlot("s1", LocalDate.of(2026, 11, 2), "dinner",
-                app.mijote.data.MenuRecipe("r1", "Soupe", "vegetarian", 20), false)), manual = true, onDismiss = {}, onConfirm = { _, _, _, _ -> })
+            PlanMealDialog("Gratin de pâtes aux légumes", LocalDate.of(2026, 11, 2), listOf(app.mijote.data.MenuSlot("s1", LocalDate.of(2026, 11, 2), "dinner",
+                app.mijote.data.MenuRecipe("r1", "Soupe", "vegetarian", 20), false)), onDismiss = {}, onConfirm = { _, _, _ -> })
         }
+    }
+
+    @Test
+    fun manualMealDialog() = paparazzi.snapshot {
+        MijoteTheme { MealTitleDialog("", onDismiss = {}, onConfirm = {}) }
     }
 
     @Test

@@ -71,8 +71,8 @@ class MainActivity : ComponentActivity() {
             val recipes by vm.recipes.collectAsStateWithLifecycle()
             val editor by vm.editor.collectAsStateWithLifecycle()
             val admin by vm.admin.collectAsStateWithLifecycle()
-            // What the "plan on a day" dialog is open for: a recipe (id, title) or a manual meal (id null).
-            var planning by remember { mutableStateOf<Pair<String?, String>?>(null) }
+            // The recipe (id, title) the "plan on a day" dialog is open for.
+            var planning by remember { mutableStateOf<Pair<String, String>?>(null) }
             MijoteTheme { CompositionLocalProvider(LocalImageLoader provides { path -> vm.image(path) }) {
                 UpdateDialog(update, vm.currentVersion, onInstall = vm::installUpdate, onDismiss = vm::dismissUpdate)
                 when (val s = state.screen) {
@@ -109,11 +109,11 @@ class MainActivity : ComponentActivity() {
                         val open = { meal: app.mijote.ui.MealUi -> meal.recipeId?.let { vm.openRecipe(it, meal.title) }; Unit }
                         val today = m?.today ?: LocalDate.now()
                         planning?.let { (recipeId, heading) ->
-                            PlanMealDialog(heading, today, m?.slots.orEmpty(), manual = recipeId == null,
+                            PlanMealDialog(heading, today, m?.slots.orEmpty(),
                                 onDismiss = { planning = null },
-                                onConfirm = { date, meal, text, replace ->
+                                onConfirm = { date, meal, replace ->
                                     planning = null
-                                    vm.planMeal(date, meal, recipeId, text, replace)
+                                    vm.planMeal(date, meal, recipeId, null, replace)
                                 })
                         }
                         val edited = editor
@@ -152,7 +152,6 @@ class MainActivity : ComponentActivity() {
                                 onSwapMeal = { vm.swapMeal(it.id) },
                                 onRemoveMeal = { vm.removeMeal(it.id) },
                                 onRenameMeal = { meal, title -> vm.renameMeal(meal.id, title) },
-                                onAddManualMeal = { planning = null to "" },
                                 tab = tab, onTab = vm::selectTab,
                                 refreshing = menu.refreshing, onRefresh = { vm.loadMenu(manual = true) },
                                 recipes = {
