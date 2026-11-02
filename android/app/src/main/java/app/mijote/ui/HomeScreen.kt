@@ -4,7 +4,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -123,27 +122,7 @@ private fun Header(user: User, onLogout: () -> Unit, title: String?, period: Str
                 BrandTitle()
                 period?.let { Text(it, fontSize = 15.sp, color = Sunny.InkTitle, modifier = Modifier.padding(start = 4.dp, top = 14.dp)) }
             }
-            if (title == null) {
-                Spacer(Modifier.height(24.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Row(
-                        Modifier.weight(1f).height(64.dp).clip(Shapes.Control).background(Sunny.Peach)
-                            .clickable(onClick = onNewWeek).padding(horizontal = 14.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Box(Modifier.size(36.dp).background(Color.White.copy(alpha = 0.3f), CircleShape), contentAlignment = Alignment.Center) {
-                            Icon(Icons.Filled.Refresh, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
-                        }
-                        Text("Nouvelle\nsemaine", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp,
-                            lineHeight = 17.sp, modifier = Modifier.padding(start = 12.dp))
-                    }
-                    Spacer(Modifier.width(12.dp))
-                    Box(
-                        Modifier.size(64.dp).clip(Shapes.Control).background(Sunny.Slate),
-                        contentAlignment = Alignment.Center,
-                    ) { Icon(Icons.Filled.Search, contentDescription = "Rechercher", tint = Color.White) }
-                }
-            }
+    
         }
     }
 }
@@ -248,42 +227,45 @@ private fun UserButton(onPreferences: () -> Unit) {
 }
 
 /**
- * Bottom navigation as stacked peach tabs anchored to the bottom-right corner of the screen.
- * Tabs are laid out from the right; each one overlaps the tab on its left with its rounded
- * top-left corner. The selected tab widens to show its label.
+ * Floating pill navigation bar centred at the bottom of the screen (variant B).
+ * A single PeachDeep pill holds all three icons; the active one is highlighted with a
+ * white semi-transparent circle and its label shown beside it.
  */
 @Composable
 private fun BottomBar(selected: Tab, modifier: Modifier, onSelect: (Tab) -> Unit) {
     val icons = mapOf(Tab.MENUS to Icons.Filled.Home, Tab.RECIPES to Icons.Filled.Search, Tab.GENERATE to Icons.Filled.Refresh)
-    // Shades from the leftmost tab to the rightmost one, lighter towards the screen edge.
-    val shades = listOf(Sunny.PeachDeep, Color(0xFFF89A7D), Color(0xFFFCAF94))
-    val radius = 28.dp
     val navInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-    val tabHeight = 56.dp + navInset
-    fun width(t: Tab) = if (t == selected) 164.dp else 96.dp
-    val tabs = Tab.entries
-    Box(modifier.fillMaxWidth().height(tabHeight)) {
-        // Drawn left to right so each tab covers the one on its left.
-        tabs.forEachIndexed { i, t ->
-            val on = t == selected
-            val rightmost = i == tabs.lastIndex
-            // Distance from the screen's right edge: widths of the tabs on the right, minus their overlap.
-            val end = tabs.drop(i + 1).fold(0.dp) { acc, r -> acc + width(r) - radius }
-            val shape = RoundedCornerShape(topStart = radius)
-            Row(
-                Modifier.align(Alignment.BottomEnd).padding(end = end)
-                    .width(width(t)).fillMaxHeight()
-                    .shadow(10.dp, shape, ambientColor = Sunny.PeachDeep, spotColor = Sunny.PeachDeep)
-                    .background(shades[i], shape).clip(shape)
-                    .clickable { onSelect(t) }
-                    .padding(bottom = navInset, end = if (rightmost) 0.dp else radius),
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Icon(icons.getValue(t), contentDescription = t.label,
-                    tint = if (on) Color.White else Color.White.copy(alpha = 0.8f), modifier = Modifier.size(24.dp))
-                if (on) Text(t.label, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp,
-                    modifier = Modifier.padding(start = 10.dp))
+    Box(modifier.fillMaxWidth().padding(bottom = 20.dp + navInset)) {
+        Row(
+            Modifier
+                .align(Alignment.BottomCenter)
+                .shadow(16.dp, RoundedCornerShape(40.dp), ambientColor = Sunny.PeachDeep, spotColor = Sunny.PeachDeep)
+                .background(Sunny.PeachDeep, RoundedCornerShape(40.dp))
+                .padding(horizontal = 8.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Tab.entries.forEach { tab ->
+                val on = tab == selected
+                Row(
+                    Modifier
+                        .clip(RoundedCornerShape(32.dp))
+                        .background(if (on) Color.White.copy(alpha = 0.22f) else Color.Transparent)
+                        .clickable { onSelect(tab) }
+                        .padding(horizontal = if (on) 18.dp else 16.dp, vertical = 10.dp),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        icons.getValue(tab), contentDescription = tab.label,
+                        tint = Color.White,
+                        modifier = Modifier.size(24.dp),
+                    )
+                    if (on) Text(
+                        tab.label, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp,
+                        modifier = Modifier.padding(start = 8.dp),
+                    )
+                }
             }
         }
     }
