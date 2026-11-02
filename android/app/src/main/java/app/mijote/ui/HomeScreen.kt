@@ -249,8 +249,8 @@ private fun UserButton(onPreferences: () -> Unit) {
 
 /**
  * Floating pill navigation bar centred at the bottom of the screen (variant B).
- * A single PeachDeep pill holds all three icons; the active one is highlighted with a
- * white semi-transparent circle and its label shown beside it.
+ * A single PeachDeep pill holds the icons only (no labels); the active one is highlighted
+ * with a white semi-transparent circle. Labels stay as content descriptions.
  */
 @Composable
 private fun BottomBar(selected: Tab, tabs: List<Tab> = Tab.entries, modifier: Modifier = Modifier, onSelect: (Tab) -> Unit) {
@@ -273,7 +273,7 @@ private fun BottomBar(selected: Tab, tabs: List<Tab> = Tab.entries, modifier: Mo
                         .clip(RoundedCornerShape(32.dp))
                         .background(if (on) Color.White.copy(alpha = 0.22f) else Color.Transparent)
                         .clickable { onSelect(tab) }
-                        .padding(horizontal = if (on) 18.dp else 16.dp, vertical = 10.dp),
+                        .padding(horizontal = 16.dp, vertical = 10.dp),
                     horizontalArrangement = Arrangement.Center,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -281,10 +281,6 @@ private fun BottomBar(selected: Tab, tabs: List<Tab> = Tab.entries, modifier: Mo
                         icons.getValue(tab), contentDescription = tab.label,
                         tint = Color.White,
                         modifier = Modifier.size(24.dp),
-                    )
-                    if (on) Text(
-                        tab.label, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp,
-                        modifier = Modifier.padding(start = 8.dp),
                     )
                 }
             }

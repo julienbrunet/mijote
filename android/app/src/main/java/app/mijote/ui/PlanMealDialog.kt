@@ -26,9 +26,6 @@ import java.util.Locale
 /** How many days ahead a meal can be planned from the dialog. */
 private const val PLAN_DAYS = 21
 
-/** Examples shown under the text field of a manual meal. */
-private val manualExamples = listOf("Commander une pizza", "Passer au McDo", "Repas chez des amis")
-
 /**
  * Picks the day and the meal (midi / soir) where to plan a recipe ([heading] is its title). The meal
  * already planned at the chosen time is shown: confirming replaces it. Manual meals are not planned
@@ -94,14 +91,7 @@ fun MealTitleDialog(initial: String, onDismiss: () -> Unit, onConfirm: (String) 
         onDismissRequest = onDismiss,
         containerColor = Sunny.Card,
         title = { Text("Repas libre", fontWeight = FontWeight.Bold, color = Sunny.Ink, fontSize = 18.sp) },
-        text = {
-            Column {
-                MealTitleField(text, { text = it })
-                Row(Modifier.padding(top = 8.dp).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    manualExamples.forEach { ex -> Chip(ex, selected = false) { text = ex } }
-                }
-            }
-        },
+        text = { MealTitleField(text, { text = it }) },
         confirmButton = {
             Button(onClick = { onConfirm(text.trim()) }, enabled = text.isNotBlank(), shape = Shapes.Control,
                 colors = ButtonDefaults.buttonColors(containerColor = Sunny.PeachDeep, contentColor = Color.White),
