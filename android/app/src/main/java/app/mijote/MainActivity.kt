@@ -41,6 +41,12 @@ import app.mijote.ui.Tab
 class MainActivity : ComponentActivity() {
     private val vm: AppViewModel by viewModels()
 
+    // Back in the foreground (not the first start): fetch what other members changed meanwhile.
+    override fun onRestart() {
+        super.onRestart()
+        vm.onAppForeground()
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         intent.data?.let { vm.openInvitationLink(it.toString()) }
@@ -148,12 +154,14 @@ class MainActivity : ComponentActivity() {
                                 onRenameMeal = { meal, title -> vm.renameMeal(meal.id, title) },
                                 onAddManualMeal = { planning = null to "" },
                                 tab = tab, onTab = vm::selectTab,
+                                refreshing = menu.refreshing, onRefresh = { vm.loadMenu(manual = true) },
                                 recipes = {
                                     RecipesTab(recipes, canWrite = s.user.canWrite,
                                         onQuery = { vm.searchRecipes(it, debounce = true) },
                                         onOpen = { vm.openRecipe(it.id, it.title) },
                                         onPlan = { planning = it.id to it.title },
                                         onNew = { vm.editRecipe(new = true) },
+                                        onRefresh = { vm.refreshRecipes() },
                                         working = menu.working != null)
                                 },
                             ) {

@@ -119,7 +119,7 @@ Planning a family's weekly menus is repetitive: finding recipes, avoiding repeat
 | ID | Requirement | Priority |
 |---|---|---|
 | FR-SHR-01 | One shared recipe base and one shared menu per instance. | Must |
-| FR-SHR-02 | Clients refresh on app open and on pull-to-refresh (no real-time). | Must |
+| FR-SHR-02 | Clients refresh on app open, when the app comes back to the foreground, and on pull-to-refresh (menus and recipes tabs); no real-time and no periodic polling (decided 2026-11-02). | Must |
 | FR-SHR-03 | Concurrent edits: last write wins and the overwritten user is informed (see §11). | Must |
 
 ### 4.7 Onboarding and invitations (ONB)

@@ -13,6 +13,7 @@ import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -32,6 +33,7 @@ import app.mijote.data.RecipeSummary
  * "Recettes" tab: search by title or tag, the active recipes (archived ones are left out), a
  * "Nouvelle recette" button and, on each card, a shortcut to plan the recipe on a day.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RecipesTab(
     state: RecipesState,
@@ -41,9 +43,11 @@ fun RecipesTab(
     onPlan: (RecipeSummary) -> Unit,
     onNew: () -> Unit,
     working: Boolean = false,
+    onRefresh: () -> Unit = {},
 ) {
     val list = state.recipes
-    LazyColumn(Modifier.fillMaxSize().background(Sunny.Butter), contentPadding = PaddingValues(bottom = 120.dp)) {
+    PullToRefreshBox(state.refreshing, onRefresh, Modifier.fillMaxSize().background(Sunny.Butter)) {
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 120.dp)) {
         item {
             Box(
                 Modifier.fillMaxWidth()
@@ -92,6 +96,7 @@ fun RecipesTab(
                 }
             }
         }
+    }
     }
 }
 

@@ -81,6 +81,8 @@ data class MenuState(
     val review: ReviewPeriod? = null,
     /** Slot being changed (swap / remove) or "date|meal" of a meal being added: shows a spinner. */
     val working: String? = null,
+    /** A pull-to-refresh is running. */
+    val refreshing: Boolean = false,
 )
 
 /** Recipe detail screen: [recipe] is null while loading. */
@@ -91,6 +93,8 @@ data class RecipeState(
 /** Recipes tab: [recipes] is null until the first answer. */
 data class RecipesState(
     val query: String = "", val recipes: List<RecipeSummary>? = null, val loading: Boolean = false, val error: String? = null,
+    /** A pull-to-refresh is running. */
+    val refreshing: Boolean = false,
 )
 
 /** Recipe editor: [id] is null for a new recipe. */
@@ -274,17 +278,38 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** Reloads the planned meals; failures keep what is shown (offline reading). */
-    fun loadMenu() {
+    fun loadMenu(manual: Boolean = false) {
+        if (manual) {
+            if (_menu.value.refreshing) return
+            _menu.update { it.copy(refreshing = true, error = null) }
+        }
         viewModelScope.launch {
             try {
                 val m = session.authed { api, access -> api.menu(access) }
-                _menu.update { it.copy(menu = m) }
+                _menu.update { it.copy(menu = m, refreshing = false) }
             } catch (e: SessionExpiredException) {
+                _menu.update { it.copy(refreshing = false) }
                 toLogin("Votre session a expiré : reconnectez-vous.")
-            } catch (_: IOException) {
+            } catch (e: IOException) {
+                // Automatic refreshes stay silent offline; a pull-to-refresh tells why nothing changed.
+                _menu.update { it.copy(refreshing = false, error = if (manual) errorMessage(e) else it.error) }
             }
         }
     }
+
+    /**
+     * The app comes back to the foreground: what other members changed meanwhile is fetched
+     * (FR-SHR-02, no real-time). Nothing runs while the app is in the background.
+     */
+    fun onAppForeground() {
+        if (_state.value.screen !is Screen.Home) return
+        loadMenu()
+        if (_recipes.value.recipes != null) refreshRecipes(manual = false)
+        _recipe.value?.let { r -> if (r.recipe != null && _editor.value == null) openRecipe(r.id, r.title, keep = true) }
+    }
+
+    /** Reloads the recipe list with the current search (pull-to-refresh or return to the app). */
+    fun refreshRecipes(manual: Boolean = true) = searchRecipes(_recipes.value.query, manual = manual)
 
     fun openPreferences() {
         val home = _state.value.screen as? Screen.Home ?: return
@@ -417,18 +442,18 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private var searchJob: kotlinx.coroutines.Job? = null
 
     /** Searches the recipes by title or tag; typing restarts the search after a short pause. */
-    fun searchRecipes(query: String, debounce: Boolean = false) {
-        _recipes.update { it.copy(query = query, loading = true, error = null) }
+    fun searchRecipes(query: String, debounce: Boolean = false, manual: Boolean = false) {
+        _recipes.update { it.copy(query = query, loading = true, refreshing = manual, error = null) }
         searchJob?.cancel()
         searchJob = viewModelScope.launch {
             if (debounce) kotlinx.coroutines.delay(300)
             try {
                 val list = session.authed { api, access -> api.recipes(access, query) }
-                _recipes.update { if (it.query == query) it.copy(recipes = list, loading = false) else it }
+                _recipes.update { if (it.query == query) it.copy(recipes = list, loading = false, refreshing = false) else it }
             } catch (e: SessionExpiredException) {
                 toLogin("Votre session a expiré : reconnectez-vous.")
             } catch (e: IOException) {
-                _recipes.update { it.copy(loading = false, error = errorMessage(e)) }
+                _recipes.update { it.copy(loading = false, refreshing = false, error = if (manual || it.recipes == null) errorMessage(e) else it.error) }
             }
         }
     }
@@ -565,8 +590,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun openRecipe(id: String, title: String) {
-        _recipe.value = RecipeState(id, title)
+    /** Opens a recipe; [keep] reloads the one shown without clearing it first. */
+    fun openRecipe(id: String, title: String, keep: Boolean = false) {
+        if (!keep || _recipe.value?.id != id) _recipe.value = RecipeState(id, title)
         viewModelScope.launch {
             try {
                 val r = session.authed { api, access -> api.recipe(access, id) }
@@ -575,7 +601,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 _recipe.value = null
                 toLogin("Votre session a expiré : reconnectez-vous.")
             } catch (e: IOException) {
-                _recipe.update { if (it?.id == id) it.copy(error = errorMessage(e)) else it }
+                // A background reload keeps the recipe shown (offline reading); an archived one is closed.
+                if (keep && e is ApiException && e.status == 404) _recipe.update { if (it?.id == id) null else it }
+                else if (!keep) _recipe.update { if (it?.id == id) it.copy(error = errorMessage(e)) else it }
             }
         }
     }

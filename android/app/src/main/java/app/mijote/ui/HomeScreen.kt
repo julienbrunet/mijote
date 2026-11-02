@@ -14,6 +14,7 @@ import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
@@ -52,6 +53,7 @@ data class DayUi(
 )
 
 /** Signed-in shell on the Butter background: white header, the days as a list, corner tabs. */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
     user: User,
@@ -70,6 +72,8 @@ fun HomeScreen(
     onAddManualMeal: () -> Unit = {},
     tab: Tab = Tab.MENUS,
     onTab: (Tab) -> Unit = {},
+    refreshing: Boolean = false,
+    onRefresh: () -> Unit = {},
     recipes: @Composable () -> Unit = {},
     generate: @Composable () -> Unit = {},
 ) {
@@ -85,7 +89,8 @@ fun HomeScreen(
         }
         return
     }
-    Box(Modifier.fillMaxSize().background(Sunny.Butter)) {
+    // Pull down to fetch what other members changed (no real-time, FR-SHR-02).
+    PullToRefreshBox(refreshing, onRefresh, Modifier.fillMaxSize().background(Sunny.Butter)) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
             Header(user, onLogout, tab.label.takeIf { tab != Tab.MENUS }, period.takeIf { tab == Tab.MENUS },
                 onNewWeek = { onNewWeek?.invoke(); onTab(Tab.GENERATE) }, onPreferences = onPreferences)
