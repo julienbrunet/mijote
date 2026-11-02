@@ -160,6 +160,7 @@ Planning a family's weekly menus is repetitive: finding recipes, avoiding repeat
 | NFR-11 | Security | HTTPS expected in production (via reverse proxy); documented. |
 | NFR-12 | Security | Invitation codes single-use, random, time-limited. |
 | NFR-13 | API versioning | API is versioned (e.g. `/api/v1`); server exposes its supported versions; app degrades gracefully against older instances. |
+| NFR-21 | API documentation | The API is documented for tools and LLM assistants: a guide (`server/API.md`, including adding a recipe from a URL with client-side extraction) and an OpenAPI 3.1 reference (`server/openapi.yaml`), kept in sync with the routes by a test. |
 | NFR-14 | Deployment | Ready-to-use `docker-compose.yml` (backend + PostgreSQL). |
 | NFR-15 | Deployment | Container images for `linux/arm64`, `linux/arm/v7` (32-bit Raspberry Pi OS) and `linux/amd64`. |
 | NFR-16 | Deployment | Configuration through environment variables only. |

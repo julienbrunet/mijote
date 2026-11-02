@@ -17,7 +17,7 @@ import (
 // operations as the web admin. Reserved to the admin signed in on a device:
 // personal API tokens cannot use them.
 
-func (a *API) adminRoutes(mux *http.ServeMux) {
+func (a *API) adminRoutes(mux Mux) {
 	for pattern, h := range map[string]http.HandlerFunc{
 		"GET /api/v1/admin/invitations":              a.listInvitations,
 		"POST /api/v1/admin/invitations":             a.createInvitation,

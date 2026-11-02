@@ -61,4 +61,5 @@ Mijote is a self-hosted family weekly menu planner (native Android app in Kotlin
 
 ## Backend
 - `server/`: Go module (Go 1.24, pgx v5), `main` package at its root. Schema changes = new file in `server/internal/migrate/migrations/` (see `requirements.md` §12).
+- API documentation: `server/API.md` (guide for tools and LLM assistants) and `server/openapi.yaml` (OpenAPI 3.1). **Every API change (route, field, rule, error) updates both in the same commit**; `TestOpenAPIMatchesRoutes` fails when routes and spec differ.
 - PostgreSQL 16 binaries are in `/usr/lib/postgresql/16/bin`; run them as the `postgres` user with a data dir outside the scratchpad (e.g. `/var/tmp`), then set `MIJOTE_TEST_DATABASE_URL`.

@@ -25,8 +25,15 @@ type API struct {
 	Images  images.Dir
 }
 
-// Routes registers the /api/v1 routes on mux.
-func (a *API) Routes(mux *http.ServeMux) {
+// Mux is the part of *http.ServeMux used to register routes (tests record the patterns).
+type Mux interface {
+	Handle(pattern string, handler http.Handler)
+	HandleFunc(pattern string, handler func(http.ResponseWriter, *http.Request))
+}
+
+// Routes registers the /api/v1 routes on mux. Every route is documented in
+// server/openapi.yaml (checked by TestOpenAPIMatchesRoutes).
+func (a *API) Routes(mux Mux) {
 	mux.HandleFunc("POST /api/v1/auth/login", a.login)
 	mux.HandleFunc("POST /api/v1/auth/refresh", a.refresh)
 	mux.HandleFunc("POST /api/v1/invitations/redeem", a.redeemInvitation)

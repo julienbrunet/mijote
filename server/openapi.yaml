@@ -1,0 +1,1174 @@
+openapi: 3.1.0
+info:
+  title: Mijote API
+  version: "v1"
+  summary: REST API of a self-hosted family weekly menu planner.
+  description: |
+    Mijote is a self-hosted family weekly menu planner. One instance serves one family:
+    one shared recipe base and one shared menu.
+
+    This document is the machine-readable reference of the `/api/v1` REST API. The
+    companion guide `server/API.md` explains the concepts and walks through the common
+    tasks, notably **adding a recipe from a web page URL** (the client extracts the
+    recipe; the server never fetches web pages or images).
+
+    Conventions:
+    - JSON bodies (`Content-Type: application/json`, 64 KiB max), camelCase field names.
+      Unknown request fields are ignored. Absent optional values are `null`.
+    - Dates are `YYYY-MM-DD` in the family timezone; timestamps are RFC 3339.
+    - Errors are `{"error": "<code>", "message": "<detail>"}`. The `message` of a
+      `422 validation_error` is written in French, for display to the user.
+    - Authentication: `Authorization: Bearer <token>`, either a personal API token
+      (`mjt_…`, created by the admin in the web admin, recommended for scripts and
+      assistants) or an app access token (JWT from `/auth/login`).
+  license:
+    name: See the repository
+    url: https://github.com/julienbrunet/mijote
+servers:
+  - url: https://{server}
+    description: Your Mijote instance (HTTPS through a reverse proxy in production).
+    variables:
+      server:
+        default: mijote.example.org
+security:
+  - bearer: []
+tags:
+  - name: Instance
+    description: Health and supported API versions (no authentication).
+  - name: Auth
+    description: App sign-in, token refresh and sign-out; joining with an invitation.
+  - name: Account
+    description: The signed-in user and their preferences.
+  - name: Recipes
+    description: Shared recipe base, tags and recipe images.
+  - name: Menu
+    description: Planned meals, menu generation and per-meal adjustments.
+  - name: Admin
+    description: Invitations and accounts. Admin signed in on a device only (personal API tokens get 403).
+
+paths:
+  /healthz:
+    get:
+      tags: [Instance]
+      operationId: health
+      summary: Health check
+      security: []
+      responses:
+        "200":
+          description: Server and database are up.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, const: ok }
+        "503":
+          description: Database unreachable.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, const: db_unavailable }
+
+  /api/versions:
+    get:
+      tags: [Instance]
+      operationId: apiVersions
+      summary: API versions supported by this server
+      security: []
+      responses:
+        "200":
+          description: Supported versions.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [versions]
+                properties:
+                  versions:
+                    type: array
+                    items: { type: string }
+                    examples: [["v1"]]
+
+  /api/v1/auth/login:
+    post:
+      tags: [Auth]
+      operationId: login
+      summary: Sign a device in with username and password
+      description: |
+        Opens a device session and returns an access token (15 minutes) and a refresh
+        token (60 days). 5 failures in 15 minutes on one account, or 20 from one address,
+        block sign-in for 15 minutes (`429`, `Retry-After`).
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password]
+              properties:
+                username: { type: string }
+                password: { type: string, format: password }
+                deviceName:
+                  type: string
+                  description: Shown in the web admin's session list (100 characters kept).
+      responses:
+        "200":
+          description: Signed in.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TokenPair" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401":
+          description: "`invalid_credentials`: wrong username or password, or account disabled."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /api/v1/auth/refresh:
+    post:
+      tags: [Auth]
+      operationId: refreshTokens
+      summary: Exchange a refresh token for a new token pair
+      description: |
+        The refresh token is rotated: the returned one replaces it. Presenting an already
+        rotated token revokes the whole device session.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refreshToken]
+              properties:
+                refreshToken: { type: string }
+      responses:
+        "200":
+          description: New token pair.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TokenPair" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401":
+          description: "`invalid_refresh_token`: expired, revoked or reused token; sign in again."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/v1/auth/logout:
+    post:
+      tags: [Auth]
+      operationId: logout
+      summary: Close the device session of the access token
+      responses:
+        "204": { description: Session closed. }
+        "400":
+          description: "`not_a_device_session`: personal API tokens have no session (revoke them in the web admin)."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/v1/invitations/redeem:
+    post:
+      tags: [Auth]
+      operationId: redeemInvitation
+      summary: Create an account from an invitation code and sign the device in
+      description: |
+        Consumes the single-use code and creates an account with the invitation's role
+        (`member` or `readonly`). A refused username or password (`422`) leaves the code usable.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code, username, password]
+              properties:
+                code: { type: string, description: Clear invitation code. }
+                username: { type: string, maxLength: 50, description: "No spaces or control characters." }
+                displayName: { type: string, maxLength: 100 }
+                password: { type: string, format: password, minLength: 8 }
+                deviceName: { type: string }
+      responses:
+        "201":
+          description: Account created and device signed in.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TokenPair" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404":
+          description: "`invalid_invitation`: unknown, used, revoked or expired code."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+        "429": { $ref: "#/components/responses/TooManyRequests" }
+
+  /api/v1/me:
+    get:
+      tags: [Account]
+      operationId: getMe
+      summary: The signed-in user
+      responses:
+        "200":
+          description: Current user.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/v1/me/preferences:
+    put:
+      tags: [Account]
+      operationId: setPreferences
+      summary: Change the user's own preferences
+      description: Allowed for every role, read-only users included.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [people]
+              properties:
+                people:
+                  type: integer
+                  minimum: 1
+                  maximum: 20
+                  description: Number of people to cook for; recipe quantities are multiplied by it.
+      responses:
+        "200":
+          description: Updated user.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /api/v1/recipes:
+    get:
+      tags: [Recipes]
+      operationId: listRecipes
+      summary: List or search active recipes
+      description: |
+        Returns **summaries** sorted by title: every recipe field, but `ingredients` and
+        `steps` are always empty arrays (use `GET /api/v1/recipes/{id}`). Archived recipes
+        are left out. There is no filter on `sourceUrl`: a duplicate link is reported when
+        creating the recipe.
+      parameters:
+        - name: q
+          in: query
+          description: Case-insensitive substring of the title or of a tag.
+          schema: { type: string }
+        - name: tag
+          in: query
+          description: Exact tag name, case-insensitive.
+          schema: { type: string }
+        - name: dishType
+          in: query
+          schema: { $ref: "#/components/schemas/DishType" }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 500, default: 100 }
+        - name: offset
+          in: query
+          schema: { type: integer, minimum: 0, default: 0 }
+      responses:
+        "200":
+          description: Recipe summaries.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [recipes]
+                properties:
+                  recipes:
+                    type: array
+                    items: { $ref: "#/components/schemas/Recipe" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      tags: [Recipes]
+      operationId: createRecipe
+      summary: Create a recipe
+      description: |
+        Creates a recipe from already structured data (see `API.md`, "Add a recipe from a
+        URL"). **Ingredient quantities are for one person.** The image is uploaded
+        afterwards with `PUT /api/v1/recipes/{id}/image`. A `sourceUrl` already used by
+        another recipe (archived ones included) is refused with `422`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RecipeInput" }
+            examples:
+              quiche:
+                summary: Recipe imported from a web page
+                value:
+                  title: Quiche lorraine
+                  sourceUrl: https://www.example.org/recettes/quiche-lorraine
+                  prepMinutes: 20
+                  cookMinutes: 35
+                  totalMinutes: 55
+                  servings: 6
+                  dishType: meat
+                  seasons: []
+                  mealTypes: [lunch, dinner]
+                  notes: null
+                  tags: [tarte, four]
+                  ingredients:
+                    - { rawText: "200 g de pâte brisée", quantity: 33.3, unit: g, name: pâte brisée, note: null }
+                    - { rawText: "3 œufs", quantity: 0.5, unit: piece, name: œufs, note: null }
+                    - { rawText: "200 g de lardons fumés", quantity: 33.3, unit: g, name: lardons fumés, note: null }
+                    - { rawText: "20 cl de crème fraîche", quantity: 3.3, unit: cl, name: crème fraîche, note: null }
+                    - { rawText: "sel, poivre", quantity: null, unit: null, name: sel, note: poivre }
+                  steps:
+                    - Préchauffer le four à 180 °C.
+                    - Étaler la pâte dans un moule et la piquer.
+                    - Faire revenir les lardons, les répartir sur la pâte.
+                    - Battre les œufs avec la crème, saler, poivrer, verser et cuire 35 min.
+      responses:
+        "201":
+          description: Created recipe (full).
+          headers:
+            Location:
+              description: "`/api/v1/recipes/{id}`"
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Recipe" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "413": { $ref: "#/components/responses/TooLarge" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /api/v1/recipes/{id}:
+    parameters:
+      - $ref: "#/components/parameters/RecipeId"
+    get:
+      tags: [Recipes]
+      operationId: getRecipe
+      summary: Get a full recipe (archived ones included)
+      responses:
+        "200":
+          description: Full recipe with ingredients and steps.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Recipe" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      tags: [Recipes]
+      operationId: updateRecipe
+      summary: Replace a recipe's content
+      description: |
+        Replaces every editable field, ingredients, steps and tags included (send the whole
+        recipe, not a patch). Last write wins; `version` is incremented. The image is not
+        changed.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RecipeInput" }
+      responses:
+        "200":
+          description: Updated recipe.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Recipe" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "413": { $ref: "#/components/responses/TooLarge" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+    delete:
+      tags: [Recipes]
+      operationId: archiveRecipe
+      summary: Archive a recipe (admin only)
+      description: |
+        Soft delete: the recipe leaves the listings and generation, past menus keep it.
+        Restoring is done in the web admin. Archiving an archived recipe is not an error.
+      responses:
+        "204": { description: Archived. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/v1/recipes/{id}/image:
+    parameters:
+      - $ref: "#/components/parameters/RecipeId"
+    get:
+      tags: [Recipes]
+      operationId: getRecipeImage
+      summary: Download the recipe thumbnail
+      description: |
+        Always a JPEG (800 px max on the longest side). The recipe's `image` field gives
+        this path with a `?v=` content hash, so the response may be cached for good.
+      responses:
+        "200":
+          description: The thumbnail.
+          content:
+            image/jpeg:
+              schema: { type: string, format: binary }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404":
+          description: "`not_found`: unknown recipe, or recipe without image."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+    put:
+      tags: [Recipes]
+      operationId: putRecipeImage
+      summary: Upload or replace the recipe image
+      description: |
+        The request body is the **raw picture bytes** (not multipart, not JSON): JPEG, PNG
+        or GIF, 10 MB and 16 megapixels at most. The server stores a JPEG thumbnail of
+        800 px max and returns the updated recipe. The server never downloads an image
+        from a URL: the client downloads it and uploads it here.
+      requestBody:
+        required: true
+        content:
+          image/jpeg:
+            schema: { type: string, format: binary }
+          image/png:
+            schema: { type: string, format: binary }
+          image/gif:
+            schema: { type: string, format: binary }
+      responses:
+        "200":
+          description: Updated recipe (its `image` field points to the new thumbnail).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Recipe" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+    delete:
+      tags: [Recipes]
+      operationId: deleteRecipeImage
+      summary: Remove the recipe image
+      responses:
+        "204": { description: Image removed (also when there was none). }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/v1/tags:
+    get:
+      tags: [Recipes]
+      operationId: listTags
+      summary: All tags of the family, with their number of active recipes
+      description: Tags are created implicitly by recipes; renaming and deleting happen in the web admin.
+      responses:
+        "200":
+          description: Tags sorted by name.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [tags]
+                properties:
+                  tags:
+                    type: array
+                    items: { $ref: "#/components/schemas/Tag" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/v1/menu:
+    get:
+      tags: [Menu]
+      operationId: getMenu
+      summary: Planned meals between two dates, and generation info
+      parameters:
+        - name: from
+          in: query
+          description: "First day (inclusive). Default: today in the family timezone."
+          schema: { type: string, format: date }
+        - name: to
+          in: query
+          description: "Last day (inclusive). Default: today + family horizon + 30 days. One year at most after `from`."
+          schema: { type: string, format: date }
+      responses:
+        "200":
+          description: Planned meals sorted by date, lunch before dinner.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [today, slots, generation]
+                properties:
+                  today: { type: string, format: date, description: Today in the family timezone. }
+                  slots:
+                    type: array
+                    items: { $ref: "#/components/schemas/MenuSlot" }
+                  generation: { $ref: "#/components/schemas/GenerationInfo" }
+        "400":
+          description: "`invalid_date`: bad date format or range."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/v1/menu/generate:
+    post:
+      tags: [Menu]
+      operationId: generateMenu
+      summary: Generate the menu of a period
+      description: |
+        Plans `meals` meals day after day from `start` according to `plan` (60 days at
+        most). In the period, locked meals and manual meals are kept and count among the
+        meals; other meals are re-picked; unlocked meals the plan leaves out are removed.
+        The result is saved and shared with the whole family.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [meals]
+              properties:
+                start: { type: string, format: date, description: "First day. Default: today." }
+                meals: { type: integer, minimum: 1, maximum: 42, description: Number of meals to plan. }
+                plan:
+                  type: string
+                  enum: [default, lunch_dinner, lunch, dinner]
+                  default: default
+                  description: |
+                    Meals of each day: `default` = family default meals per weekday,
+                    `lunch_dinner` = both, `lunch` or `dinner` only.
+            example: { start: "2026-11-02", meals: 7, plan: dinner }
+      responses:
+        "200":
+          description: The meals of the generated period.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [slots]
+                properties:
+                  slots:
+                    type: array
+                    items: { $ref: "#/components/schemas/MenuSlot" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/NotEnoughRecipes" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /api/v1/menu/slots:
+    post:
+      tags: [Menu]
+      operationId: addMenuSlot
+      summary: Plan one meal on a day
+      description: |
+        - neither `recipeId` nor `title`: the server picks a suitable recipe (meal not locked);
+        - `recipeId`: that recipe (must exist and not be archived); the meal is **locked**;
+        - `title`: a manual meal (free text, no recipe), e.g. "Pizza night"; the meal is **locked**.
+
+        If the meal is already planned, the answer is `409 slot_exists` unless `replace` is true.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [date, meal]
+              properties:
+                date: { type: string, format: date }
+                meal: { $ref: "#/components/schemas/Meal" }
+                recipeId: { type: string, format: uuid }
+                title: { type: string, minLength: 1, maxLength: 100 }
+                replace: { type: boolean, default: false }
+            example: { date: "2026-11-05", meal: dinner, recipeId: "0b8f6d0e-7a9c-4f51-9d0a-2c3e4f5a6b7c" }
+      responses:
+        "201":
+          description: The planned meal.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MenuSlot" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409":
+          description: "`slot_exists` (meal already planned, send `replace: true`) or `not_enough_recipes` (server pick only)."
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - { $ref: "#/components/schemas/Error" }
+                  - { $ref: "#/components/schemas/NotEnoughRecipesError" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /api/v1/menu/slots/{id}:
+    parameters:
+      - $ref: "#/components/parameters/SlotId"
+    put:
+      tags: [Menu]
+      operationId: updateMenuSlot
+      summary: Turn a planned meal into a given recipe or manual meal
+      description: Exactly one of `recipeId` and `title`. The meal is then locked.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                recipeId: { type: string, format: uuid }
+                title: { type: string, minLength: 1, maxLength: 100 }
+      responses:
+        "200":
+          description: The updated meal.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MenuSlot" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/SlotNotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+    delete:
+      tags: [Menu]
+      operationId: removeMenuSlot
+      summary: Remove a planned meal (locked ones included)
+      responses:
+        "204": { description: Removed. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/SlotNotFound" }
+
+  /api/v1/menu/slots/{id}/swap:
+    parameters:
+      - $ref: "#/components/parameters/SlotId"
+    post:
+      tags: [Menu]
+      operationId: swapMenuSlot
+      summary: Replace a meal's recipe with another one picked by the server
+      description: |
+        Never returns the current recipe. On a locked meal or a manual meal, the lock is
+        released and a recipe is planned.
+      responses:
+        "200":
+          description: The updated meal.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MenuSlot" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/SlotNotFound" }
+        "409": { $ref: "#/components/responses/NotEnoughRecipes" }
+        "422":
+          description: "`validation_error`: no other recipe suits this meal."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/v1/admin/invitations:
+    get:
+      tags: [Admin]
+      operationId: listInvitations
+      summary: List invitations
+      parameters:
+        - name: all
+          in: query
+          description: Any non-empty value also lists used, revoked and expired invitations (200 most recent).
+          schema: { type: string }
+      responses:
+        "200":
+          description: Invitations and the lifetimes that can be chosen.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [invitations, durations, defaultDays]
+                properties:
+                  invitations:
+                    type: array
+                    items: { $ref: "#/components/schemas/Invitation" }
+                  durations:
+                    type: array
+                    items: { type: integer }
+                    examples: [[1, 7, 30]]
+                  defaultDays: { type: integer, examples: [7] }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [Admin]
+      operationId: createInvitation
+      summary: Create an invitation
+      description: The clear code is returned only once, with the link to share and its QR code.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                role: { type: string, enum: [member, readonly], default: member }
+                days: { type: integer, enum: [1, 7, 30], default: 7 }
+      responses:
+        "201":
+          description: Created invitation.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CreatedInvitation" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /api/v1/admin/invitations/{id}/revoke:
+    post:
+      tags: [Admin]
+      operationId: revokeInvitation
+      summary: Revoke a pending invitation
+      description: Idempotent; an unknown, used or already revoked invitation also answers 204.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "204": { description: Revoked. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/v1/admin/users:
+    get:
+      tags: [Admin]
+      operationId: listUsers
+      summary: List accounts
+      responses:
+        "200":
+          description: Accounts.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [users]
+                properties:
+                  users:
+                    type: array
+                    items: { $ref: "#/components/schemas/AdminUser" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/v1/admin/users/{id}:
+    put:
+      tags: [Admin]
+      operationId: updateUser
+      summary: Change a member's role or disable / re-enable it
+      description: Disabling closes the account's sessions. The admin account cannot be changed.
+      parameters:
+        - $ref: "#/components/parameters/UserId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                role: { type: string, enum: [member, readonly] }
+                disabled: { type: boolean }
+      responses:
+        "200":
+          description: Updated account.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminUser" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/UserNotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /api/v1/admin/users/{id}/password:
+    put:
+      tags: [Admin]
+      operationId: resetUserPassword
+      summary: Set a new password for a member
+      description: Closes the member's sessions. The admin's own password changes in the web admin.
+      parameters:
+        - $ref: "#/components/parameters/UserId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password]
+              properties:
+                password: { type: string, format: password, minLength: 8 }
+      responses:
+        "204": { description: Password changed. }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/UserNotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+components:
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+      description: |
+        Personal API token `mjt_…` (web admin → API tokens; scope `read` = GET/HEAD only,
+        `write` = all methods; acts with the rights of its creator) or app access token
+        (JWT, 15 minutes, from `/auth/login` or `/auth/refresh`).
+
+  parameters:
+    RecipeId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    SlotId:
+      name: id
+      in: path
+      required: true
+      description: Id of a planned meal (`MenuSlot.id`).
+      schema: { type: string, format: uuid }
+    UserId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+
+  responses:
+    BadRequest:
+      description: "`invalid_json` (malformed body) or `validation_error` (required field missing)."
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Unauthorized:
+      description: "`unauthorized`: missing, invalid, expired or revoked token (`WWW-Authenticate: Bearer`)."
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Forbidden:
+      description: |
+        `forbidden` (role not allowed: read-only user writing, member archiving, non-admin
+        or API token on `/admin`) or `read_only_token` (personal token with scope `read`
+        used with a method other than GET/HEAD).
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    NotFound:
+      description: "`not_found`: unknown recipe."
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    SlotNotFound:
+      description: "`not_found`: unknown or removed meal."
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    UserNotFound:
+      description: "`not_found`: unknown account."
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    TooLarge:
+      description: "`too_large`: JSON body over 64 KiB."
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    ValidationError:
+      description: "`validation_error`: the data breaks a rule; `message` (French) says which."
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example: { error: validation_error, message: "le type de plat est obligatoire (viande, poisson ou végétarien)" }
+    NotEnoughRecipes:
+      description: "`not_enough_recipes`: the recipe base is below the family's minimum for generation."
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/NotEnoughRecipesError" }
+    TooManyRequests:
+      description: "`too_many_requests`: too many failed attempts; retry after `Retry-After` seconds."
+      headers:
+        Retry-After:
+          schema: { type: integer }
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+
+  schemas:
+    Error:
+      type: object
+      required: [error, message]
+      properties:
+        error:
+          type: string
+          description: Stable machine-readable code.
+          examples: [validation_error]
+        message:
+          type: string
+          description: Human-readable detail (French for `validation_error`).
+
+    NotEnoughRecipesError:
+      type: object
+      required: [error, message, have, need]
+      properties:
+        error: { type: string, const: not_enough_recipes }
+        message: { type: string }
+        have: { type: integer, description: Active recipes. }
+        need: { type: integer, description: Minimum required by the family settings. }
+
+    TokenPair:
+      type: object
+      required: [accessToken, expiresIn, refreshToken, user]
+      properties:
+        accessToken: { type: string, description: "JWT to send as `Authorization: Bearer`." }
+        expiresIn: { type: integer, description: Access token lifetime in seconds (900). }
+        refreshToken: { type: string, description: Single-use, 60 days; send it to `/auth/refresh`. }
+        user: { $ref: "#/components/schemas/User" }
+
+    Role:
+      type: string
+      enum: [admin, member, readonly]
+      description: |
+        `admin` (one per instance): everything. `member`: read, add and edit recipes,
+        plan and generate menus. `readonly`: read only.
+
+    User:
+      type: object
+      required: [id, username, displayName, role, preferences]
+      properties:
+        id: { type: string, format: uuid }
+        username: { type: string }
+        displayName: { type: string }
+        role: { $ref: "#/components/schemas/Role" }
+        preferences:
+          type: object
+          required: [people]
+          properties:
+            people: { type: integer, minimum: 1, maximum: 20, description: Number of people to cook for. }
+
+    AdminUser:
+      type: object
+      required: [id, username, displayName, role, disabled, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        username: { type: string }
+        displayName: { type: string }
+        role: { $ref: "#/components/schemas/Role" }
+        disabled: { type: boolean }
+        createdAt: { type: string, format: date-time }
+
+    Invitation:
+      type: object
+      required: [id, role, status, createdAt, expiresAt, usedBy, createdBy]
+      properties:
+        id: { type: string, format: uuid }
+        role: { type: string, enum: [member, readonly] }
+        status: { type: string, enum: [pending, used, revoked, expired] }
+        createdAt: { type: string, format: date-time }
+        expiresAt: { type: string, format: date-time }
+        usedBy: { type: [string, "null"], description: Username of the account created with it. }
+        createdBy: { type: string, description: Username of the creator. }
+
+    CreatedInvitation:
+      type: object
+      required: [code, link, appLink, server, role, days, qr]
+      properties:
+        code: { type: string, description: Clear single-use code, shown only now. }
+        link: { type: string, format: uri, description: "Web page to share: `https://<server>/invite/<code>`." }
+        appLink: { type: string, description: "Deep link `mijote://invite?server=…&code=…`." }
+        server: { type: string, format: uri }
+        role: { type: string, enum: [member, readonly] }
+        days: { type: integer }
+        qr: { type: [string, "null"], description: QR code of `link`, PNG encoded in base64. }
+
+    DishType:
+      type: string
+      enum: [meat, fish, vegetarian]
+      description: Dish type used to balance generated menus (meat, fish, vegetarian).
+
+    Season:
+      type: string
+      enum: [spring, summer, autumn, winter]
+      description: Meteorological seasons, northern hemisphere (winter = December to February).
+
+    Meal:
+      type: string
+      enum: [lunch, dinner]
+
+    Unit:
+      type: string
+      description: |
+        Closed list of unit codes (French labels): `g`, `kg`; `ml`, `cl`, `dl`, `l`;
+        `tbsp` (c. à soupe, 15 ml), `tsp` (c. à café, 5 ml); `pinch` (pincée), `dash`
+        (trait, filet), `handful` (poignée); `piece` (countable item without unit,
+        "3 œufs"), `clove` (gousse), `slice` (tranche), `bunch` (botte, bouquet), `sprig`
+        (brin), `leaf` (feuille), `can` (boîte, conserve), `pack` (sachet, paquet), `jar`
+        (pot). Any other unit: use `null` and keep it in `rawText`/`name`.
+      enum: [g, kg, ml, cl, dl, l, tbsp, tsp, pinch, dash, handful, piece, clove, slice, bunch, sprig, leaf, can, pack, jar]
+
+    Ingredient:
+      type: object
+      required: [name]
+      properties:
+        rawText:
+          type: string
+          description: |
+            The line as displayed / extracted ("200 g de farine, tamisée"). Optional on
+            input: built from quantity, unit, name and note when empty. Together with
+            `name`, 300 characters at most.
+        quantity:
+          type: [number, "null"]
+          minimum: 0
+          maximum: 1000000
+          description: Quantity **for one person** (decimal; `0.5` for ½). `null` for "sel, poivre".
+        unit:
+          oneOf:
+            - { $ref: "#/components/schemas/Unit" }
+            - { type: "null" }
+        name: { type: string, minLength: 1, description: Ingredient name ("farine"). }
+        note: { type: [string, "null"], description: Preparation detail ("tamisée"). }
+
+    RecipeInput:
+      type: object
+      description: |
+        Body of `POST /api/v1/recipes` and `PUT /api/v1/recipes/{id}`. Strings are trimmed;
+        empty optional strings become `null`.
+      required: [title, dishType]
+      properties:
+        title: { type: string, minLength: 1, maxLength: 200 }
+        sourceUrl:
+          type: [string, "null"]
+          format: uri
+          maxLength: 2000
+          description: Link of the original page (http or https). Unique across recipes, archived ones included.
+        prepMinutes: { type: [integer, "null"], minimum: 0, maximum: 100000 }
+        cookMinutes: { type: [integer, "null"], minimum: 0, maximum: 100000 }
+        totalMinutes:
+          type: [integer, "null"]
+          minimum: 0
+          maximum: 100000
+          description: Default when null and a time is given = prepMinutes + cookMinutes. Used to tell quick from long recipes.
+        servings:
+          type: [integer, "null"]
+          minimum: 1
+          maximum: 1000
+          description: Yield of the original recipe (informational). Ingredient quantities are always for one person.
+        dishType: { $ref: "#/components/schemas/DishType" }
+        seasons:
+          type: array
+          items: { $ref: "#/components/schemas/Season" }
+          description: Empty = all year.
+        mealTypes:
+          type: array
+          items: { $ref: "#/components/schemas/Meal" }
+          description: Meals the recipe suits. Empty = both.
+        notes: { type: [string, "null"], maxLength: 4000, description: Family notes. }
+        tags:
+          type: array
+          maxItems: 30
+          items: { type: string, maxLength: 40 }
+          description: Free-form family tags; created when new; case-insensitive duplicates dropped.
+        ingredients:
+          type: array
+          maxItems: 100
+          items: { $ref: "#/components/schemas/Ingredient" }
+        steps:
+          type: array
+          maxItems: 100
+          items: { type: string, maxLength: 4000 }
+          description: Ordered steps; empty strings are dropped.
+
+    Recipe:
+      type: object
+      description: A recipe as returned by the server.
+      required: [id, title, sourceUrl, image, prepMinutes, cookMinutes, totalMinutes, servings, dishType,
+        seasons, mealTypes, notes, tags, ingredients, steps, createdAt, updatedAt, version, archivedAt]
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        sourceUrl: { type: [string, "null"] }
+        image:
+          type: [string, "null"]
+          description: "API path of the thumbnail, e.g. `/api/v1/recipes/<id>/image?v=1a2b3c4d`; null without image."
+        prepMinutes: { type: [integer, "null"] }
+        cookMinutes: { type: [integer, "null"] }
+        totalMinutes: { type: [integer, "null"] }
+        servings: { type: [integer, "null"] }
+        dishType: { $ref: "#/components/schemas/DishType" }
+        seasons: { type: array, items: { $ref: "#/components/schemas/Season" } }
+        mealTypes: { type: array, items: { $ref: "#/components/schemas/Meal" } }
+        notes: { type: [string, "null"] }
+        tags: { type: array, items: { type: string } }
+        ingredients:
+          type: array
+          items: { $ref: "#/components/schemas/Ingredient" }
+          description: Empty in listings.
+        steps:
+          type: array
+          items: { type: string }
+          description: Empty in listings.
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        version: { type: integer, description: Incremented on every change. }
+        archivedAt: { type: [string, "null"], format: date-time }
+
+    Tag:
+      type: object
+      required: [id, name, recipes]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        recipes: { type: integer, description: Number of active recipes with this tag. }
+
+    MenuRecipe:
+      type: object
+      description: Recipe summary shown in a menu.
+      required: [id, title, dishType, prepMinutes, totalMinutes, image]
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        dishType: { $ref: "#/components/schemas/DishType" }
+        prepMinutes: { type: [integer, "null"] }
+        totalMinutes: { type: [integer, "null"] }
+        image: { type: [string, "null"] }
+
+    MenuSlot:
+      type: object
+      description: |
+        One planned meal. It holds a recipe, or a manual meal (`title`), never both; both
+        null means no recipe suited the meal.
+      required: [id, date, meal, recipe, title, locked, version]
+      properties:
+        id: { type: string, format: uuid }
+        date: { type: string, format: date }
+        meal: { $ref: "#/components/schemas/Meal" }
+        recipe:
+          oneOf:
+            - { $ref: "#/components/schemas/MenuRecipe" }
+            - { type: "null" }
+        title: { type: [string, "null"], description: Free text of a manual meal. }
+        locked: { type: boolean, description: Kept when the period is generated again. }
+        version: { type: integer }
+
+    GenerationInfo:
+      type: object
+      required: [recipeCount, minRecipes, horizonDays, defaultMeals]
+      properties:
+        recipeCount: { type: integer, description: Active recipes. }
+        minRecipes: { type: integer, description: Minimum recipe count to generate. }
+        horizonDays: { type: integer, description: Family default planning horizon. }
+        defaultMeals:
+          type: array
+          minItems: 7
+          maxItems: 7
+          description: Family default meals per weekday, Monday first.
+          items: { type: string, enum: [lunch_dinner, dinner, none] }
