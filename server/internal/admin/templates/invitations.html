@@ -1,26 +1,47 @@
 {{define "content"}}{{with .Data}}
-{{if .New}}<section class="card"><h2>Invitation créée</h2>
-<p>Valable {{.New.Days}} jour(s), à usage unique (rôle : {{if eq .New.Role "readonly"}}lecture seule{{else}}membre{{end}}). Ce code ne sera plus affiché : transmettez-le maintenant.</p>
-<p><img src="{{.New.QR}}" alt="QR code de l'invitation" width="220" height="220"></p>
-<p>Envoyez ce lien à la personne (message, mail…). Il fonctionne même si elle n'a pas encore l'application : la page explique comment l'installer.</p>
-<p><input type="text" readonly value="{{.New.Link}}" aria-label="Lien d'invitation"></p>
-<p>Ou faites-lui scanner ce QR code avec l'appareil photo de son téléphone :</p>
-<p><img src="{{.New.QR}}" alt="QR code de l'invitation" width="220" height="220"></p>
-</section>{{end}}
-<section class="card"><h2>Nouvelle invitation</h2>
+<ol class="steps">
+<li class="{{if .New}}done{{else}}on{{end}}"><b>Créer</b><span>Choisissez le rôle et la durée de validité.</span></li>
+<li class="{{if .New}}on{{end}}"><b>Partager</b><span>Envoyez le lien ou faites scanner le QR code, affichés une seule fois.</span></li>
+<li><b>Rejoindre</b><span>La personne ouvre le lien et choisit son identifiant et son mot de passe.</span></li>
+</ol>
+{{if .New}}<section class="card accent"><h2>Partagez l'invitation maintenant</h2>
+<p>Invitation <b>{{if eq .New.Role "readonly"}}lecture seule{{else}}membre{{end}}</b>, à usage unique, valable {{.New.Days}} jour(s) (jusqu'au {{date .New.Expires}}).
+Ce lien ne sera plus affiché une fois la page quittée.</p>
+<div class="share">
+<div>
+<label for="invite-link">Lien d'invitation, à envoyer par message ou par mail</label>
+<div class="copy"><input type="text" id="invite-link" readonly value="{{.New.Link}}"><button type="button" data-copy="#invite-link" hidden>Copier le lien</button></div>
+<p class="muted">Le lien fonctionne même sans l'application : la page explique comment l'installer, puis ouvre l'application avec l'adresse du serveur et le code déjà remplis.</p>
+</div>
+{{if .New.QR}}<figure class="qr"><img src="{{.New.QR}}" alt="QR code du lien d'invitation" width="200" height="200">
+<figcaption class="muted">Ou faites scanner ce QR code avec l'appareil photo du téléphone : il ouvre le même lien.</figcaption></figure>{{end}}
+</div>
+<p class="muted">Ensuite, l'invitation apparaît ci-dessous « en attente » jusqu'à ce que la personne crée son compte ; elle passe alors à « utilisée par … ».</p>
+<p><a class="btn" href="/admin/invitations">Créer une autre invitation</a></p>
+</section>
+{{else}}<section class="card"><h2>Créer une invitation</h2>
 <form method="post" action="/admin/invitations"><input type="hidden" name="csrf" value="{{$.CSRF}}">
-<label>Rôle<select name="role"><option value="member" selected>Membre (lecture et écriture)</option><option value="readonly">Lecture seule (consultation uniquement)</option></select></label>
+<div class="grid">
+<label>Rôle du futur compte<select name="role"><option value="member" selected>Membre : consulte et planifie les repas</option><option value="readonly">Lecture seule : consulte uniquement</option></select></label>
 <label>Durée de validité<select name="days">{{range .TTLs}}<option value="{{.}}" {{if eq . $.Data.DefaultDays}}selected{{end}}>{{.}} jour(s)</option>{{end}}</select></label>
-<button>Créer une invitation</button>
-<p class="muted">Une invitation crée un compte membre ou lecture seule ; la personne choisit elle-même son identifiant et son mot de passe.</p>
-</form></section>
-<p>{{if .All}}<a href="/admin/invitations">Invitations en attente seulement</a>{{else}}<a href="/admin/invitations?all=1">Afficher aussi les invitations terminées</a>{{end}}</p>
-<section class="card scroll"><table>
-<tr><th>Créée le</th><th>Expire le</th><th>Rôle</th><th>État</th><th></th></tr>
-{{range .Invitations}}<tr><td>{{date .CreatedAt}}</td><td>{{date .ExpiresAt}}</td>
+</div>
+<p><button>Créer l'invitation</button></p>
+<p class="muted">Vous obtiendrez un lien et un QR code à transmettre à la personne. Elle choisit elle-même son identifiant et son mot de passe ; aucun compte administrateur ne peut être créé par invitation.</p>
+</form></section>{{end}}
+<section class="card scroll"><div class="toolbar"><h2>Invitations créées</h2>
+<nav class="tabs" aria-label="Filtre">
+<a href="/admin/invitations" {{if not .All}}class="on" aria-current="page"{{end}}>En attente</a>
+<a href="/admin/invitations?all=1" {{if .All}}class="on" aria-current="page"{{end}}>Toutes</a>
+</nav></div>
+<table>
+<tr><th>Créée le</th><th>Rôle</th><th>Expire le</th><th>État</th><th></th></tr>
+{{range .Invitations}}<tr><td>{{date .CreatedAt}}</td>
 <td>{{if eq .Role "readonly"}}lecture seule{{else}}membre{{end}}</td>
-<td>{{if eq .Status "pending"}}en attente{{else if eq .Status "used"}}utilisée par {{deref .UsedByName}}{{else if eq .Status "revoked"}}révoquée{{else}}expirée{{end}}</td>
-<td>{{if eq .Status "pending"}}<form class="inline" method="post" action="/admin/invitations/{{.ID}}/revoke"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button>Révoquer</button></form>{{end}}</td></tr>
-{{else}}<tr><td colspan="5" class="muted">Aucune invitation.</td></tr>{{end}}
-</table></section>
+<td>{{date .ExpiresAt}}</td>
+<td>{{if eq .Status "pending"}}<span class="badge">en attente</span>{{else if eq .Status "used"}}<span class="badge ok">utilisée par {{deref .UsedByName}}</span>{{else if eq .Status "revoked"}}<span class="badge off">révoquée</span>{{else}}<span class="badge off">expirée</span>{{end}}</td>
+<td>{{if eq .Status "pending"}}<form class="inline" method="post" action="/admin/invitations/{{.ID}}/revoke"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="secondary">Révoquer</button></form>{{end}}</td></tr>
+{{else}}<tr><td colspan="5" class="muted">{{if .All}}Aucune invitation.{{else}}Aucune invitation en attente.{{end}}</td></tr>{{end}}
+</table>
+<p class="muted">Pour des raisons de sécurité, le lien d'une invitation n'est affiché qu'à sa création. Si la personne l'a perdu, révoquez l'invitation et créez-en une nouvelle.</p>
+</section>
 {{end}}{{end}}

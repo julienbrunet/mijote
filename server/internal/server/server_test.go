@@ -1043,3 +1043,82 @@ func TestAppAdmin(t *testing.T) {
 	res, _ = app.api("GET", "/api/v1/admin/users", tokenValue, nil)
 	expect(t, res, http.StatusForbidden, "API token cannot administer")
 }
+
+func TestAdminMealList(t *testing.T) {
+	pool := testDB(t)
+	ctx := context.Background()
+	h, err := New(ctx, pool, nil, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(h)
+	defer srv.Close()
+	st := store.New(pool)
+
+	web := newClient(t, srv.URL)
+	web.form("/admin/setup", url.Values{"username": {"julien"}, "password": {"secret-pass"}, "confirm": {"secret-pass"}})
+	web.form("/admin/login", url.Values{"password": {"secret-pass"}})
+
+	// The invitation page shows the steps, then the link with a copy button and a single QR code.
+	_, page := web.do("GET", "/admin/invitations", "", "")
+	csrf := csrfRe.FindStringSubmatch(page)[1]
+	if !strings.Contains(page, "Créer une invitation") || strings.Contains(page, "data-copy") {
+		t.Fatal("invitation page before creation")
+	}
+	res, page := web.form("/admin/invitations", url.Values{"csrf": {csrf}, "days": {"7"}, "role": {"member"}})
+	expect(t, res, http.StatusOK, "create invitation")
+	if strings.Count(page, "data:image/png;base64,") != 1 || !strings.Contains(page, `data-copy="#invite-link"`) ||
+		!strings.Contains(page, `id="invite-link"`) {
+		t.Fatal("new invitation must show one QR code and a copy button next to the link")
+	}
+	code := regexp.MustCompile(`value="http[^"]*/invite/([a-z2-7]+)"`).FindStringSubmatch(page)[1]
+
+	// The copy button script is served from 'self' (the CSP forbids inline scripts).
+	res, js := web.do("GET", "/admin/admin.js", "", "")
+	expect(t, res, http.StatusOK, "admin script")
+	if !strings.HasPrefix(res.Header.Get("Content-Type"), "text/javascript") || !strings.Contains(js, "data-copy") {
+		t.Fatalf("admin script: %s", res.Header.Get("Content-Type"))
+	}
+	res, _ = web.do("GET", "/admin/admin.js", "", "", "If-None-Match", res.Header.Get("ETag"))
+	expect(t, res, http.StatusNotModified, "admin script cached")
+
+	app := newClient(t, srv.URL)
+	_, tok := app.json("/api/v1/invitations/redeem", map[string]string{"code": code, "username": "lea",
+		"displayName": "Léa", "password": "lea-password"})
+	lea := tok["accessToken"].(string)
+	_, tok = app.json("/api/v1/auth/login", map[string]string{"username": "julien", "password": "secret-pass"})
+	julien := tok["accessToken"].(string)
+	for i := range 10 {
+		res, _ := app.api("POST", "/api/v1/recipes", julien, map[string]any{
+			"title": "Plat " + string(rune('A'+i)), "dishType": "vegetarian", "mealTypes": []string{"dinner"}})
+		expect(t, res, http.StatusCreated, "create recipe")
+	}
+
+	// Julien generates three dinners from yesterday; Léa plans a manual lunch tomorrow.
+	today, _ := st.Today(ctx)
+	day := func(n int) string { return today.AddDate(0, 0, n).Format(time.DateOnly) }
+	res, _ = app.api("POST", "/api/v1/menu/generate", julien, map[string]any{"start": day(-1), "meals": 3, "plan": "dinner"})
+	expect(t, res, http.StatusOK, "generate")
+	res, _ = app.api("POST", "/api/v1/menu/slots", lea, map[string]any{"date": day(1), "meal": "lunch", "title": "Pique-nique"})
+	expect(t, res, http.StatusCreated, "manual meal")
+
+	res, page = web.do("GET", "/admin/meals", "", "")
+	expect(t, res, http.StatusOK, "meal list")
+	if !strings.Contains(page, "Pique-nique") || !strings.Contains(page, "Léa") || !strings.Contains(page, "aujourd'hui") ||
+		strings.Count(page, `href="/admin/recipes/`) != 2 || !strings.Contains(page, ">Liste de repas</a>") {
+		t.Fatalf("upcoming meals incomplete:\n%s", page)
+	}
+	leaUser, _ := st.UserByUsername(ctx, "lea")
+	_, page = web.do("GET", "/admin/meals?user="+leaUser.ID, "", "")
+	if !strings.Contains(page, "Pique-nique") || strings.Contains(page, `href="/admin/recipes/`) {
+		t.Fatal("filter by planner")
+	}
+	_, page = web.do("GET", "/admin/meals?period=past", "", "")
+	if strings.Count(page, `href="/admin/recipes/`) != 1 || strings.Contains(page, "Pique-nique") {
+		t.Fatal("past meals")
+	}
+	res, _ = web.do("GET", "/admin/meals?user=not-a-uuid", "", "")
+	expect(t, res, http.StatusOK, "unknown planner")
+	res, _ = newClient(t, srv.URL).do("GET", "/admin/meals", "", "")
+	expect(t, res, http.StatusSeeOther, "meal list needs a session")
+}

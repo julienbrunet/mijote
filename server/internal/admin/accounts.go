@@ -82,11 +82,12 @@ func (a *Admin) changeAccountRole(w http.ResponseWriter, r *http.Request) {
 // ---------- Invitations ----------
 
 type newInvitation struct {
-	Code string
-	Link string
-	QR   template.URL // QR code PNG of the link, as a data: URL
-	Days int
-	Role string
+	Code    string
+	Link    string
+	QR      template.URL // QR code PNG of the link, as a data: URL
+	Days    int
+	Role    string
+	Expires time.Time
 }
 
 type invitationsPage struct {
@@ -149,7 +150,7 @@ func (a *Admin) createInvitation(w http.ResponseWriter, r *http.Request) {
 	a.Store.LogAuthEvent(r.Context(), &s.user.ID, s.user.Username, "admin", "invite_created",
 		"rôle "+role+", valable "+strconv.Itoa(days)+" j", a.client(r))
 	link := invitationPageURL(a.serverURL(r), code)
-	n := &newInvitation{Code: code, Link: link, Days: days, Role: role}
+	n := &newInvitation{Code: code, Link: link, Days: days, Role: role, Expires: time.Now().Add(time.Duration(days) * 24 * time.Hour)}
 	if img, err := qr.Encode(link, qr.M); err == nil {
 		n.QR = template.URL("data:image/png;base64," + base64.StdEncoding.EncodeToString(img.PNG()))
 	}

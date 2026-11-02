@@ -1,11 +1,14 @@
 // Package admin serves the server-rendered web admin (FR-ADM-01). For now it
 // covers the setup wizard, sign-in with TOTP two-factor authentication, the
 // account page, session tracking, the login journal, accounts, invitations,
-// recipes and tags.
+// the meal list, recipes and tags.
 package admin
 
 import (
+	"bytes"
+	"crypto/sha256"
 	"embed"
+	"encoding/hex"
 	"html/template"
 	"log/slog"
 	"net/http"
@@ -20,6 +23,17 @@ import (
 
 //go:embed templates/*.html
 var templateFS embed.FS
+
+// adminJS is the only script of the admin (copy buttons), served from 'self'
+// because the CSP forbids inline scripts.
+//
+//go:embed static/admin.js
+var adminJS []byte
+
+var adminJSTag = func() string {
+	h := sha256.Sum256(adminJS)
+	return `"` + hex.EncodeToString(h[:8]) + `"`
+}()
 
 var funcs = template.FuncMap{
 	"date": func(t time.Time) string { return t.Local().Format("02/01/2006 15:04") },
@@ -62,7 +76,7 @@ var eventLabels = map[string]string{
 	"invite_created": "Invitation créée", "invite_revoked": "Invitation révoquée",
 	"account_disabled": "Compte désactivé", "account_enabled": "Compte réactivé",
 	"password_reset": "Mot de passe réinitialisé", "role_changed": "Rôle modifié",
-	"token_created":  "Jeton d'API créé", "token_revoked": "Jeton d'API révoqué",
+	"token_created": "Jeton d'API créé", "token_revoked": "Jeton d'API révoqué",
 }
 
 // Admin holds the dependencies of the web admin.
@@ -80,7 +94,7 @@ type Admin struct {
 // New parses the templates.
 func New(st *store.Store, guard *auth.Guard, proxies auth.Proxies, key []byte, imgs images.Dir) (*Admin, error) {
 	a := &Admin{Store: st, Guard: guard, Proxies: proxies, Key: key, Images: imgs, pages: map[string]*template.Template{}}
-	for _, p := range []string{"setup", "login", "login_2fa", "home", "account", "sessions", "journal", "accounts", "invitations", "invite", "tokens", "recipes", "recipe", "tags", "error"} {
+	for _, p := range []string{"setup", "login", "login_2fa", "home", "account", "sessions", "journal", "accounts", "invitations", "invite", "tokens", "meals", "recipes", "recipe", "tags", "error"} {
 		t, err := template.New("layout.html").Funcs(funcs).ParseFS(templateFS, "templates/layout.html", "templates/"+p+".html")
 		if err != nil {
 			return nil, err
@@ -100,6 +114,7 @@ func (a *Admin) Routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /admin/login/2fa", a.twoFALogin)
 	// Public page behind the shared invitation link (no session).
 	mux.HandleFunc("GET /invite/{code}", a.invitePage)
+	mux.HandleFunc("GET /admin/admin.js", serveAdminJS)
 
 	protected := map[string]http.HandlerFunc{
 		"GET /admin/{$}":                        a.home,
@@ -123,6 +138,7 @@ func (a *Admin) Routes(mux *http.ServeMux) {
 		"GET /admin/invitations":                a.invitationsPage,
 		"POST /admin/invitations":               a.createInvitation,
 		"POST /admin/invitations/{id}/revoke":   a.revokeInvitation,
+		"GET /admin/meals":                      a.mealsPage,
 		"GET /admin/tokens":                     a.tokensPage,
 		"POST /admin/tokens":                    a.createToken,
 		"POST /admin/tokens/{id}/revoke":        a.revokeToken,
@@ -143,6 +159,13 @@ func (a *Admin) Routes(mux *http.ServeMux) {
 	for pattern, h := range protected {
 		mux.Handle(pattern, a.requireSession(h))
 	}
+}
+
+func serveAdminJS(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("ETag", adminJSTag)
+	http.ServeContent(w, r, "admin.js", time.Time{}, bytes.NewReader(adminJS))
 }
 
 // view is the data passed to every page.

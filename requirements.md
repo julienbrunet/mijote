@@ -1,6 +1,6 @@
 # Mijote — Requirements
 
-Status: draft v0.1. Server skeleton in `server/` (migrations, initial schema); menu generation implemented (§10); app recipes tab, manual meals and in-app administration implemented (§10).
+Status: draft v0.1. Server skeleton in `server/` (migrations, initial schema); menu generation implemented (§10); app recipes tab, manual meals and in-app administration implemented (§10); web admin meal list implemented (§4.8).
 
 Priorities: **Must** (required for v1), **Should** (expected in v1, can slip), **Could** (nice to have).
 
@@ -142,6 +142,9 @@ Planning a family's weekly menus is repetitive: finding recipes, avoiding repeat
 | FR-ADM-05 | Show instance info (version, API version, DB status). | Could |
 | FR-ADM-06 | Create and revoke personal API tokens (read-only or read/write, with expiry) for scripts and assistants. | Should |
 | FR-ADM-07 | The admin finds part of the administration in the app's preferences: invitations (create, share the link or QR code, revoke) and accounts (role, deactivate / reactivate, new password). Family settings, tags, API tokens, sessions and the journal stay in the web admin. | Must |
+| FR-ADM-08 | **Meal list** ("Liste de repas", `/admin/meals`): read-only view of every planned meal of the instance (meals are shared, not per user), grouped by day, with the meal (lunch / dinner), the recipe (link to its admin page, "recette archivée" badge) or the manual meal ("repas libre" badge), the "fixé" badge for locked meals, **who planned it** and when. Tabs *À venir* (today and later, ascending) / *Passés* (most recent first), filter by account; 300 rows per page at most. "Planned by" is `menu_slot.updated_by`: the last account that planned or changed the meal (generation, swap, chosen recipe or manual meal); there is no separate creator column. The term "liste de repas" avoids any confusion with the app's navigation menu. | Should |
+
+**Web admin invitations page** (2026-11-02): a three-step header (*Créer* → *Partager* → *Rejoindre*) shows where the admin is. Step 1 is the creation form (role of the future account, lifetime). After creation, the page shows a single share card: the invitation summary (role, single use, expiry), the link in a read-only field with a **"Copier le lien"** button right next to it, and **one** QR code of the same link; it reminds that the link is shown only once, then offers "Créer une autre invitation". The list below (tabs *En attente* / *Toutes*) shows state badges and explains that a lost link means revoking and creating a new invitation. The copy button is the admin's only script, served from `/admin/admin.js` (the CSP forbids inline scripts; Clipboard API over HTTPS, text selection fallback otherwise); without JavaScript the button stays hidden and the link can be selected by hand.
 
 ## 5. Non-functional requirements
 
@@ -175,7 +178,7 @@ Planning a family's weekly menus is repetitive: finding recipes, avoiding repeat
 |---|---|
 | **Mobile app** (Kotlin / Jetpack Compose) | Server URL setup, login, share-sheet target, page fetch + schema.org/Recipe extraction, local cache and offline reading, optimistic UI for adjustments, sync on open / pull-to-refresh. |
 | **Backend API** (Go) | Versioned REST API, auth and roles, recipe storage, thumbnail storage on disk, **menu generation** and swap suggestions, invitations, migrations at startup. |
-| **Web admin** | Server-rendered htmx pages in the same binary: setup wizard, accounts, invitations, family settings, recipes. |
+| **Web admin** | Server-rendered htmx pages in the same binary: setup wizard, accounts, invitations, meal list, family settings, recipes. |
 | **PostgreSQL** | Single source of truth for accounts, recipes, tags, settings, menus. Low-memory tuning. |
 | **Image directory** | Compressed thumbnails on disk (volume). |
 
