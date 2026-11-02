@@ -19,6 +19,13 @@ import app.mijote.data.Session
 import app.mijote.data.SessionExpiredException
 import app.mijote.data.Updater
 import app.mijote.data.User
+import app.mijote.data.Account
+import app.mijote.data.Invitations
+import app.mijote.data.NewInvitation
+import app.mijote.data.RecipeDraft
+import app.mijote.data.RecipeSummary
+import app.mijote.ui.Tab
+import android.widget.Toast
 import app.mijote.data.normalizeInvitationCode
 import app.mijote.data.normalizeServerUrl
 import app.mijote.data.parseInvitationLink
@@ -38,6 +45,9 @@ sealed interface Screen {
     data class Login(val serverUrl: String) : Screen
     data class Home(val user: User) : Screen
     data class Preferences(val user: User) : Screen
+
+    /** Administration from the app (admin only), opened from the preferences. */
+    data class Admin(val user: User, val section: AdminSection) : Screen
 
     /** Join the family with an invitation; server and code are prefilled when they come from a link. */
     data class Invite(val serverUrl: String? = null, val code: String? = null) : Screen
@@ -74,7 +84,28 @@ data class MenuState(
 )
 
 /** Recipe detail screen: [recipe] is null while loading. */
-data class RecipeState(val id: String, val title: String, val recipe: RecipeDetail? = null, val error: String? = null)
+data class RecipeState(
+    val id: String, val title: String, val recipe: RecipeDetail? = null, val error: String? = null, val busy: Boolean = false,
+)
+
+/** Recipes tab: [recipes] is null until the first answer. */
+data class RecipesState(
+    val query: String = "", val recipes: List<RecipeSummary>? = null, val loading: Boolean = false, val error: String? = null,
+)
+
+/** Recipe editor: [id] is null for a new recipe. */
+data class EditorState(val id: String?, val draft: RecipeDraft, val saving: Boolean = false, val error: String? = null)
+
+enum class AdminSection { INVITATIONS, ACCOUNTS }
+
+/** Administration screens: [created] is the invitation just created, shown once with its link and QR code. */
+data class AdminState(
+    val invitations: Invitations? = null,
+    val accounts: List<Account>? = null,
+    val created: NewInvitation? = null,
+    val busy: Boolean = false,
+    val error: String? = null,
+)
 
 class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val session = Session(PrefsSessionStore(app))
@@ -96,6 +127,18 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _recipe = MutableStateFlow<RecipeState?>(null)
     val recipe: StateFlow<RecipeState?> = _recipe.asStateFlow()
+
+    private val _tab = MutableStateFlow(Tab.MENUS)
+    val tab: StateFlow<Tab> = _tab.asStateFlow()
+
+    private val _recipes = MutableStateFlow(RecipesState())
+    val recipes: StateFlow<RecipesState> = _recipes.asStateFlow()
+
+    private val _editor = MutableStateFlow<EditorState?>(null)
+    val editor: StateFlow<EditorState?> = _editor.asStateFlow()
+
+    private val _admin = MutableStateFlow(AdminState())
+    val admin: StateFlow<AdminState> = _admin.asStateFlow()
 
     // Thumbnails are small (see the server): a bitmap cache of a few MB is plenty.
     private val images = object : LruCache<String, Bitmap>(24 * 1024 * 1024) {
@@ -192,7 +235,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     /** An invitation link was opened (QR code scanned with the camera, message…). */
     fun openInvitationLink(link: String?) {
-        if (_state.value.screen is Screen.Home || _state.value.screen is Screen.Preferences) return // already signed in: never replace the session by accident
+        if (_state.value.screen is Screen.Home || _state.value.screen is Screen.Preferences || _state.value.screen is Screen.Admin) return // already signed in: never replace the session by accident
         val parsed = parseInvitationLink(link)
         _state.value = if (parsed != null) UiState(Screen.Invite(parsed.serverUrl, parsed.code))
         else UiState(_state.value.screen, error = "Ce lien d'invitation n'est pas valide.")
@@ -258,7 +301,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun leaveServer() {
         viewModelScope.launch {
             session.logout()
-            _menu.value = MenuState()
+            resetData()
             _state.value = UiState(Screen.Server)
         }
     }
@@ -308,6 +351,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 val m = session.authed { api, access -> api.menu(access) }
                 val end = slots.maxOfOrNull { it.date } ?: start
                 _menu.update { MenuState(menu = m, generated = it.generated + 1, review = ReviewPeriod(start, end)) }
+                _tab.value = Tab.MENUS
             } catch (e: SessionExpiredException) {
                 _menu.update { it.copy(generating = false) }
                 toLogin("Votre session a expiré : reconnectez-vous.")
@@ -322,8 +366,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         _menu.update { it.copy(review = null, error = null) }
     }
 
-    /** Runs a change of the planned meals, then reloads the menu. */
-    private fun change(key: String, action: (Api, String) -> Unit) {
+    /** Runs a change of the planned meals, then reloads the menu; [done] is told on success. */
+    private fun change(key: String, done: String? = null, action: (Api, String) -> Unit) {
         if (_menu.value.working != null) return
         _menu.update { it.copy(working = key, error = null) }
         viewModelScope.launch {
@@ -331,6 +375,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 session.authed { api, access -> action(api, access) }
                 val m = session.authed { api, access -> api.menu(access) }
                 _menu.update { it.copy(menu = m, working = null) }
+                done?.let { notice(it) }
             } catch (e: SessionExpiredException) {
                 _menu.update { it.copy(working = null) }
                 toLogin("Votre session a expiré : reconnectez-vous.")
@@ -347,6 +392,178 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun addMeal(date: LocalDate, meal: String) = change("$date|$meal") { api, access -> api.addSlot(access, date, meal) }
 
     fun removeMeal(slotId: String) = change(slotId) { api, access -> api.removeSlot(access, slotId) }
+
+    /**
+     * Plans a recipe ([recipeId]) or a manual meal ([title]) on a day, from the recipe screens or the
+     * menus; [replace] overwrites the meal already planned at that time (the dialog warned about it).
+     */
+    fun planMeal(date: LocalDate, meal: String, recipeId: String?, title: String?, replace: Boolean) =
+        change("$date|$meal", "Ajouté au menu : ${app.mijote.ui.mealMoment(date, meal)}") { api, access ->
+            api.planSlot(access, date, meal, recipeId, title?.trim(), replace)
+        }
+
+    /** Changes a planned meal into a manual meal with this title (or renames a manual meal). */
+    fun renameMeal(slotId: String, title: String) = change(slotId) { api, access -> api.updateSlot(access, slotId, null, title.trim()) }
+
+    private fun notice(text: String) {
+        Toast.makeText(getApplication(), text, Toast.LENGTH_SHORT).show()
+    }
+
+    fun selectTab(t: Tab) {
+        _tab.value = t
+        if (t == Tab.RECIPES && _recipes.value.recipes == null) searchRecipes(_recipes.value.query)
+    }
+
+    private var searchJob: kotlinx.coroutines.Job? = null
+
+    /** Searches the recipes by title or tag; typing restarts the search after a short pause. */
+    fun searchRecipes(query: String, debounce: Boolean = false) {
+        _recipes.update { it.copy(query = query, loading = true, error = null) }
+        searchJob?.cancel()
+        searchJob = viewModelScope.launch {
+            if (debounce) kotlinx.coroutines.delay(300)
+            try {
+                val list = session.authed { api, access -> api.recipes(access, query) }
+                _recipes.update { if (it.query == query) it.copy(recipes = list, loading = false) else it }
+            } catch (e: SessionExpiredException) {
+                toLogin("Votre session a expiré : reconnectez-vous.")
+            } catch (e: IOException) {
+                _recipes.update { it.copy(loading = false, error = errorMessage(e)) }
+            }
+        }
+    }
+
+    /** Opens the editor, empty or prefilled with the recipe shown. */
+    fun editRecipe(new: Boolean) {
+        val r = _recipe.value?.recipe
+        _editor.value = if (new || r == null) EditorState(null, RecipeDraft()) else EditorState(r.id, RecipeDraft.of(r))
+    }
+
+    fun updateDraft(d: RecipeDraft) {
+        _editor.update { it?.copy(draft = d, error = null) }
+    }
+
+    fun closeEditor() {
+        if (_editor.value?.saving != true) _editor.value = null
+    }
+
+    fun saveRecipe() {
+        val e = _editor.value ?: return
+        if (e.saving) return
+        e.draft.problem()?.let { p -> _editor.update { it?.copy(error = p) }; return }
+        _editor.update { it?.copy(saving = true, error = null) }
+        viewModelScope.launch {
+            try {
+                val saved = session.authed { api, access ->
+                    if (e.id == null) api.createRecipe(access, e.draft) else api.updateRecipe(access, e.id, e.draft)
+                }
+                _editor.value = null
+                _recipe.value = RecipeState(saved.id, saved.title, saved)
+                notice(if (e.id == null) "Recette ajoutée." else "Recette enregistrée.")
+                searchRecipes(_recipes.value.query)
+                if (e.id != null) loadMenu() // the menus show the new title
+            } catch (ex: SessionExpiredException) {
+                _editor.value = null
+                toLogin("Votre session a expiré : reconnectez-vous.")
+            } catch (ex: IOException) {
+                _editor.update { it?.copy(saving = false, error = errorMessage(ex)) }
+            }
+        }
+    }
+
+    /** Archives the recipe shown (admin): it leaves the list but stays in past menus and can be restored from the web admin. */
+    fun archiveRecipe() {
+        val r = _recipe.value ?: return
+        if (r.busy) return
+        _recipe.update { it?.copy(busy = true, error = null) }
+        viewModelScope.launch {
+            try {
+                session.authed { api, access -> api.archiveRecipe(access, r.id) }
+                _recipe.value = null
+                notice("Recette archivée.")
+                searchRecipes(_recipes.value.query)
+            } catch (e: SessionExpiredException) {
+                toLogin("Votre session a expiré : reconnectez-vous.")
+            } catch (e: IOException) {
+                _recipe.update { it?.copy(busy = false, error = errorMessage(e)) }
+            }
+        }
+    }
+
+    // ---------- Administration ----------
+
+    fun openAdmin(section: AdminSection) {
+        val user = (_state.value.screen as? Screen.Preferences)?.user ?: (_state.value.screen as? Screen.Admin)?.user ?: return
+        if (!user.isAdmin) return
+        _admin.update { it.copy(created = null, error = null) }
+        _state.value = UiState(Screen.Admin(user, section))
+        loadAdmin(section)
+    }
+
+    fun closeAdmin() {
+        val a = _state.value.screen as? Screen.Admin ?: return
+        _admin.update { it.copy(created = null, error = null) }
+        _state.value = UiState(Screen.Preferences(a.user))
+    }
+
+    private fun loadAdmin(section: AdminSection) = adminAction {
+        when (section) {
+            AdminSection.INVITATIONS -> {
+                val inv = session.authed { api, access -> api.invitations(access) }
+                _admin.update { it.copy(invitations = inv) }
+            }
+            AdminSection.ACCOUNTS -> {
+                val list = session.authed { api, access -> api.accounts(access) }
+                _admin.update { it.copy(accounts = list) }
+            }
+        }
+    }
+
+    private fun adminAction(action: suspend () -> Unit) {
+        _admin.update { it.copy(busy = true, error = null) }
+        viewModelScope.launch {
+            try {
+                action()
+                _admin.update { it.copy(busy = false) }
+            } catch (e: SessionExpiredException) {
+                toLogin("Votre session a expiré : reconnectez-vous.")
+            } catch (e: IOException) {
+                _admin.update { it.copy(busy = false, error = errorMessage(e)) }
+            }
+        }
+    }
+
+    fun createInvitation(role: String, days: Int) = adminAction {
+        val created = session.authed { api, access -> api.createInvitation(access, role, days) }
+        val inv = session.authed { api, access -> api.invitations(access) }
+        _admin.update { it.copy(created = created, invitations = inv) }
+    }
+
+    fun dismissCreatedInvitation() {
+        _admin.update { it.copy(created = null) }
+    }
+
+    fun revokeInvitation(id: String) = adminAction {
+        session.authed { api, access -> api.revokeInvitation(access, id) }
+        val inv = session.authed { api, access -> api.invitations(access) }
+        _admin.update { it.copy(invitations = inv) }
+    }
+
+    fun updateAccount(id: String, role: String? = null, disabled: Boolean? = null) = adminAction {
+        val u = session.authed { api, access -> api.updateAccount(access, id, role, disabled) }
+        _admin.update { s -> s.copy(accounts = s.accounts?.map { if (it.id == u.id) u else it }) }
+    }
+
+    fun resetPassword(id: String, password: String) {
+        if (password.length < 8) {
+            _admin.update { it.copy(error = "Le mot de passe doit faire au moins 8 caractères.") }
+            return
+        }
+        adminAction {
+            session.authed { api, access -> api.resetPassword(access, id, password) }
+            notice("Mot de passe changé : ses appareils sont déconnectés.")
+        }
+    }
 
     fun openRecipe(id: String, title: String) {
         _recipe.value = RecipeState(id, title)
@@ -367,9 +584,20 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         _recipe.value = null
     }
 
+    /** Forgets what the signed-out account had loaded. */
+    private fun resetData() {
+        _menu.value = MenuState()
+        _recipes.value = RecipesState()
+        _recipe.value = null
+        _editor.value = null
+        _admin.value = AdminState()
+        _tab.value = Tab.MENUS
+    }
+
     fun logout() {
         viewModelScope.launch {
             session.logout()
+            resetData()
             toLogin()
         }
     }
@@ -396,11 +624,14 @@ internal fun errorMessage(e: IOException): String = when {
     e !is ApiException -> "Serveur injoignable : vérifiez la connexion et l'adresse."
     e.code == "invalid_invitation" -> "Cette invitation est invalide, déjà utilisée ou expirée : demandez-en une nouvelle."
     e.code == "validation_error" -> e.message ?: "Données refusées par le serveur."
+    e.code == "not_found" -> "Introuvable : cet élément a peut-être été supprimé entre-temps."
     e.code == "not_mijote" || e.status == 404 -> "Cette adresse ne répond pas comme un serveur Mijote."
     e.code == "invalid_credentials" -> "Identifiant ou mot de passe incorrect."
     e.code == "too_many_requests" -> "Trop de tentatives : réessayez dans quelques minutes."
     e.code == "slot_exists" -> "Ce repas est déjà prévu ce jour-là."
     e.code == "not_enough_recipes" -> "Pas assez de recettes pour générer un menu : ajoutez-en d'abord."
+    e.code == "forbidden" -> "Action non autorisée pour votre compte."
+    e.status == 409 -> "Ce contenu existe déjà (par exemple une recette avec le même lien)."
     else -> "Erreur du serveur (${e.status})."
 
 }

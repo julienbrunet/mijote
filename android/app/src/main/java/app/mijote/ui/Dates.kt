@@ -25,3 +25,7 @@ fun dayLabel(d: LocalDate, today: LocalDate): String = when (d) {
     today.plusDays(1) -> "Demain"
     else -> DateTimeFormatter.ofPattern("EEEE", french).format(d).replaceFirstChar { it.uppercase() }
 }
+
+/** "jeudi 5 novembre, soir": when a meal is planned. */
+fun mealMoment(d: LocalDate, meal: String): String =
+    DateTimeFormatter.ofPattern("EEEE d MMMM", french).format(d) + if (meal == "lunch") ", midi" else ", soir"

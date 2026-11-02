@@ -129,11 +129,16 @@ func (a *API) swapSlot(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, slot)
 }
 
-// addSlot plans one more meal: {"date": "YYYY-MM-DD", "meal": "lunch|dinner"}.
+// addSlot plans one meal: {"date": "YYYY-MM-DD", "meal": "lunch|dinner"}, plus
+// optionally "recipeId" (that recipe) or "title" (manual meal), and "replace"
+// to overwrite a meal already planned at that date and time.
 func (a *API) addSlot(w http.ResponseWriter, r *http.Request) {
 	var in struct {
-		Date string `json:"date"`
-		Meal string `json:"meal"`
+		Date     string `json:"date"`
+		Meal     string `json:"meal"`
+		RecipeID string `json:"recipeId"`
+		Title    string `json:"title"`
+		Replace  bool   `json:"replace"`
 	}
 	if !body(w, r, &in) {
 		return
@@ -143,12 +148,31 @@ func (a *API) addSlot(w http.ResponseWriter, r *http.Request) {
 		problem(w, http.StatusUnprocessableEntity, "validation_error", "date invalide")
 		return
 	}
-	slot, err := a.Store.AddSlot(r.Context(), current(r).user.ID, d, in.Meal)
+	slot, err := a.Store.AddSlot(r.Context(), current(r).user.ID, store.SlotRequest{
+		Date: d, Meal: in.Meal, RecipeID: in.RecipeID, Title: in.Title, Replace: in.Replace})
 	if err != nil {
 		menuSlotError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, slot)
+}
+
+// updateSlot turns a planned meal into a recipe or a manual meal:
+// {"recipeId": "…"} or {"title": "…"}.
+func (a *API) updateSlot(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		RecipeID string `json:"recipeId"`
+		Title    string `json:"title"`
+	}
+	if !body(w, r, &in) {
+		return
+	}
+	slot, err := a.Store.UpdateSlot(r.Context(), current(r).user.ID, r.PathValue("id"), in.RecipeID, in.Title)
+	if err != nil {
+		menuSlotError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, slot)
 }
 
 // removeSlot removes a planned meal.

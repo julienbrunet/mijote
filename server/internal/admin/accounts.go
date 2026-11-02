@@ -4,7 +4,6 @@ import (
 	"encoding/base64"
 	"html/template"
 	"net/http"
-	"net/url"
 	"strconv"
 	"time"
 
@@ -115,23 +114,17 @@ func (a *Admin) invitationsPage(w http.ResponseWriter, r *http.Request) {
 }
 
 // serverURL is the public address the app must use, as seen by the admin's browser.
-func (a *Admin) serverURL(r *http.Request) string {
-	scheme := "http"
-	if a.Proxies.IsHTTPS(r) {
-		scheme = "https"
-	}
-	return scheme + "://" + r.Host
-}
+func (a *Admin) serverURL(r *http.Request) string { return a.Proxies.PublicURL(r) }
 
 // invitationPageURL is the link the admin shares (message, mail, QR code): a plain
 // web page that works with or without the app installed.
 func invitationPageURL(serverURL, code string) string {
-	return serverURL + "/invite/" + url.PathEscape(code)
+	return store.InvitationPageURL(serverURL, code)
 }
 
 // appInvitationLink opens the app directly, with the server address and the code.
 func appInvitationLink(serverURL, code string) string {
-	return "mijote://invite?server=" + url.QueryEscape(serverURL) + "&code=" + url.QueryEscape(code)
+	return store.InvitationAppLink(serverURL, code)
 }
 
 func (a *Admin) createInvitation(w http.ResponseWriter, r *http.Request) {

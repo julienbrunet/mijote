@@ -76,3 +76,12 @@ func (p Proxies) IsHTTPS(r *http.Request) bool {
 	addr, err := netip.ParseAddr(host)
 	return err == nil && p.trusted(addr) && strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https")
 }
+
+// PublicURL is the address of the server as the client sees it ("https://host"),
+// used in the invitation links.
+func (p Proxies) PublicURL(r *http.Request) string {
+	if p.IsHTTPS(r) {
+		return "https://" + r.Host
+	}
+	return "http://" + r.Host
+}

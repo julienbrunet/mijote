@@ -9,10 +9,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
+import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -24,16 +26,27 @@ import app.mijote.RecipeState
 import app.mijote.data.RecipeDetail
 import app.mijote.data.text
 
-private fun dishType(code: String) = when (code) {
-    "meat" -> DishType.MEAT
-    "fish" -> DishType.FISH
-    "vegetarian" -> DishType.VEGETARIAN
-    else -> null
-}
 
-/** Recipe detail: picture, times, ingredients for the user's number of people, steps. */
+/**
+ * Recipe detail: picture, times, ingredients for the user's number of people, steps. Members can
+ * plan it on a day and edit it; the admin can archive it.
+ */
 @Composable
-fun RecipeScreen(state: RecipeState, people: Int, onBack: () -> Unit) {
+fun RecipeScreen(
+    state: RecipeState, people: Int, onBack: () -> Unit,
+    canWrite: Boolean = false, canArchive: Boolean = false,
+    onPlan: () -> Unit = {}, onEdit: () -> Unit = {}, onArchive: () -> Unit = {},
+) {
+    var confirmArchive by remember { mutableStateOf(false) }
+    if (confirmArchive) AlertDialog(
+        onDismissRequest = { confirmArchive = false },
+        containerColor = Sunny.Card,
+        title = { Text("Archiver cette recette ?", fontWeight = FontWeight.Bold, color = Sunny.Ink, fontSize = 18.sp) },
+        text = { Text("Elle disparaît de la liste et n'est plus proposée dans les menus, mais elle n'est pas supprimée : " +
+            "les menus passés la gardent et elle peut être restaurée depuis l'administration web.", color = Sunny.Ink) },
+        confirmButton = { TextButton(onClick = { confirmArchive = false; onArchive() }) { Text("Archiver", color = Sunny.Error, fontWeight = FontWeight.Bold) } },
+        dismissButton = { TextButton(onClick = { confirmArchive = false }) { Text("Annuler", color = Sunny.Slate) } },
+    )
     val r = state.recipe
     Column(Modifier.fillMaxSize().background(Sunny.Butter).verticalScroll(rememberScrollState())) {
         Box(Modifier.fillMaxWidth().height(260.dp).clip(RoundedCornerShape(bottomStart = 40.dp, bottomEnd = 40.dp))) {
@@ -45,7 +58,24 @@ fun RecipeScreen(state: RecipeState, people: Int, onBack: () -> Unit) {
             ) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Retour", tint = Sunny.Ink) }
         }
         Column(Modifier.padding(horizontal = 22.dp).padding(top = 22.dp, bottom = 48.dp).navigationBarsPadding()) {
-            Text(state.title, fontSize = 28.sp, lineHeight = 32.sp, fontWeight = FontWeight.Bold, color = Sunny.InkTitle)
+            Text(r?.title ?: state.title, fontSize = 28.sp, lineHeight = 32.sp, fontWeight = FontWeight.Bold, color = Sunny.InkTitle)
+            if (r != null && canWrite) {
+                Button(
+                    onClick = onPlan, enabled = !state.busy, shape = Shapes.Control,
+                    colors = ButtonDefaults.buttonColors(containerColor = Sunny.PeachDeep, contentColor = Color.White),
+                    modifier = Modifier.fillMaxWidth().padding(top = 16.dp).height(52.dp),
+                ) {
+                    Icon(Icons.Filled.DateRange, contentDescription = null, modifier = Modifier.size(20.dp))
+                    Text("Ajouter au menu", fontWeight = FontWeight.Bold, fontSize = 15.sp, modifier = Modifier.padding(start = 8.dp))
+                }
+                Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SmallAction("Modifier", Icons.Filled.Edit, Sunny.Ink, Modifier.weight(1f), enabled = !state.busy, onClick = onEdit)
+                    if (canArchive) SmallAction("Archiver", Icons.Filled.Delete, Sunny.Error, Modifier.weight(1f), enabled = !state.busy) {
+                        confirmArchive = true
+                    }
+                }
+                if (state.error != null) ErrorText(state.error)
+            }
             when {
                 r != null -> Content(r, people)
                 state.error != null -> ErrorText(state.error)
@@ -57,12 +87,11 @@ fun RecipeScreen(state: RecipeState, people: Int, onBack: () -> Unit) {
     }
 }
 
-private fun dishEmoji(type: String?) = when (type) { "meat" -> "🍗"; "fish" -> "🐟"; "vegetarian" -> "🥗"; else -> "🍽️" }
 
 @Composable
 private fun Content(r: RecipeDetail, people: Int) {
     Row(Modifier.padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-        dishType(r.dishType)?.let { DishTag(it.label, it.colors) }
+        dishTypeOf(r.dishType)?.let { DishTag(it.label, it.colors) }
     }
     val times = listOfNotNull(r.prepMinutes?.let { "Préparation" to it }, r.cookMinutes?.let { "Cuisson" to it },
         r.totalMinutes?.let { "Total" to it })
@@ -102,6 +131,17 @@ private fun Content(r: RecipeDetail, people: Int) {
         Section("Notes", null)
         Text(it, fontSize = 15.sp, color = Sunny.Ink, lineHeight = 21.sp,
             modifier = Modifier.fillMaxWidth().background(Sunny.ButterLight, Shapes.Card).padding(16.dp))
+    }
+}
+
+@Composable
+private fun SmallAction(text: String, icon: ImageVector, color: Color, modifier: Modifier, enabled: Boolean, onClick: () -> Unit) {
+    Row(
+        modifier.height(46.dp).clip(Shapes.Control).background(Sunny.Card).clickable(enabled = enabled, onClick = onClick),
+        horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(18.dp))
+        Text(text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = color, modifier = Modifier.padding(start = 6.dp))
     }
 }
 

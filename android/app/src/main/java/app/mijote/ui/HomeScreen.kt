@@ -41,6 +41,8 @@ enum class DishType(val label: String, val colors: Pair<Color, Color>) {
 data class MealUi(
     val slot: String, val title: String, val dish: DishType?, val prepMinutes: Int?, val picture: String, val locked: Boolean,
     val id: String = "", val recipeId: String? = null, val image: String? = null,
+    /** A manual meal: a free text ("Commander une pizza"), not a recipe. */
+    val manual: Boolean = false,
 )
 
 /** One day of the menu. [missing] lists the meals ("lunch", "dinner") that can still be added (review screen). */
@@ -64,29 +66,33 @@ fun HomeScreen(
     onOpenMeal: (MealUi) -> Unit = {},
     onSwapMeal: (MealUi) -> Unit = {},
     onRemoveMeal: (MealUi) -> Unit = {},
+    onRenameMeal: (MealUi, String) -> Unit = { _, _ -> },
+    onAddManualMeal: () -> Unit = {},
+    tab: Tab = Tab.MENUS,
+    onTab: (Tab) -> Unit = {},
+    recipes: @Composable () -> Unit = {},
     generate: @Composable () -> Unit = {},
 ) {
     var editing by remember { mutableStateOf<MealUi?>(null) }
     val canEdit = user.role != "readonly"
     val availableTabs = if (user.role == "readonly") listOf(Tab.MENUS, Tab.RECIPES) else Tab.entries
-    MealActionsDialog(editing, onDismiss = { editing = null }, onOpen = onOpenMeal, onSwap = onSwapMeal, onRemove = onRemoveMeal, canEdit = canEdit)
-    var tab by rememberSaveable { mutableStateOf(Tab.MENUS) }
-    // A successful generation brings the user back to the menus.
-    LaunchedEffect(generatedCount) { if (generatedCount > 0) tab = Tab.MENUS }
-    if (tab == Tab.GENERATE && canEdit) {
+    MealActionsDialog(editing, onDismiss = { editing = null }, onOpen = onOpenMeal, onSwap = onSwapMeal, onRemove = onRemoveMeal,
+        onRename = onRenameMeal, canEdit = canEdit)
+    if ((tab == Tab.GENERATE && canEdit) || tab == Tab.RECIPES) {
         Box(Modifier.fillMaxSize()) {
-            generate()
-            BottomBar(tab, availableTabs, Modifier.align(Alignment.BottomEnd)) { tab = it }
+            if (tab == Tab.RECIPES) recipes() else generate()
+            BottomBar(tab, availableTabs, Modifier.align(Alignment.BottomEnd), onTab)
         }
         return
     }
     Box(Modifier.fillMaxSize().background(Sunny.Butter)) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
             Header(user, onLogout, tab.label.takeIf { tab != Tab.MENUS }, period.takeIf { tab == Tab.MENUS },
-                onNewWeek = { onNewWeek?.invoke(); tab = Tab.GENERATE }, onPreferences = onPreferences)
+                onNewWeek = { onNewWeek?.invoke(); onTab(Tab.GENERATE) }, onPreferences = onPreferences)
             if (tab == Tab.MENUS && days.isNotEmpty()) {
                 Column(Modifier.padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 120.dp)) {
                     ErrorText(error)
+                    if (canEdit) Box(Modifier.padding(top = 18.dp)) { AddMealButton("Ajouter un repas libre", working == "manual", onAddManualMeal) }
                     // No separator between days: the day titles and a wider gap group the meals.
                     days.forEachIndexed { i, day ->
                         DaySection(day, first = i == 0, working = working, onOpen = onOpenMeal, onEdit = { editing = it }, canEdit = canEdit)
@@ -94,17 +100,17 @@ fun HomeScreen(
                 }
             } else {
                 Text(
-                    when (tab) {
-                        Tab.MENUS -> if (canEdit) "Aucun repas prévu : touchez « Générer » pour créer le menu." else "Aucun repas prévu pour le moment."
-                        Tab.RECIPES -> "Les recettes arriveront ici."
-                        Tab.GENERATE -> "La génération de menus arrivera ici."
-                    },
+                    if (canEdit) "Aucun repas prévu : touchez « Générer » pour créer le menu, ou planifiez une recette depuis « Recettes »."
+                    else "Aucun repas prévu pour le moment.",
                     color = Sunny.InkTitle, textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth().padding(top = 160.dp),
+                    modifier = Modifier.fillMaxWidth().padding(top = 120.dp, start = 24.dp, end = 24.dp),
                 )
+                if (canEdit) Box(Modifier.padding(horizontal = 20.dp, vertical = 24.dp)) {
+                    AddMealButton("Ajouter un repas libre", working == "manual", onAddManualMeal)
+                }
             }
         }
-        BottomBar(tab, availableTabs, Modifier.align(Alignment.BottomEnd)) { tab = it }
+        BottomBar(tab, availableTabs, Modifier.align(Alignment.BottomEnd), onTab)
     }
 }
 
@@ -159,7 +165,7 @@ fun MealCard(meal: MealUi, accent: Color, busy: Boolean, onOpen: () -> Unit, onE
         Modifier.fillMaxWidth().height(104.dp)
             .shadow(4.dp, Shapes.Card, ambientColor = Color.Black, spotColor = Color.Black)
             .background(Sunny.Card, Shapes.Card).clip(Shapes.Card)
-            .clickable(enabled = meal.recipeId != null, onClick = onOpen),
+            .clickable(enabled = meal.recipeId != null || (meal.manual && canEdit), onClick = if (meal.manual) onEdit else onOpen),
     ) {
         Row(Modifier.fillMaxSize().padding(start = 12.dp, end = if (canEdit) 52.dp else 16.dp), verticalAlignment = Alignment.CenterVertically) {
             RecipeThumb(meal.image, meal.picture, Modifier.size(76.dp).clip(RoundedCornerShape(16.dp)), emojiSize = 40.sp)
@@ -187,18 +193,26 @@ fun MealCard(meal: MealUi, accent: Color, busy: Boolean, onOpen: () -> Unit, onE
                 else Icon(Icons.Filled.Edit, contentDescription = "Modifier", tint = Color.White, modifier = Modifier.size(20.dp))
             }
         }
-        if (meal.locked) Icon(Icons.Filled.Lock, contentDescription = "Verrouillé", tint = Sunny.InkSoft,
+        if (meal.locked && !meal.manual) Icon(Icons.Filled.Lock, contentDescription = "Conservé si le menu est généré à nouveau", tint = Sunny.InkSoft,
             modifier = Modifier.align(Alignment.TopEnd).padding(10.dp).size(14.dp))
     }
 }
 
-/** What can be done to a meal: see the recipe, take another one, remove it. */
+/**
+ * What can be done to a meal: see the recipe, take another one, turn it into a manual meal (or
+ * rename a manual meal), remove it.
+ */
 @Composable
 fun MealActionsDialog(
     meal: MealUi?, onDismiss: () -> Unit,
     onOpen: (MealUi) -> Unit, onSwap: (MealUi) -> Unit, onRemove: (MealUi) -> Unit,
+    onRename: (MealUi, String) -> Unit = { _, _ -> },
     canEdit: Boolean = true,
 ) {
+    var naming by remember { mutableStateOf<MealUi?>(null) }
+    naming?.let { m ->
+        MealTitleDialog(if (m.manual) m.title else "", onDismiss = { naming = null }) { onRename(m, it); naming = null }
+    }
     if (meal == null) return
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -208,10 +222,10 @@ fun MealActionsDialog(
             Column {
                 if (meal.recipeId != null) DialogAction("Voir la recette") { onDismiss(); onOpen(meal) }
                 if (canEdit) {
-                    DialogAction(if (meal.locked) "Verrouillé : impossible de changer" else "Changer de recette", enabled = !meal.locked) {
-                        onDismiss(); onSwap(meal)
-                    }
-                    DialogAction("Retirer ce repas", enabled = !meal.locked, danger = true) { onDismiss(); onRemove(meal) }
+                    if (meal.manual) DialogAction("Modifier l'intitulé") { onDismiss(); naming = meal }
+                    DialogAction(if (meal.manual) "Remplacer par une recette au hasard" else "Changer de recette") { onDismiss(); onSwap(meal) }
+                    if (!meal.manual) DialogAction("Remplacer par un repas libre") { onDismiss(); naming = meal }
+                    DialogAction("Retirer ce repas", danger = true) { onDismiss(); onRemove(meal) }
                 }
             }
         },
@@ -307,7 +321,10 @@ private fun mealUi(s: MenuSlot): MealUi {
         "vegetarian" -> DishType.VEGETARIAN
         else -> null
     }
-    val picture = when (dish) { DishType.MEAT -> "🍗"; DishType.FISH -> "🐟"; DishType.VEGETARIAN -> "🥗"; null -> "🍽️" }
-    return MealUi(if (s.meal == "lunch") "Midi" else "Soir", s.recipe?.title ?: "Aucune recette disponible",
-        dish, s.recipe?.minutes, picture, s.locked, id = s.id, recipeId = s.recipe?.id, image = s.recipe?.image)
+    val picture = when {
+        s.manual -> "📝"
+        else -> when (dish) { DishType.MEAT -> "🍗"; DishType.FISH -> "🐟"; DishType.VEGETARIAN -> "🥗"; null -> "🍽️" }
+    }
+    return MealUi(if (s.meal == "lunch") "Midi" else "Soir", s.title ?: s.recipe?.title ?: "Aucune recette disponible",
+        dish, s.recipe?.minutes, picture, s.locked, id = s.id, recipeId = s.recipe?.id, image = s.recipe?.image, manual = s.manual)
 }

@@ -130,11 +130,64 @@ class Api(private val baseUrl: String, private val http: Http = UrlConnectionHtt
     fun addSlot(access: String, date: java.time.LocalDate, meal: String): MenuSlot =
         parseSlot(call("POST", "/api/v1/menu/slots", JSONObject().put("date", date.toString()).put("meal", meal), bearer = access))
 
+    /**
+     * Plans a chosen recipe ([recipeId]) or a manual meal ([title]) at a date and time; [replace]
+     * overwrites the meal already planned there (otherwise 409 slot_exists).
+     */
+    fun planSlot(access: String, date: java.time.LocalDate, meal: String, recipeId: String?, title: String?, replace: Boolean): MenuSlot =
+        parseSlot(call("POST", "/api/v1/menu/slots", JSONObject().put("date", date.toString()).put("meal", meal)
+            .put("recipeId", recipeId.orEmpty()).put("title", title.orEmpty()).put("replace", replace), bearer = access))
+
+    /** Turns a planned meal into a recipe or a manual meal (exactly one of [recipeId] and [title]). */
+    fun updateSlot(access: String, id: String, recipeId: String?, title: String?): MenuSlot =
+        parseSlot(call("PUT", "/api/v1/menu/slots/$id", JSONObject().put("recipeId", recipeId.orEmpty()).put("title", title.orEmpty()),
+            bearer = access))
+
     fun removeSlot(access: String, id: String) {
         call("DELETE", "/api/v1/menu/slots/$id", bearer = access)
     }
 
     fun recipe(access: String, id: String): RecipeDetail = parseRecipe(call("GET", "/api/v1/recipes/$id", bearer = access))
+
+    /** Active recipes matching [query] (title or tag), sorted by title; archived ones are left out. */
+    fun recipes(access: String, query: String): List<RecipeSummary> =
+        parseRecipeList(call("GET", "/api/v1/recipes?limit=500&q=" + java.net.URLEncoder.encode(query.trim(), "UTF-8"), bearer = access))
+
+    fun createRecipe(access: String, draft: RecipeDraft): RecipeDetail =
+        parseRecipe(call("POST", "/api/v1/recipes", draft.toJson(), bearer = access))
+
+    fun updateRecipe(access: String, id: String, draft: RecipeDraft): RecipeDetail =
+        parseRecipe(call("PUT", "/api/v1/recipes/$id", draft.toJson(), bearer = access))
+
+    /** Archives a recipe (soft delete, admin only): it leaves the lists, past menus keep it. */
+    fun archiveRecipe(access: String, id: String) {
+        call("DELETE", "/api/v1/recipes/$id", bearer = access)
+    }
+
+    // ---------- Administration (admin only) ----------
+
+    fun invitations(access: String): Invitations = parseInvitations(call("GET", "/api/v1/admin/invitations", bearer = access))
+
+    fun createInvitation(access: String, role: String, days: Int): NewInvitation =
+        parseNewInvitation(call("POST", "/api/v1/admin/invitations", JSONObject().put("role", role).put("days", days), bearer = access))
+
+    fun revokeInvitation(access: String, id: String) {
+        call("POST", "/api/v1/admin/invitations/$id/revoke", bearer = access)
+    }
+
+    fun accounts(access: String): List<Account> = parseAccounts(call("GET", "/api/v1/admin/users", bearer = access))
+
+    /** Changes the role ("member" / "readonly") or the disabled state of a member. */
+    fun updateAccount(access: String, id: String, role: String? = null, disabled: Boolean? = null): Account {
+        val body = JSONObject()
+        role?.let { body.put("role", it) }
+        disabled?.let { body.put("disabled", it) }
+        return parseAccount(call("PUT", "/api/v1/admin/users/$id", body, bearer = access))
+    }
+
+    fun resetPassword(access: String, id: String, password: String) {
+        call("PUT", "/api/v1/admin/users/$id/password", JSONObject().put("password", password), bearer = access)
+    }
 
     /** Thumbnail bytes of a recipe image path (as sent by the server), null when missing. */
     fun image(access: String, path: String): ByteArray? {

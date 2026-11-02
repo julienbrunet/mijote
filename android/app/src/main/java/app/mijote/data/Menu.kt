@@ -9,8 +9,15 @@ import java.time.LocalDate
 /** [image] is the API path of the thumbnail (needs the access token), null without picture. */
 data class MenuRecipe(val id: String, val title: String, val dishType: String, val minutes: Int?, val image: String? = null)
 
-/** One planned meal; [recipe] is null for an empty slot. */
-data class MenuSlot(val id: String, val date: LocalDate, val meal: String, val recipe: MenuRecipe?, val locked: Boolean)
+/**
+ * One planned meal: a [recipe], or a manual meal with a free [title] ("Commander une pizza"),
+ * or neither when no recipe suited the slot. [locked] meals are kept when the period is generated again.
+ */
+data class MenuSlot(
+    val id: String, val date: LocalDate, val meal: String, val recipe: MenuRecipe?, val locked: Boolean, val title: String? = null,
+) {
+    val manual get() = title != null
+}
 
 /** Meals planned by the family settings, Monday first: lunch_dinner, dinner or none. */
 data class GenerationInfo(val recipeCount: Int, val minRecipes: Int, val horizonDays: Int, val defaultMeals: List<String>) {
@@ -38,6 +45,7 @@ fun parseSlot(o: JSONObject): MenuSlot {
                 if (it.isNull("image")) null else it.optString("image").ifEmpty { null })
         },
         locked = o.optBoolean("locked"),
+        title = if (o.isNull("title")) null else o.optString("title").ifEmpty { null },
     )
 }
 

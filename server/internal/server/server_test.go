@@ -759,7 +759,7 @@ func TestMenuGeneration(t *testing.T) {
 		t.Fatalf("generation info %v", menu["generation"])
 	}
 
-	// Swap: a new recipe, never the same; a locked meal is refused.
+	// Swap: a new recipe, never the same; asking it for a locked meal releases it.
 	_, now := app.api("GET", "/api/v1/menu?from=2026-11-03&to=2026-11-03", access, nil)
 	free := now["slots"].([]any)[0].(map[string]any)
 	res, out = app.api("POST", "/api/v1/menu/slots/"+free["id"].(string)+"/swap", access, nil)
@@ -767,8 +767,11 @@ func TestMenuGeneration(t *testing.T) {
 	if out["recipe"].(map[string]any)["id"] == free["recipe"].(map[string]any)["id"] {
 		t.Fatalf("swap kept the recipe: %v", out)
 	}
-	res, _ = app.api("POST", "/api/v1/menu/slots/"+first["id"].(string)+"/swap", access, nil)
-	expect(t, res, http.StatusUnprocessableEntity, "swap a locked meal")
+	res, out = app.api("POST", "/api/v1/menu/slots/"+first["id"].(string)+"/swap", access, nil)
+	expect(t, res, http.StatusOK, "swap a locked meal")
+	if out["locked"] != false || out["recipe"].(map[string]any)["id"] == first["recipe"].(map[string]any)["id"] {
+		t.Fatalf("swap of a locked meal: %v", out)
+	}
 	res, _ = app.api("POST", "/api/v1/menu/slots/00000000-0000-0000-0000-000000000000/swap", access, nil)
 	expect(t, res, http.StatusNotFound, "swap unknown")
 
@@ -784,6 +787,52 @@ func TestMenuGeneration(t *testing.T) {
 	expect(t, res, http.StatusNoContent, "remove extra meal")
 	res, _ = app.api("DELETE", "/api/v1/menu/slots/"+out["id"].(string), access, nil)
 	expect(t, res, http.StatusNotFound, "remove twice")
+
+	// Manual meal: free text, kept by regeneration, editable, removable.
+	res, out = app.api("POST", "/api/v1/menu/slots", access, map[string]any{"date": "2026-11-04", "meal": "dinner", "title": "Commander une pizza"})
+	expect(t, res, http.StatusConflict, "manual meal on a planned dinner")
+	res, out = app.api("POST", "/api/v1/menu/slots", access, map[string]any{"date": "2026-11-04", "meal": "dinner",
+		"title": "  Commander une pizza ", "replace": true})
+	expect(t, res, http.StatusCreated, "manual meal replacing a dinner")
+	if out["title"] != "Commander une pizza" || out["recipe"] != nil || out["locked"] != true {
+		t.Fatalf("bad manual meal %v", out)
+	}
+	manual := out["id"].(string)
+	res, _ = app.api("POST", "/api/v1/menu/slots", access, map[string]any{"date": "2026-11-05", "meal": "lunch", "title": "   "})
+	expect(t, res, http.StatusUnprocessableEntity, "blank manual meal")
+	res, out = app.api("PUT", "/api/v1/menu/slots/"+manual, access, map[string]any{"title": "Repas chez des amis"})
+	expect(t, res, http.StatusOK, "rename manual meal")
+	if out["title"] != "Repas chez des amis" {
+		t.Fatalf("manual meal not renamed %v", out)
+	}
+	res, out = app.api("POST", "/api/v1/menu/generate", access, map[string]any{"start": "2026-11-02", "meals": 5, "plan": "dinner"})
+	expect(t, res, http.StatusOK, "regenerate with a manual meal")
+	for _, sl := range out["slots"].([]any) {
+		m := sl.(map[string]any)
+		if m["date"] == "2026-11-04" && (m["title"] != "Repas chez des amis" || m["recipe"] != nil) {
+			t.Fatalf("manual meal lost on regeneration: %v", m)
+		}
+	}
+
+	// A chosen recipe on a day (from the recipe screens), replacing the manual meal.
+	_, list := app.api("GET", "/api/v1/recipes?q=Recette%20B", access, nil)
+	chosen := list["recipes"].([]any)[0].(map[string]any)["id"].(string)
+	res, out = app.api("PUT", "/api/v1/menu/slots/"+manual, access, map[string]any{"recipeId": chosen})
+	expect(t, res, http.StatusOK, "manual meal to recipe")
+	if out["title"] != nil || out["recipe"].(map[string]any)["id"] != chosen {
+		t.Fatalf("manual meal not turned into a recipe %v", out)
+	}
+	res, out = app.api("POST", "/api/v1/menu/slots", access, map[string]any{"date": "2026-11-20", "meal": "dinner", "recipeId": chosen})
+	expect(t, res, http.StatusCreated, "plan a chosen recipe")
+	if out["recipe"].(map[string]any)["id"] != chosen || out["locked"] != true {
+		t.Fatalf("chosen recipe not planned %v", out)
+	}
+	res, _ = app.api("POST", "/api/v1/menu/slots", access, map[string]any{"date": "2026-11-21", "meal": "dinner",
+		"recipeId": chosen, "title": "Pizza"})
+	expect(t, res, http.StatusUnprocessableEntity, "recipe and title")
+	res, _ = app.api("POST", "/api/v1/menu/slots", access, map[string]any{"date": "2026-11-21", "meal": "dinner",
+		"recipeId": "00000000-0000-0000-0000-000000000000"})
+	expect(t, res, http.StatusUnprocessableEntity, "unknown recipe")
 
 	// Lunch-only plan.
 	res, out = app.api("POST", "/api/v1/menu/generate", access, map[string]any{"start": "2026-12-01", "meals": 2, "plan": "lunch"})
@@ -906,4 +955,91 @@ func TestReadonlyRoleAndSharedMenus(t *testing.T) {
 	}
 	res, _ = app.api("POST", "/api/v1/menu/slots", roAccess, map[string]any{"date": "2026-11-11", "meal": "dinner"})
 	expect(t, res, http.StatusForbidden, "readonly again cannot add slot")
+}
+
+// TestAppAdmin covers the administration from the app: invitations and accounts.
+func TestAppAdmin(t *testing.T) {
+	pool := testDB(t)
+	ctx := context.Background()
+	h, err := New(ctx, pool, nil, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(h)
+	defer srv.Close()
+	st := store.New(pool)
+
+	web := newClient(t, srv.URL)
+	web.form("/admin/setup", url.Values{"username": {"julien"}, "password": {"secret-pass"}, "confirm": {"secret-pass"}})
+	app := newClient(t, srv.URL)
+	_, tok := app.json("/api/v1/auth/login", map[string]string{"username": "julien", "password": "secret-pass"})
+	access := tok["accessToken"].(string)
+
+	// Create and share an invitation: the link, the app link and a QR code come back once.
+	res, inv := app.api("POST", "/api/v1/admin/invitations", access, map[string]any{"role": "readonly", "days": 5})
+	expect(t, res, http.StatusUnprocessableEntity, "invalid duration")
+	res, inv = app.api("POST", "/api/v1/admin/invitations", access, map[string]any{"role": "readonly", "days": 7})
+	expect(t, res, http.StatusCreated, "create invitation")
+	code := inv["code"].(string)
+	if inv["link"] != srv.URL+"/invite/"+code || !strings.HasPrefix(inv["appLink"].(string), "mijote://invite?server=") || inv["qr"] == nil {
+		t.Fatalf("incomplete invitation %v", inv)
+	}
+	res, list := app.api("GET", "/api/v1/admin/invitations", access, nil)
+	expect(t, res, http.StatusOK, "list invitations")
+	invs := list["invitations"].([]any)
+	if len(invs) != 1 || invs[0].(map[string]any)["status"] != "pending" || invs[0].(map[string]any)["role"] != "readonly" {
+		t.Fatalf("bad invitation list %v", list)
+	}
+
+	// The invited person joins, then the admin manages the account from the app.
+	res, joined := app.json("/api/v1/invitations/redeem", map[string]string{"code": code, "username": "lea", "password": "lea-password"})
+	expect(t, res, http.StatusCreated, "redeem")
+	memberAccess := joined["accessToken"].(string)
+	res, _ = app.api("GET", "/api/v1/admin/users", memberAccess, nil)
+	expect(t, res, http.StatusForbidden, "a non-admin cannot administer")
+	res, users := app.api("GET", "/api/v1/admin/users", access, nil)
+	expect(t, res, http.StatusOK, "list users")
+	if len(users["users"].([]any)) != 2 {
+		t.Fatalf("users %v", users)
+	}
+	lea, _ := st.UserByUsername(ctx, "lea")
+	res, u := app.api("PUT", "/api/v1/admin/users/"+lea.ID, access, map[string]any{"role": "member"})
+	expect(t, res, http.StatusOK, "change role")
+	if u["role"] != "member" {
+		t.Fatalf("role not changed %v", u)
+	}
+	res, u = app.api("PUT", "/api/v1/admin/users/"+lea.ID, access, map[string]any{"disabled": true})
+	expect(t, res, http.StatusOK, "disable")
+	if u["disabled"] != true {
+		t.Fatalf("not disabled %v", u)
+	}
+	res, _ = app.api("GET", "/api/v1/me", memberAccess, nil)
+	expect(t, res, http.StatusUnauthorized, "disabled account loses its session")
+	app.api("PUT", "/api/v1/admin/users/"+lea.ID, access, map[string]any{"disabled": false})
+	res, _ = app.api("PUT", "/api/v1/admin/users/"+lea.ID+"/password", access, map[string]any{"password": "new-password"})
+	expect(t, res, http.StatusNoContent, "reset password")
+	res, _ = app.json("/api/v1/auth/login", map[string]string{"username": "lea", "password": "new-password"})
+	expect(t, res, http.StatusOK, "sign in with the new password")
+	admin := mustAdmin(t, st)
+	res, _ = app.api("PUT", "/api/v1/admin/users/"+admin.ID, access, map[string]any{"disabled": true})
+	expect(t, res, http.StatusUnprocessableEntity, "admin cannot be disabled")
+	res, _ = app.api("PUT", "/api/v1/admin/users/00000000-0000-0000-0000-000000000000", access, map[string]any{"disabled": true})
+	expect(t, res, http.StatusNotFound, "unknown account")
+
+	// Revoke a pending invitation.
+	_, inv = app.api("POST", "/api/v1/admin/invitations", access, map[string]any{})
+	_, list = app.api("GET", "/api/v1/admin/invitations", access, nil)
+	id := list["invitations"].([]any)[0].(map[string]any)["id"].(string)
+	res, _ = app.api("POST", "/api/v1/admin/invitations/"+id+"/revoke", access, nil)
+	expect(t, res, http.StatusNoContent, "revoke")
+	res, _ = app.json("/api/v1/invitations/redeem", map[string]string{"code": inv["code"].(string), "username": "bob", "password": "bob-password"})
+	expect(t, res, http.StatusNotFound, "revoked code")
+
+	// Personal API tokens cannot administer, even the admin's.
+	tokenValue, err := st.CreateAPIToken(ctx, admin.ID, "script", store.ScopeWrite, 24*time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, _ = app.api("GET", "/api/v1/admin/users", tokenValue, nil)
+	expect(t, res, http.StatusForbidden, "API token cannot administer")
 }

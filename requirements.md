@@ -1,6 +1,6 @@
 # Mijote — Requirements
 
-Status: draft v0.1. Server skeleton in `server/` (migrations, initial schema); menu generation implemented (§10).
+Status: draft v0.1. Server skeleton in `server/` (migrations, initial schema); menu generation implemented (§10); app recipes tab, manual meals and in-app administration implemented (§10).
 
 Priorities: **Must** (required for v1), **Should** (expected in v1, can slip), **Could** (nice to have).
 
@@ -45,12 +45,12 @@ Planning a family's weekly menus is repetitive: finding recipes, avoiding repeat
 
 | Capability | Admin | Member | Read-only |
 |---|---|---|---|
-| Manage accounts and invitations | ✅ | ❌ | ❌ |
+| Manage accounts and invitations (web admin, and app settings) | ✅ | ❌ | ❌ |
 | Manage family settings (default meals, preferences) | ✅ | ❌ | ❌ |
 | Add / edit recipes | ✅ | ✅ | ❌ |
 | Delete recipes, manage tags | ✅ | ❌ (to confirm; the API currently reserves archiving to the admin, tags are managed in the web admin only) | ❌ |
 | View recipes and tags | ✅ | ✅ | ✅ |
-| Generate and adjust menus | ✅ | ✅ | ❌ |
+| Generate and adjust menus, plan a recipe or a manual meal on a day | ✅ | ✅ | ❌ |
 | View shared menus | ✅ | ✅ | ✅ |
 | Access web admin | ✅ | ❌ | ❌ |
 
@@ -112,6 +112,8 @@ Planning a family's weekly menus is repetitive: finding recipes, avoiding repeat
 | FR-ADJ-03 | Move meals by drag and drop between slots. | Must |
 | FR-ADJ-04 | Manually pick a specific recipe for a slot. | Should |
 | FR-ADJ-05 | Adjustments feel instant (optimistic UI), then sync to the server. | Must |
+| FR-ADJ-06 | Plan a **manual meal**: a free text ("Commander une pizza", "Repas chez des amis") on a chosen day and meal, without creating a recipe; shown in the menu like the other meals, renamable and removable. | Must |
+| FR-ADJ-07 | Plan a recipe on a chosen day and meal directly from the recipe list (search results included) and from the recipe screen. | Must |
 
 ### 4.6 Sharing across family members (SHR)
 | ID | Requirement | Priority |
@@ -139,6 +141,7 @@ Planning a family's weekly menus is repetitive: finding recipes, avoiding repeat
 | FR-ADM-04 | Manage recipes (create, edit, archive, restore) and tags (rename, delete). | Should |
 | FR-ADM-05 | Show instance info (version, API version, DB status). | Could |
 | FR-ADM-06 | Create and revoke personal API tokens (read-only or read/write, with expiry) for scripts and assistants. | Should |
+| FR-ADM-07 | The admin finds part of the administration in the app's preferences: invitations (create, share the link or QR code, revoke) and accounts (role, deactivate / reactivate, new password). Family settings, tags, API tokens, sessions and the journal stay in the web admin. | Must |
 
 ## 5. Non-functional requirements
 
@@ -369,7 +372,8 @@ id, code_hash (single-use, never stored in clear), created_by, role (`member` / 
 - timezone.
 
 ### menu_slot
-id, date, meal (`lunch` / `dinner`), recipe_id (nullable = empty slot), locked, updated_by, updated_at, version, deleted_at (nullable, so deletions reach other devices). Unique on (date, meal).
+id, date, meal (`lunch` / `dinner`), recipe_id (nullable), title (nullable: free text of a **manual meal**, never set together with recipe_id; both null = empty slot), locked, updated_by, updated_at, version, deleted_at (nullable, so deletions reach other devices). Unique on (date, meal).
+- A manual meal is not a recipe: it never counts for recent use or the dish type balance.
 - One-off changes (e.g. away on Tuesday lunch) are done by adding or removing a slot; no dedicated table.
 - Moving a meal swaps the recipes of two slots.
 - Past slots are kept: they are the history used to avoid recent recipes.
@@ -394,11 +398,19 @@ Runs on the server. Input: a period, the family settings, the existing slots.
 1. **"Générer" tab, "Nouveau menu"**: Butter sheet; a card with a +/− **number of days** stepper on its right (thumb reach; default: the family horizon, 1–21), a white face summarizing days, period, meal count and number of people, and a Slate band choosing the meals: **Midi / Soir / Midi & soir** (no "my settings" choice: the family default meals are not used by the app any more); a scrollable row of the next 14 days to choose the **first day**; "Voir le menu". The app sends `meals = days × meals per day` with plan `lunch`, `dinner` or `lunch_dinner`. The summary shows the user's number of people (edited in the preferences screen, `PUT /api/v1/me/preferences`).
 2. **Review screen** ("Votre menu", every day of the period, also empty ones): the generation is already saved on the server; this screen lets the user adjust it before validating. Tap a meal to open its recipe; the pencil on the card opens *Voir la recette / Changer de recette / Retirer ce repas*; a day missing a meal shows "Ajouter le midi / le soir" (a lunch next to a dinner). "Valider le menu" (or back) returns to the menus.
 
-**Meal adjustment endpoints** (implemented 2026-10-31): `POST /api/v1/menu/slots/{id}/swap` (another recipe, `422` if the meal is locked), `POST /api/v1/menu/slots` `{date, meal}` (extra meal with a picked recipe, `409 slot_exists` if already planned), `DELETE /api/v1/menu/slots/{id}` (soft delete). The recipes planned within 6 days around the slot count as "the period" when picking.
+**Meal adjustment endpoints** (implemented 2026-10-31, extended 2026-11-02): `POST /api/v1/menu/slots/{id}/swap` (another recipe; on a locked meal or a manual meal it releases the lock and plans a recipe), `POST /api/v1/menu/slots` `{date, meal, recipeId?, title?, replace?}` (without `recipeId`/`title` the server picks a recipe; with `recipeId` that recipe, which must be active; with `title` a manual meal of 1–100 characters; `409 slot_exists` if the meal is already planned unless `replace` is true), `PUT /api/v1/menu/slots/{id}` `{recipeId}` or `{title}` (turns a meal into that recipe or manual meal), `DELETE /api/v1/menu/slots/{id}` (soft delete, also allowed on locked meals). The recipes planned within 6 days around the slot count as "the period" when picking.
+
+**Chosen meals** (decided 2026-11-02): a recipe chosen by the user (from the recipe screens) and a manual meal are saved **locked**, so generating the period again keeps them; manual meals are kept by generation in any case. "Changer de recette" on such a meal releases it.
+
+**Recipes tab** (app, 2026-11-02): search by title or tag (server-side, `GET /api/v1/recipes?q=`), archived recipes left out; each card opens the recipe and, for members, has a calendar corner action to plan it. "Nouvelle recette" opens the editor: title, dish type, meals, prep/cook times, seasons, tags (comma separated), ingredients and steps one per line (ingredient lines parsed on the device, FR-REC-21, with a preview), notes; quantities are for one person. The recipe screen offers "Ajouter au menu" and "Modifier" to members and "Archiver" to the admin (archiving stays admin-only, see §3; restore from the web admin). The image is not editable from the app yet. "Ajouter au menu" opens a dialog choosing the day (next 21 days) and the meal (midi / soir), showing the meal it would replace.
+
+**Manual meals** (app, 2026-11-02): "Ajouter un repas libre" on the menus (dialog: text with examples, day, meal) and, on the review screen, "Ajouter le midi / le soir" asks for a random recipe or a manual meal. The pencil of a manual meal offers *Modifier l'intitulé / Remplacer par une recette au hasard / Retirer ce repas*; the pencil of a recipe also offers *Remplacer par un repas libre*.
+
+**Administration in the app** (2026-11-02, FR-ADM-07): an "Administration" card in the preferences, admin only, opens *Invitations* (role member / read-only, lifetime 1, 7 or 30 days; the created invitation shows its QR code and link, shared through the Android share sheet or copied) and *Comptes*. API: `GET/POST /api/v1/admin/invitations` (the creation answers the clear code once, the link, the app link and the QR code as base64 PNG), `POST /api/v1/admin/invitations/{id}/revoke`, `GET /api/v1/admin/users`, `PUT /api/v1/admin/users/{id}` `{role?, disabled?}`, `PUT /api/v1/admin/users/{id}/password`. Only the admin signed in on a device can use them (personal API tokens get `403`); actions are logged in the login journal like in the web admin.
 
 **Home screen**: days are listed without separators (day title and date, then the meal cards, wider gap between days). Each card shows the recipe thumbnail (fetched from `GET /api/v1/recipes/{id}/image` with the access token, memory cache in the app; an emoji stands in for recipes without picture); tapping it opens the **recipe screen** (picture, times, ingredients multiplied by the user's number of people, steps, notes); the pencil on the card opens the same meal actions as the review screen.
 
-**Preferences screen** (app, opened from the user button of the home header): account (name, username, role); number of people with a +/− stepper on the right; server address with "Changer de serveur" (signs out, then asks for the new address); app version with "Rechercher des mises à jour" (manual check, also in debug builds; a newer release opens the update dialog); sign out. The "Nouvelle semaine" button of the home screen opens the generation screen; after generation the review screen opens.
+**Preferences screen** (app, opened from the user button of the home header): account (name, username, role); administration (admin only, see above); number of people with a +/− stepper on the right; server address with "Changer de serveur" (signs out, then asks for the new address); app version with "Rechercher des mises à jour" (manual check, also in debug builds; a newer release opens the update dialog); sign out. The "Nouvelle semaine" button of the home screen opens the generation screen; after generation the review screen opens.
 
 **Swap** (FR-ADJ-01) runs steps 2–5 for one slot, excluding its current recipe.
 **Regenerate** re-fills every non-locked slot of the period.

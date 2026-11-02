@@ -10,6 +10,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
@@ -42,6 +43,8 @@ fun PreferencesScreen(
     onChangeServer: () -> Unit,
     onLogout: () -> Unit,
     onBack: () -> Unit,
+    onInvitations: () -> Unit = {},
+    onAccounts: () -> Unit = {},
 ) {
     Column(Modifier.fillMaxSize().background(Sunny.Cream).verticalScroll(rememberScrollState())) {
         Box(
@@ -88,6 +91,11 @@ fun PreferencesScreen(
                     StepTile("+", "Une personne de plus", user.people < MAX_PEOPLE) { onPeople(user.people + 1) }
                 }
             }
+            if (user.isAdmin) SunnyCard {
+                SectionLabel("ADMINISTRATION")
+                AdminEntry("Invitations", "Créer et partager une invitation", onInvitations)
+                AdminEntry("Comptes", "Rôles, désactivation, mots de passe", onAccounts)
+            }
             SunnyCard {
                 SectionLabel("SERVEUR")
                 Text(serverUrl.removePrefix("https://"), fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = Sunny.Ink)
@@ -104,6 +112,20 @@ fun PreferencesScreen(
             SecondaryAction("Se déconnecter", enabled = true, onClick = onLogout)
             Spacer(Modifier.height(24.dp))
         }
+    }
+}
+
+@Composable
+private fun AdminEntry(title: String, hint: String, onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().clip(Shapes.Control).clickable(onClick = onClick).padding(vertical = 10.dp, horizontal = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(title, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = Sunny.Ink)
+            Text(hint, fontSize = 13.sp, color = Sunny.InkSoft)
+        }
+        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = Sunny.InkSoft)
     }
 }
 

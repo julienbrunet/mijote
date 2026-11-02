@@ -47,10 +47,12 @@ func (a *API) Routes(mux *http.ServeMux) {
 		"POST /api/v1/menu/generate":        a.requireWrite(a.generateMenu),
 		"POST /api/v1/menu/slots":           a.requireWrite(a.addSlot),
 		"POST /api/v1/menu/slots/{id}/swap": a.requireWrite(a.swapSlot),
+		"PUT /api/v1/menu/slots/{id}":       a.requireWrite(a.updateSlot),
 		"DELETE /api/v1/menu/slots/{id}":    a.requireWrite(a.removeSlot),
 	} {
 		mux.Handle(pattern, a.authenticate(h))
 	}
+	a.adminRoutes(mux)
 }
 
 // requireWrite forbids state-changing actions for read-only users.

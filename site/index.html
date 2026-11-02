@@ -53,8 +53,8 @@
       </div>
       <div class="card">
         <h3 data-l="en">Shared recipe base</h3><h3 data-l="fr">Base de recettes partagée</h3>
-        <p data-l="en">One shared collection, organised with tags.</p>
-        <p data-l="fr">Une collection partagée, organisée avec des tags.</p>
+        <p data-l="en">One shared collection, organised with tags. The <em>Recipes</em> tab of the app searches it by title or tag, shows each recipe, and lets members add or edit recipes by hand; the administrator archives the ones no longer wanted (they stay in past menus).</p>
+        <p data-l="fr">Une collection partagée, organisée avec des tags. L'onglet <em>Recettes</em> de l'application la recherche par titre ou par tag, affiche chaque recette et permet aux membres d'ajouter ou de modifier des recettes à la main ; l'administrateur archive celles dont on ne veut plus (elles restent dans les menus passés).</p>
         <p style="margin-top:10px"><span class="tag meat" data-l="en">Meat</span><span class="tag meat" data-l="fr">Viande</span><span class="tag fish" data-l="en">Fish</span><span class="tag fish" data-l="fr">Poisson</span><span class="tag veg" data-l="en">Vegetarian</span><span class="tag veg" data-l="fr">Végétarien</span></p>
       </div>
       <div class="card">
@@ -64,8 +64,8 @@
       </div>
       <div class="card">
         <h3 data-l="en">Easy adjustments</h3><h3 data-l="fr">Ajustements faciles</h3>
-        <p data-l="en">Swap a dish with one tap, see its recipe with photo, ingredients and steps, lock the ones you like, move meals around.</p>
-        <p data-l="fr">Échangez un plat d'une touche, consultez sa recette avec photo, ingrédients et étapes, verrouillez ceux que vous aimez, déplacez les repas.</p>
+        <p data-l="en">Swap a dish with one tap, see its recipe with photo, ingredients and steps, plan any recipe on the day you choose straight from the recipe list or its page, and add free-text meals such as “Order a pizza” or “Dinner at friends'” — kept when the menu is generated again.</p>
+        <p data-l="fr">Échangez un plat d'une touche, consultez sa recette avec photo, ingrédients et étapes, planifiez n'importe quelle recette le jour de votre choix directement depuis la liste ou sa fiche, et ajoutez des repas libres comme « Commander une pizza » ou « Repas chez des amis » — conservés quand le menu est généré à nouveau.</p>
       </div>
       <div class="card">
         <h3 data-l="en">Shared and offline</h3><h3 data-l="fr">Partagé et hors ligne</h3>
@@ -74,13 +74,13 @@
       </div>
       <div class="card">
         <h3 data-l="en">Self-hosted and light</h3><h3 data-l="fr">Auto-hébergé et léger</h3>
-        <p data-l="en">A single Go binary plus PostgreSQL, with a very small memory footprint. All your data, recipe images included, stays on your server. Web admin to manage the recipe base and tags, create family accounts (members or read-only) with invitation links or QR codes, and manage security (optional 2FA).</p>
-        <p data-l="fr">Un binaire Go et PostgreSQL, avec une très faible empreinte mémoire. Toutes vos données, images de recettes comprises, restent sur votre serveur. Interface web d'administration pour gérer les recettes et les étiquettes, créer les comptes de la famille (membres ou lecture seule) par lien ou QR code d'invitation, et gérer la sécurité (2FA optionnelle).</p>
+        <p data-l="en">A single Go binary plus PostgreSQL, with a very small memory footprint. All your data, recipe images included, stays on your server. Web admin to manage the recipe base and tags, create family accounts (members or read-only) with invitation links or QR codes, and manage security (optional 2FA). The administrator also finds invitations (create, share, revoke) and accounts in the app's settings.</p>
+        <p data-l="fr">Un binaire Go et PostgreSQL, avec une très faible empreinte mémoire. Toutes vos données, images de recettes comprises, restent sur votre serveur. Interface web d'administration pour gérer les recettes et les étiquettes, créer les comptes de la famille (membres ou lecture seule) par lien ou QR code d'invitation, et gérer la sécurité (2FA optionnelle). L'administrateur retrouve aussi les invitations (création, partage, révocation) et les comptes dans les préférences de l'application.</p>
       </div>
     </div>
     <div class="note">
-      <span data-l="en"><strong>Project status:</strong> early development. The server (authentication, recipe and shared menu generation API, read-only roles, web admin with recipes, tags, accounts, invitations and API tokens) and the app skeleton (server setup, sign-in, joining with an invitation, new colorful design, menu generation, preferences screen, in-app updates) are available; the features above are being built.</span>
-      <span data-l="fr"><strong>État du projet :</strong> développement en cours. Le serveur (authentification, API des recettes et de génération de menus partagés, rôles en lecture seule, interface d'administration avec recettes, étiquettes, comptes, invitations et jetons d'API) et la base de l'application (connexion au serveur, identification, inscription par invitation, nouveau design coloré, génération de menus, écran de préférences, mises à jour intégrées) sont disponibles ; les fonctionnalités ci-dessus sont en construction.</span>
+      <span data-l="en"><strong>Project status:</strong> early development. The server (authentication, recipe and shared menu generation API, read-only roles, web admin with recipes, tags, accounts, invitations and API tokens) and the app skeleton (server setup, sign-in, joining with an invitation, new colorful design, menu generation, recipes tab with search, editing and archiving, planning a recipe or a free-text meal on a chosen day, administration of invitations and accounts, preferences screen, in-app updates) are available; the features above are being built.</span>
+      <span data-l="fr"><strong>État du projet :</strong> développement en cours. Le serveur (authentification, API des recettes et de génération de menus partagés, rôles en lecture seule, interface d'administration avec recettes, étiquettes, comptes, invitations et jetons d'API) et la base de l'application (connexion au serveur, identification, inscription par invitation, nouveau design coloré, génération de menus, onglet Recettes avec recherche, édition et archivage, planification d'une recette ou d'un repas libre le jour choisi, administration des invitations et des comptes, écran de préférences, mises à jour intégrées) sont disponibles ; les fonctionnalités ci-dessus sont en construction.</span>
     </div>
   </section>
 
@@ -128,8 +128,8 @@ MIJOTE_IMAGE_DIR=/var/lib/mijote/images \
       <tr><td><code>MIJOTE_TRUSTED_PROXIES</code></td><td><span data-l="en">none</span><span data-l="fr">aucun</span></td><td><span data-l="en">Reverse proxies whose <code>X-Forwarded-*</code> headers are trusted</span><span data-l="fr">Proxys inverses dont les en-têtes <code>X-Forwarded-*</code> sont de confiance</span></td></tr>
     </table></div>
     <ol class="steps" start="6">
-      <li data-l="en">Open <code>http://your-server:8080/admin/</code> and follow the setup wizard to create the administrator account. Then add members from the <em>Invitations</em> page: each invitation is a single-use link or QR code that creates a member account. The <em>API tokens</em> page creates tokens (read-only or read/write, with an expiry) so that scripts or an assistant can use the API.</li>
-      <li data-l="fr">Ouvrez <code>http://votre-serveur:8080/admin/</code> et suivez l'assistant pour créer le compte administrateur. Ajoutez ensuite les membres depuis la page <em>Invitations</em> : chaque invitation est un lien ou un QR code à usage unique qui crée un compte membre. La page <em>Jetons API</em> permet de créer des jetons (lecture seule ou lecture/écriture, avec expiration) pour que des scripts ou un assistant accèdent à l'API.</li>
+      <li data-l="en">Open <code>http://your-server:8080/admin/</code> and follow the setup wizard to create the administrator account. Then add members from the <em>Invitations</em> page (or from the app: <em>Preferences → Administration → Invitations</em>, then share the link): each invitation is a single-use link or QR code that creates a member account. The <em>API tokens</em> page creates tokens (read-only or read/write, with an expiry) so that scripts or an assistant can use the API.</li>
+      <li data-l="fr">Ouvrez <code>http://votre-serveur:8080/admin/</code> et suivez l'assistant pour créer le compte administrateur. Ajoutez ensuite les membres depuis la page <em>Invitations</em> (ou depuis l'application : <em>Préférences → Administration → Invitations</em>, puis partagez le lien) : chaque invitation est un lien ou un QR code à usage unique qui crée un compte membre. La page <em>Jetons API</em> permet de créer des jetons (lecture seule ou lecture/écriture, avec expiration) pour que des scripts ou un assistant accèdent à l'API.</li>
       <li data-l="en">Put a reverse proxy with HTTPS (Caddy, nginx…) in front of it: the Android app only talks HTTPS. Keep a regular backup (<code>pg_dump</code> + image directory) and back up before every upgrade.</li>
       <li data-l="fr">Placez un proxy inverse HTTPS (Caddy, nginx…) devant : l'application Android ne parle qu'en HTTPS. Faites des sauvegardes régulières (<code>pg_dump</code> + dossier des images), et avant chaque mise à jour.</li>
     </ol>

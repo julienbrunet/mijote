@@ -8,9 +8,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -37,9 +39,32 @@ fun ReviewScreen(
     onRemoveMeal: (MealUi) -> Unit,
     onAddMeal: (LocalDate, String) -> Unit,
     onValidate: () -> Unit,
+    onAddManualMeal: (LocalDate, String, String) -> Unit = { _, _, _ -> },
+    onRenameMeal: (MealUi, String) -> Unit = { _, _ -> },
 ) {
     var editing by remember { mutableStateOf<MealUi?>(null) }
-    MealActionsDialog(editing, onDismiss = { editing = null }, onOpen = onOpenMeal, onSwap = onSwapMeal, onRemove = onRemoveMeal)
+    MealActionsDialog(editing, onDismiss = { editing = null }, onOpen = onOpenMeal, onSwap = onSwapMeal, onRemove = onRemoveMeal,
+        onRename = onRenameMeal)
+    // A meal to add: (day, "lunch" | "dinner"), then a random recipe or a manual meal.
+    var adding by remember { mutableStateOf<Pair<LocalDate, String>?>(null) }
+    var manualFor by remember { mutableStateOf<Pair<LocalDate, String>?>(null) }
+    adding?.let { (day, meal) ->
+        AlertDialog(
+            onDismissRequest = { adding = null },
+            containerColor = Sunny.Card,
+            title = { Text(if (meal == "lunch") "Ajouter le midi" else "Ajouter le soir", fontWeight = FontWeight.Bold, color = Sunny.Ink, fontSize = 18.sp) },
+            text = {
+                Column {
+                    AddChoice("Une recette au hasard", "Choisie parmi celles qui conviennent") { adding = null; onAddMeal(day, meal) }
+                    AddChoice("Un repas libre", "Commander une pizza, repas chez des amis…") { adding = null; manualFor = day to meal }
+                }
+            },
+            confirmButton = { TextButton(onClick = { adding = null }) { Text("Annuler", color = Sunny.Slate) } },
+        )
+    }
+    manualFor?.let { (day, meal) ->
+        MealTitleDialog("", onDismiss = { manualFor = null }) { manualFor = null; onAddManualMeal(day, meal, it) }
+    }
     Box(Modifier.fillMaxSize().background(Sunny.Butter)) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
             Box(
@@ -62,7 +87,7 @@ fun ReviewScreen(
                         day.missing.forEach { meal ->
                             val busy = working == "${day.day}|$meal"
                             AddMealButton(if (meal == "lunch") "Ajouter le midi" else "Ajouter le soir", busy) {
-                                day.day?.let { onAddMeal(it, meal) }
+                                day.day?.let { adding = it to meal }
                             }
                         }
                     }
@@ -81,7 +106,15 @@ fun ReviewScreen(
 }
 
 @Composable
-private fun AddMealButton(text: String, busy: Boolean, onClick: () -> Unit) {
+private fun AddChoice(title: String, hint: String, onClick: () -> Unit) {
+    Column(Modifier.fillMaxWidth().clip(Shapes.Control).clickable(onClick = onClick).padding(vertical = 12.dp, horizontal = 4.dp)) {
+        Text(title, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = Sunny.Ink)
+        Text(hint, fontSize = 13.sp, color = Sunny.InkSoft)
+    }
+}
+
+@Composable
+fun AddMealButton(text: String, busy: Boolean, onClick: () -> Unit) {
     Row(
         Modifier.fillMaxWidth().height(52.dp).clip(Shapes.Card).background(Sunny.ButterLight)
             .clickable(enabled = !busy, onClick = onClick),

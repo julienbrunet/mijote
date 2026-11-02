@@ -4,7 +4,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /** One ingredient line; [quantity] is for one person (recipes are stored that way). */
-data class IngredientLine(val quantity: Double?, val unit: String?, val name: String, val note: String?)
+data class IngredientLine(val quantity: Double?, val unit: String?, val name: String, val note: String?, val rawText: String = "")
 
 /** A full recipe as shown in the detail screen. */
 data class RecipeDetail(
@@ -18,6 +18,11 @@ data class RecipeDetail(
     val notes: String?,
     val ingredients: List<IngredientLine>,
     val steps: List<String>,
+    val sourceUrl: String? = null,
+    val servings: Int? = null,
+    val seasons: List<String> = emptyList(),
+    val mealTypes: List<String> = listOf("lunch", "dinner"),
+    val tags: List<String> = emptyList(),
 )
 
 private fun JSONObject.intOrNull(key: String): Int? = if (isNull(key) || !has(key)) null else optInt(key)
@@ -38,10 +43,159 @@ fun parseRecipe(o: JSONObject): RecipeDetail {
         ingredients = (0 until ing.length()).map {
             val i = ing.getJSONObject(it)
             IngredientLine(if (i.isNull("quantity")) null else i.optDouble("quantity"), i.stringOrNull("unit"),
-                i.getString("name"), i.stringOrNull("note"))
+                i.getString("name"), i.stringOrNull("note"), i.optString("rawText"))
         },
         steps = (0 until steps.length()).map { steps.getString(it) },
+        sourceUrl = o.stringOrNull("sourceUrl"),
+        servings = o.intOrNull("servings"),
+        seasons = o.optJSONArray("seasons").strings(),
+        mealTypes = o.optJSONArray("mealTypes").strings().ifEmpty { listOf("lunch", "dinner") },
+        tags = o.optJSONArray("tags").strings(),
     )
+}
+
+private fun JSONArray?.strings(): List<String> = (0 until (this?.length() ?: 0)).map { this!!.getString(it) }
+
+/** A recipe in the list of the Recipes tab. */
+data class RecipeSummary(
+    val id: String, val title: String, val dishType: String, val minutes: Int?, val image: String?, val tags: List<String>,
+)
+
+fun parseRecipeList(o: JSONObject): List<RecipeSummary> {
+    val a = o.optJSONArray("recipes") ?: JSONArray()
+    return (0 until a.length()).map {
+        val r = a.getJSONObject(it)
+        RecipeSummary(r.getString("id"), r.getString("title"), r.optString("dishType"),
+            r.intOrNull("totalMinutes") ?: r.intOrNull("prepMinutes"), r.stringOrNull("image"), r.optJSONArray("tags").strings())
+    }
+}
+
+/**
+ * What the recipe editor sends (`POST` / `PUT /api/v1/recipes`). Ingredients and steps are
+ * edited as text, one per line; ingredient lines are parsed on the device (FR-REC-21).
+ * Fields the editor does not show (source link, servings) are kept from the edited recipe.
+ */
+data class RecipeDraft(
+    val title: String = "",
+    val dishType: String = "",
+    val mealTypes: Set<String> = setOf("lunch", "dinner"),
+    val seasons: Set<String> = emptySet(),
+    val prepMinutes: String = "",
+    val cookMinutes: String = "",
+    val tags: String = "",
+    val ingredients: String = "",
+    val steps: String = "",
+    val notes: String = "",
+    val sourceUrl: String? = null,
+    val servings: Int? = null,
+) {
+    /** Why the server would refuse the draft, null when it can be sent. */
+    fun problem(): String? = when {
+        title.isBlank() -> "Donnez un titre à la recette."
+        dishType.isEmpty() -> "Choisissez le type de plat : viande, poisson ou végé."
+        mealTypes.isEmpty() -> "Choisissez au moins un repas : midi ou soir."
+        prepMinutes.isNotBlank() && prepMinutes.trim().toIntOrNull()?.takeIf { it >= 0 } == null -> "Temps de préparation invalide."
+        cookMinutes.isNotBlank() && cookMinutes.trim().toIntOrNull()?.takeIf { it >= 0 } == null -> "Temps de cuisson invalide."
+        else -> null
+    }
+
+    fun toJson(): JSONObject {
+        val o = JSONObject()
+            .put("title", title.trim())
+            .put("dishType", dishType)
+            .put("mealTypes", JSONArray(listOf("lunch", "dinner").filter { it in mealTypes }))
+            .put("seasons", JSONArray(listOf("spring", "summer", "autumn", "winter").filter { it in seasons }))
+            .put("tags", JSONArray(tags.split(',').map { it.trim() }.filter { it.isNotEmpty() }.distinct()))
+            .put("steps", JSONArray(lines(steps)))
+            .put("notes", notes.trim().ifEmpty { JSONObject.NULL })
+            .put("sourceUrl", sourceUrl ?: JSONObject.NULL)
+            .put("servings", servings ?: JSONObject.NULL)
+            .put("prepMinutes", prepMinutes.trim().toIntOrNull() ?: JSONObject.NULL)
+            .put("cookMinutes", cookMinutes.trim().toIntOrNull() ?: JSONObject.NULL)
+        val ing = JSONArray()
+        lines(ingredients).forEach { line ->
+            val i = parseIngredient(line)
+            ing.put(JSONObject().put("rawText", line).put("quantity", i.quantity ?: JSONObject.NULL)
+                .put("unit", i.unit ?: JSONObject.NULL).put("name", i.name).put("note", i.note ?: JSONObject.NULL))
+        }
+        return o.put("ingredients", ing)
+    }
+
+    companion object {
+        private fun lines(text: String) = text.lines().map { it.trim() }.filter { it.isNotEmpty() }
+
+        /** The editor prefilled with an existing recipe. */
+        fun of(r: RecipeDetail) = RecipeDraft(
+            title = r.title, dishType = r.dishType, mealTypes = r.mealTypes.toSet(), seasons = r.seasons.toSet(),
+            prepMinutes = r.prepMinutes?.toString().orEmpty(), cookMinutes = r.cookMinutes?.toString().orEmpty(),
+            tags = r.tags.joinToString(", "),
+            ingredients = r.ingredients.joinToString("\n") { it.rawText.ifBlank { it.text(1) } },
+            steps = r.steps.joinToString("\n"), notes = r.notes.orEmpty(), sourceUrl = r.sourceUrl, servings = r.servings,
+        )
+    }
+}
+
+// Unit aliases of requirements.md §9.1, longest first so that "c. à soupe" wins over "c".
+private val unitAliases: List<Pair<String, String>> = listOf(
+    "g" to listOf("g", "gr", "gramme", "grammes"),
+    "kg" to listOf("kg", "kilo", "kilos", "kilogramme", "kilogrammes"),
+    "ml" to listOf("ml", "millilitre", "millilitres"),
+    "cl" to listOf("cl", "centilitre", "centilitres"),
+    "dl" to listOf("dl", "décilitre", "décilitres"),
+    "l" to listOf("l", "litre", "litres"),
+    "tbsp" to listOf("c. à soupe", "c à soupe", "càs", "cs", "cuillère à soupe", "cuillères à soupe", "tbsp"),
+    "tsp" to listOf("c. à café", "c à café", "càc", "cc", "cuillère à café", "cuillères à café", "tsp"),
+    "pinch" to listOf("pincée", "pincées"),
+    "dash" to listOf("trait", "traits", "filet", "filets"),
+    "handful" to listOf("poignée", "poignées"),
+    "clove" to listOf("gousse", "gousses"),
+    "slice" to listOf("tranche", "tranches"),
+    "bunch" to listOf("botte", "bottes", "bouquet", "bouquets"),
+    "sprig" to listOf("brin", "brins"),
+    "leaf" to listOf("feuille", "feuilles"),
+    "can" to listOf("boîte", "boîtes", "conserve", "conserves"),
+    "pack" to listOf("sachet", "sachets", "paquet", "paquets"),
+    "jar" to listOf("pot", "pots"),
+).flatMap { (code, aliases) -> aliases.map { it to code } }.sortedByDescending { it.first.length }
+
+private val fractions = mapOf('½' to 0.5, '¼' to 0.25, '¾' to 0.75, '⅓' to 1.0 / 3, '⅔' to 2.0 / 3)
+private val quantityRe = Regex("""^(\d+(?:[.,]\d+)?(?:\s*/\s*\d+)?|[½¼¾⅓⅔])(?:\s*(?:à|-)\s*(\d+(?:[.,]\d+)?|[½¼¾⅓⅔]))?\s*""")
+
+private fun parseNumber(s: String): Double? {
+    if (s.length == 1) fractions[s[0]]?.let { return it }
+    if ('/' in s) {
+        val (a, b) = s.split('/').map { it.trim().toDoubleOrNull() ?: return null }
+        return if (b == 0.0) null else a / b
+    }
+    return s.replace(',', '.').toDoubleOrNull()
+}
+
+/**
+ * Parses "200 g de farine, tamisée" into quantity, unit code, name and note (requirements.md §9.1):
+ * a range keeps its upper value, fractions become decimals, an unknown unit stays in the name.
+ */
+fun parseIngredient(line: String): IngredientLine {
+    var rest = line.trim()
+    var quantity: Double? = null
+    quantityRe.find(rest)?.let { m ->
+        quantity = parseNumber(m.groupValues[2].ifEmpty { m.groupValues[1] })
+        if (quantity != null) rest = rest.substring(m.range.last + 1)
+    }
+    var unit: String? = null
+    if (quantity != null) {
+        val lower = rest.lowercase()
+        unitAliases.firstOrNull { (alias, _) ->
+            lower.startsWith(alias) && (lower.length == alias.length || !lower[alias.length].isLetter())
+        }?.let { (alias, code) ->
+            unit = code
+            rest = rest.substring(alias.length).trimStart()
+            rest = rest.removePrefix("d'").removePrefix("d’").let { if (it.startsWith("de ")) it.removePrefix("de ") else it }.trimStart()
+        }
+    }
+    val comma = rest.indexOf(',')
+    val name = (if (comma >= 0) rest.substring(0, comma) else rest).trim()
+    val note = if (comma >= 0) rest.substring(comma + 1).trim().ifEmpty { null } else null
+    return IngredientLine(quantity, unit, name.ifEmpty { line.trim() }, note, line.trim())
 }
 
 private val unitLabels = mapOf(

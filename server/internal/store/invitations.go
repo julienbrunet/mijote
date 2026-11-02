@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/base32"
 	"errors"
+	"net/url"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -40,6 +41,17 @@ func newInvitationCode() string {
 
 func normalizeCode(code string) string {
 	return strings.ToLower(strings.TrimSpace(code))
+}
+
+// InvitationPageURL is the link the admin shares (message, mail, QR code): a
+// plain web page that works with or without the app installed.
+func InvitationPageURL(serverURL, code string) string {
+	return serverURL + "/invite/" + url.PathEscape(code)
+}
+
+// InvitationAppLink opens the app directly, with the server address and the code.
+func InvitationAppLink(serverURL, code string) string {
+	return "mijote://invite?server=" + url.QueryEscape(serverURL) + "&code=" + url.QueryEscape(code)
 }
 
 // Invitation is a row of the invitation table, without the code (only its hash is stored).

@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/jackc/pgx/v5"
 
@@ -45,12 +47,15 @@ type MenuRecipe struct {
 
 // MenuSlot is one planned meal.
 type MenuSlot struct {
-	ID      string      `json:"id"`
-	Date    string      `json:"date"` // YYYY-MM-DD
-	Meal    string      `json:"meal"`
-	Recipe  *MenuRecipe `json:"recipe"`
-	Locked  bool        `json:"locked"`
-	Version int         `json:"version"`
+	ID     string      `json:"id"`
+	Date   string      `json:"date"` // YYYY-MM-DD
+	Meal   string      `json:"meal"`
+	Recipe *MenuRecipe `json:"recipe"`
+	// Title is the free text of a manual meal ("Commander une pizza"); a slot
+	// has a recipe or a title, never both (both null: no recipe suited it).
+	Title   *string `json:"title"`
+	Locked  bool    `json:"locked"`
+	Version int     `json:"version"`
 }
 
 // GenerationInfo tells the app whether generation is possible and its defaults.
@@ -118,7 +123,7 @@ func (s *Store) MenuSlots(ctx context.Context, from, to time.Time) ([]MenuSlot, 
 }
 
 func menuSlotsIn(ctx context.Context, q querier, from, to time.Time) ([]MenuSlot, error) {
-	rows, err := q.Query(ctx, `SELECT m.id::text, to_char(m.date, 'YYYY-MM-DD'), m.meal::text, m.locked, m.version,
+	rows, err := q.Query(ctx, `SELECT m.id::text, to_char(m.date, 'YYYY-MM-DD'), m.meal::text, m.title, m.locked, m.version,
 			r.id::text, r.title, r.dish_type::text, r.prep_minutes, r.total_minutes, r.image_path
 		FROM menu_slot m LEFT JOIN recipe r ON r.id = m.recipe_id
 		WHERE m.deleted_at IS NULL AND m.date BETWEEN $1 AND $2
@@ -130,7 +135,7 @@ func menuSlotsIn(ctx context.Context, q querier, from, to time.Time) ([]MenuSlot
 		var m MenuSlot
 		var id, title, dish, img *string
 		var r MenuRecipe
-		err := row.Scan(&m.ID, &m.Date, &m.Meal, &m.Locked, &m.Version, &id, &title, &dish, &r.PrepMinutes, &r.TotalMinutes, &img)
+		err := row.Scan(&m.ID, &m.Date, &m.Meal, &m.Title, &m.Locked, &m.Version, &id, &title, &dish, &r.PrepMinutes, &r.TotalMinutes, &img)
 		if id != nil {
 			r.ID, r.Title, r.DishType = *id, *title, *dish
 			if img != nil {
@@ -211,14 +216,14 @@ func (s *Store) GenerateMenu(ctx context.Context, userID string, req GenerateReq
 			return invalid("aucun repas n'est prévu dans les réglages de la famille")
 		}
 
-		// Existing slots: locked ones are kept, the others go.
+		// Existing slots: locked ones and manual meals are kept, the others go.
 		type key struct {
 			date string
 			meal string
 		}
 		locked := map[key]string{}
 		rows, err := tx.Query(ctx, `SELECT to_char(date, 'YYYY-MM-DD'), meal::text, coalesce(recipe_id::text, '')
-			FROM menu_slot WHERE deleted_at IS NULL AND locked AND date BETWEEN $1 AND $2`, req.Start, end)
+			FROM menu_slot WHERE deleted_at IS NULL AND (locked OR title IS NOT NULL) AND date BETWEEN $1 AND $2`, req.Start, end)
 		if err != nil {
 			return err
 		}
@@ -248,7 +253,7 @@ func (s *Store) GenerateMenu(ctx context.Context, userID string, req GenerateReq
 
 		now := s.now()
 		if _, err := tx.Exec(ctx, `UPDATE menu_slot SET deleted_at = $3, updated_at = $3, updated_by = $4, version = version + 1
-			WHERE deleted_at IS NULL AND NOT locked AND date >= $1 AND date < $2`, req.Start, end, now, userID); err != nil {
+			WHERE deleted_at IS NULL AND NOT locked AND title IS NULL AND date >= $1 AND date < $2`, req.Start, end, now, userID); err != nil {
 			return err
 		}
 		for _, sl := range slots {
@@ -261,7 +266,7 @@ func (s *Store) GenerateMenu(ctx context.Context, userID string, req GenerateReq
 			}
 			if _, err := tx.Exec(ctx, `INSERT INTO menu_slot (date, meal, recipe_id, updated_by, updated_at)
 				VALUES ($1, $2, $3, $4, $5)
-				ON CONFLICT (date, meal) DO UPDATE SET recipe_id = $3, locked = false, deleted_at = NULL,
+				ON CONFLICT (date, meal) DO UPDATE SET recipe_id = $3, title = NULL, locked = false, deleted_at = NULL,
 					updated_by = $4, updated_at = $5, version = menu_slot.version + 1`,
 				sl.Date, sl.Meal, rid, userID, now); err != nil {
 				return err
@@ -393,16 +398,14 @@ func oneSlot(ctx context.Context, tx pgx.Tx, id string) (MenuSlot, error) {
 }
 
 // SwapSlot replaces the recipe of a slot by another suitable one (FR-ADJ-01,
-// requirements.md §10). A locked slot is refused.
+// requirements.md §10). Asking for another recipe releases a locked slot and
+// turns a manual meal back into a recipe.
 func (s *Store) SwapSlot(ctx context.Context, userID, id string) (MenuSlot, error) {
 	var out MenuSlot
 	err := s.tx(ctx, func(tx pgx.Tx) error {
 		cur, err := slotByID(ctx, tx, id)
 		if err != nil {
 			return err
-		}
-		if cur.Locked {
-			return invalid("ce repas est verrouillé")
 		}
 		exclude := ""
 		if cur.Recipe != nil {
@@ -416,8 +419,8 @@ func (s *Store) SwapSlot(ctx context.Context, userID, id string) (MenuSlot, erro
 		if rid == "" {
 			return invalid("aucune autre recette ne convient pour ce repas")
 		}
-		if _, err := tx.Exec(ctx, `UPDATE menu_slot SET recipe_id = $2, updated_by = $3, updated_at = $4, version = version + 1
-			WHERE id::text = $1`, id, rid, userID, s.now()); err != nil {
+		if _, err := tx.Exec(ctx, `UPDATE menu_slot SET recipe_id = $2, title = NULL, locked = false,
+			updated_by = $3, updated_at = $4, version = version + 1 WHERE id::text = $1`, id, rid, userID, s.now()); err != nil {
 			return err
 		}
 		out, err = oneSlot(ctx, tx, id)
@@ -426,11 +429,65 @@ func (s *Store) SwapSlot(ctx context.Context, userID, id string) (MenuSlot, erro
 	return out, err
 }
 
-// AddSlot plans one more meal (lunch or dinner) on a day and picks its recipe.
-// It fails when the day already has that meal.
-func (s *Store) AddSlot(ctx context.Context, userID string, date time.Time, meal string) (MenuSlot, error) {
-	if meal != "lunch" && meal != "dinner" {
+// Longest title of a manual meal.
+const maxMealTitleLen = 100
+
+// SlotRequest plans one meal on a day. With neither RecipeID nor Title, the
+// server picks a recipe; with RecipeID, that recipe is planned; with Title, a
+// manual meal ("Commander une pizza") is planned. Without Replace, a meal
+// already planned at that date and time is an error (ErrSlotExists).
+type SlotRequest struct {
+	Date     time.Time
+	Meal     string
+	RecipeID string
+	Title    string
+	Replace  bool
+}
+
+// checkTitle trims and validates the title of a manual meal.
+func checkTitle(t string) (string, error) {
+	t = strings.TrimSpace(t)
+	switch {
+	case t == "":
+		return "", invalid("l'intitulé du repas est obligatoire")
+	case utf8.RuneCountInString(t) > maxMealTitleLen:
+		return "", invalid("l'intitulé du repas est trop long (100 caractères maximum)")
+	}
+	return t, nil
+}
+
+// activeRecipe checks that a recipe exists and is not archived.
+func activeRecipe(ctx context.Context, tx pgx.Tx, id string) error {
+	if !validUUID(id) {
+		return invalid("recette inconnue")
+	}
+	var ok bool
+	if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM recipe WHERE id = $1 AND archived_at IS NULL)`, id).Scan(&ok); err != nil {
+		return err
+	}
+	if !ok {
+		return invalid("recette inconnue ou archivée")
+	}
+	return nil
+}
+
+// AddSlot plans one meal (lunch or dinner) on a day (FR-PLAN-04, FR-ADJ-04).
+// A recipe or a manual meal chosen by the user is locked, so that generating
+// the period again keeps it.
+func (s *Store) AddSlot(ctx context.Context, userID string, req SlotRequest) (MenuSlot, error) {
+	if req.Meal != "lunch" && req.Meal != "dinner" {
 		return MenuSlot{}, invalid("le repas doit être le midi ou le soir")
+	}
+	if req.RecipeID != "" && req.Title != "" {
+		return MenuSlot{}, invalid("un repas est une recette ou un intitulé libre, pas les deux")
+	}
+	var title *string
+	if req.Title != "" {
+		t, err := checkTitle(req.Title)
+		if err != nil {
+			return MenuSlot{}, err
+		}
+		title = &t
 	}
 	var out MenuSlot
 	err := s.tx(ctx, func(tx pgx.Tx) error {
@@ -439,29 +496,74 @@ func (s *Store) AddSlot(ctx context.Context, userID string, date time.Time, meal
 		}
 		var exists bool
 		if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM menu_slot WHERE date = $1 AND meal = $2::meal AND deleted_at IS NULL)`,
-			date, meal).Scan(&exists); err != nil {
+			req.Date, req.Meal).Scan(&exists); err != nil {
 			return err
 		}
-		if exists {
+		if exists && !req.Replace {
 			return ErrSlotExists
 		}
-		rid, err := pickFor(ctx, tx, date, meal, "")
-		if err != nil {
-			return err
-		}
 		var rp *string
-		if rid != "" {
-			rp = &rid
+		chosen := req.RecipeID != "" || title != nil
+		switch {
+		case req.RecipeID != "":
+			if err := activeRecipe(ctx, tx, req.RecipeID); err != nil {
+				return err
+			}
+			rp = &req.RecipeID
+		case title == nil:
+			rid, err := pickFor(ctx, tx, req.Date, req.Meal, "")
+			if err != nil {
+				return err
+			}
+			if rid != "" {
+				rp = &rid
+			}
 		}
 		var id string
-		now := s.now()
-		err = tx.QueryRow(ctx, `INSERT INTO menu_slot (date, meal, recipe_id, updated_by, updated_at) VALUES ($1, $2, $3, $4, $5)
-			ON CONFLICT (date, meal) DO UPDATE SET recipe_id = $3, locked = false, deleted_at = NULL,
-				updated_by = $4, updated_at = $5, version = menu_slot.version + 1
-			RETURNING id::text`, date, meal, rp, userID, now).Scan(&id)
+		err := tx.QueryRow(ctx, `INSERT INTO menu_slot (date, meal, recipe_id, title, locked, updated_by, updated_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7)
+			ON CONFLICT (date, meal) DO UPDATE SET recipe_id = $3, title = $4, locked = $5, deleted_at = NULL,
+				updated_by = $6, updated_at = $7, version = menu_slot.version + 1
+			RETURNING id::text`, req.Date, req.Meal, rp, title, chosen, userID, s.now()).Scan(&id)
 		if err != nil {
 			return err
 		}
+		out, err = oneSlot(ctx, tx, id)
+		return err
+	})
+	return out, err
+}
+
+// UpdateSlot changes a planned meal into the given recipe or manual meal
+// (exactly one of recipeID and title). The meal is then locked, as in AddSlot.
+func (s *Store) UpdateSlot(ctx context.Context, userID, id, recipeID, title string) (MenuSlot, error) {
+	if (recipeID == "") == (title == "") {
+		return MenuSlot{}, invalid("indiquez une recette ou un intitulé libre")
+	}
+	var tp, rp *string
+	if title != "" {
+		t, err := checkTitle(title)
+		if err != nil {
+			return MenuSlot{}, err
+		}
+		tp = &t
+	}
+	var out MenuSlot
+	err := s.tx(ctx, func(tx pgx.Tx) error {
+		if _, err := slotByID(ctx, tx, id); err != nil {
+			return err
+		}
+		if recipeID != "" {
+			if err := activeRecipe(ctx, tx, recipeID); err != nil {
+				return err
+			}
+			rp = &recipeID
+		}
+		if _, err := tx.Exec(ctx, `UPDATE menu_slot SET recipe_id = $2, title = $3, locked = true,
+			updated_by = $4, updated_at = $5, version = version + 1 WHERE id::text = $1`, id, rp, tp, userID, s.now()); err != nil {
+			return err
+		}
+		var err error
 		out, err = oneSlot(ctx, tx, id)
 		return err
 	})

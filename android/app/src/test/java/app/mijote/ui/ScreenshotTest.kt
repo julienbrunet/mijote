@@ -136,6 +136,62 @@ class ScreenshotTest {
         }
     }
 
+    @Test
+    fun recipeForMember() = paparazzi.snapshot {
+        MijoteTheme {
+            RecipeScreen(
+                app.mijote.RecipeState("r1", "Velouté de potimarron", app.mijote.data.RecipeDetail(
+                    "r1", "Velouté de potimarron", null, "vegetarian", 15, 30, 45, null,
+                    listOf(app.mijote.data.IngredientLine(300.0, "g", "potimarron", null)), listOf("Cuire 30 minutes."))),
+                people = 2, onBack = {}, canWrite = true, canArchive = true)
+        }
+    }
+
+    @Test
+    fun recipesTab() = paparazzi.snapshot {
+        MijoteTheme {
+            RecipesTab(app.mijote.RecipesState("pâtes", listOf(
+                app.mijote.data.RecipeSummary("r1", "Gratin de pâtes aux légumes", "vegetarian", 40, null, listOf("four", "hiver")),
+                app.mijote.data.RecipeSummary("r2", "Pâtes au saumon", "fish", 20, null, emptyList()),
+            )), canWrite = true, onQuery = {}, onOpen = {}, onPlan = {}, onNew = {})
+        }
+    }
+
+    @Test
+    fun recipeEditor() = paparazzi.snapshot {
+        MijoteTheme {
+            RecipeEditorScreen(app.mijote.EditorState(null, app.mijote.data.RecipeDraft(title = "Quiche lorraine", dishType = "meat",
+                prepMinutes = "15", ingredients = "100 g de lardons\n2 œufs\n20 cl de crème")), onChange = {}, onSave = {}, onBack = {})
+        }
+    }
+
+    @Test
+    fun planManualMeal() = paparazzi.snapshot {
+        MijoteTheme {
+            PlanMealDialog("", LocalDate.of(2026, 11, 2), listOf(app.mijote.data.MenuSlot("s1", LocalDate.of(2026, 11, 2), "dinner",
+                app.mijote.data.MenuRecipe("r1", "Soupe", "vegetarian", 20), false)), manual = true, onDismiss = {}, onConfirm = { _, _, _, _ -> })
+        }
+    }
+
+    @Test
+    fun invitations() = paparazzi.snapshot {
+        MijoteTheme {
+            InvitationsScreen(app.mijote.AdminState(invitations = app.mijote.data.Invitations(listOf(
+                app.mijote.data.Invitation("i1", "member", "pending", "2026-11-09T10:00:00Z", null)), listOf(1, 7, 30), 7)),
+                onCreate = { _, _ -> }, onRevoke = {}, onDismissCreated = {}, onBack = {})
+        }
+    }
+
+    @Test
+    fun accounts() = paparazzi.snapshot {
+        MijoteTheme {
+            AccountsScreen(app.mijote.AdminState(accounts = listOf(
+                app.mijote.data.Account("u1", "julien", "Julien", "admin", false),
+                app.mijote.data.Account("u2", "lea", "Léa", "readonly", true))),
+                onRole = { _, _ -> }, onDisabled = { _, _ -> }, onPassword = { _, _ -> }, onBack = {})
+        }
+    }
+
     private val sampleDays = listOf(
         DayUi("Aujourd'hui", "lun. 2 nov.", listOf(
             MealUi("Midi", "Poulet au pesto et tomates rôties", DishType.MEAT, 25, "🍗", locked = true),
@@ -146,6 +202,7 @@ class ScreenshotTest {
         )),
         DayUi("Mercredi", "4 nov.", listOf(
             MealUi("Midi", "Gratin de pâtes aux légumes", DishType.VEGETARIAN, 40, "🧀", locked = false),
+            MealUi("Soir", "Commander une pizza", null, null, "📝", locked = true, manual = true),
         )),
     )
 }
