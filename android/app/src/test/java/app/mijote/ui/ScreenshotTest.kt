@@ -52,6 +52,11 @@ class ScreenshotTest {
         MijoteTheme { HomeScreen(User("u1", "julien", "Julien", "admin"), onLogout = {}, period = "2 → 8 novembre · 11 repas", days = sampleDays) }
     }
 
+    @Test
+    fun homeWithMenuReadonly() = paparazzi.snapshot {
+        MijoteTheme { HomeScreen(User("u2", "enfant", "Enfant", "readonly"), onLogout = {}, period = "2 → 8 novembre · 11 repas", days = sampleDays) }
+    }
+
     // Launcher icon under the usual launcher masks, plus the themed (monochrome) variant.
     @Test
     fun launcherIcon() = paparazzi.snapshot {
@@ -77,6 +82,15 @@ class ScreenshotTest {
     fun preferences() = paparazzi.snapshot {
         MijoteTheme {
             PreferencesScreen(User("u1", "julien", "Julien", "admin", people = 4), "https://mesrepas.example.fr", "0.1.31",
+                checkingUpdate = false, updateMessage = "L'application est à jour.",
+                onPeople = {}, onCheckUpdate = {}, onChangeServer = {}, onLogout = {}, onBack = {})
+        }
+    }
+
+    @Test
+    fun preferencesReadonly() = paparazzi.snapshot {
+        MijoteTheme {
+            PreferencesScreen(User("u2", "enfant", "Enfant", "readonly", people = 1), "https://mesrepas.example.fr", "0.1.31",
                 checkingUpdate = false, updateMessage = "L'application est à jour.",
                 onPeople = {}, onCheckUpdate = {}, onChangeServer = {}, onLogout = {}, onBack = {})
         }

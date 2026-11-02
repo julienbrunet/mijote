@@ -61,7 +61,7 @@ var eventLabels = map[string]string{
 	"account_created": "Compte créé (invitation)", "invite_failed": "Invitation refusée",
 	"invite_created": "Invitation créée", "invite_revoked": "Invitation révoquée",
 	"account_disabled": "Compte désactivé", "account_enabled": "Compte réactivé",
-	"password_reset": "Mot de passe réinitialisé",
+	"password_reset": "Mot de passe réinitialisé", "role_changed": "Rôle modifié",
 	"token_created":  "Jeton d'API créé", "token_revoked": "Jeton d'API révoqué",
 }
 
@@ -119,6 +119,7 @@ func (a *Admin) Routes(mux *http.ServeMux) {
 		"POST /admin/accounts/{id}/disable":     a.disableAccount,
 		"POST /admin/accounts/{id}/enable":      a.enableAccount,
 		"POST /admin/accounts/{id}/password":    a.resetAccountPassword,
+		"POST /admin/accounts/{id}/role":        a.changeAccountRole,
 		"GET /admin/invitations":                a.invitationsPage,
 		"POST /admin/invitations":               a.createInvitation,
 		"POST /admin/invitations/{id}/revoke":   a.revokeInvitation,
@@ -178,6 +179,7 @@ var notices = map[string]string{
 	"revoked":         "Session révoquée.",
 	"disabled":        "Compte désactivé ; ses sessions ont été fermées.",
 	"enabled":         "Compte réactivé.",
+	"role_changed":    "Rôle modifié.",
 	"reset":           "Mot de passe modifié ; les sessions du compte ont été fermées.",
 	"inv_revoked":     "Invitation révoquée.",
 	"token_revoked":   "Jeton révoqué.",

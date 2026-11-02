@@ -47,6 +47,7 @@ type Invitation struct {
 	ID                   string
 	CreatedBy            string
 	CreatedAt, ExpiresAt time.Time
+	Role                 string
 	UsedBy               *string
 	UsedAt, RevokedAt    *time.Time
 	UsedByName           *string
@@ -54,12 +55,18 @@ type Invitation struct {
 	CreatedByName        string
 }
 
-// CreateInvitation creates a single-use invitation for a new member and returns
+// CreateInvitation creates a single-use invitation for a new member or read-only user and returns
 // its clear code, which is not stored and cannot be shown again.
-func (s *Store) CreateInvitation(ctx context.Context, adminID string, ttl time.Duration) (string, error) {
+func (s *Store) CreateInvitation(ctx context.Context, adminID, role string, ttl time.Duration) (string, error) {
+	if role == "" {
+		role = RoleMember
+	}
+	if role != RoleMember && role != RoleReadonly {
+		return "", invalid("rôle d'invitation invalide (doit être 'member' ou 'readonly')")
+	}
 	code := newInvitationCode()
-	_, err := s.Pool.Exec(ctx, `INSERT INTO invitation (code_hash, created_by, expires_at) VALUES ($1, $2, $3)`,
-		hashToken(code), adminID, s.now().Add(ttl))
+	_, err := s.Pool.Exec(ctx, `INSERT INTO invitation (code_hash, created_by, role, expires_at) VALUES ($1, $2, $3, $4)`,
+		hashToken(code), adminID, role, s.now().Add(ttl))
 	return code, err
 }
 
@@ -67,7 +74,7 @@ func (s *Store) CreateInvitation(ctx context.Context, adminID string, ttl time.D
 // revoked, expired) are included only when includeEnded is set.
 func (s *Store) ListInvitations(ctx context.Context, includeEnded bool, limit int) ([]Invitation, error) {
 	rows, err := s.Pool.Query(ctx, `SELECT i.id::text, i.created_by::text, c.username, i.created_at, i.expires_at,
-			i.used_by::text, u.username, i.used_at, i.revoked_at,
+			i.role::text, i.used_by::text, u.username, i.used_at, i.revoked_at,
 			CASE WHEN i.used_at IS NOT NULL THEN 'used'
 			     WHEN i.revoked_at IS NOT NULL THEN 'revoked'
 			     WHEN i.expires_at <= $3 THEN 'expired' ELSE 'pending' END
@@ -80,7 +87,7 @@ func (s *Store) ListInvitations(ctx context.Context, includeEnded bool, limit in
 	return pgx.CollectRows(rows, func(r pgx.CollectableRow) (Invitation, error) {
 		var i Invitation
 		err := r.Scan(&i.ID, &i.CreatedBy, &i.CreatedByName, &i.CreatedAt, &i.ExpiresAt,
-			&i.UsedBy, &i.UsedByName, &i.UsedAt, &i.RevokedAt, &i.Status)
+			&i.Role, &i.UsedBy, &i.UsedByName, &i.UsedAt, &i.RevokedAt, &i.Status)
 		return i, err
 	})
 }
@@ -129,17 +136,17 @@ func (s *Store) RedeemInvitation(ctx context.Context, code, username, displayNam
 	hash := auth.HashPassword(password) // slow: done outside the transaction
 	var u User
 	err := s.tx(ctx, func(tx pgx.Tx) error {
-		var id string
-		err := tx.QueryRow(ctx, `SELECT id::text FROM invitation
+		var id, role string
+		err := tx.QueryRow(ctx, `SELECT id::text, role::text FROM invitation
 			WHERE code_hash = $1 AND used_at IS NULL AND revoked_at IS NULL AND expires_at > $2
-			FOR UPDATE`, hashToken(normalizeCode(code)), s.now()).Scan(&id)
+			FOR UPDATE`, hashToken(normalizeCode(code)), s.now()).Scan(&id, &role)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ErrInvalidInvitation
 		} else if err != nil {
 			return err
 		}
 		u, err = scanUser(tx.QueryRow(ctx, `INSERT INTO app_user (username, display_name, password_hash, role)
-			VALUES ($1, $2, $3, 'member') RETURNING `+userCols, username, displayName, hash))
+			VALUES ($1, $2, $3, $4::user_role) RETURNING `+userCols, username, displayName, hash, role))
 		if isUniqueViolation(err) {
 			return invalid("cet identifiant est déjà pris")
 		} else if err != nil {

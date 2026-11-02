@@ -66,7 +66,12 @@ fun PreferencesScreen(
             SunnyCard {
                 SectionLabel("COMPTE")
                 Text(user.displayName, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Sunny.Ink)
-                Text("@${user.username} · ${if (user.role == "admin") "administrateur" else "membre"}",
+                val roleLabel = when (user.role) {
+                    "admin" -> "administrateur"
+                    "readonly" -> "lecture seule"
+                    else -> "membre"
+                }
+                Text("@${user.username} · $roleLabel",
                     fontSize = 13.sp, color = Sunny.InkSoft, modifier = Modifier.padding(top = 2.dp))
             }
             SunnyCard {

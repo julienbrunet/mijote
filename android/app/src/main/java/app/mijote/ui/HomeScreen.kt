@@ -67,14 +67,16 @@ fun HomeScreen(
     generate: @Composable () -> Unit = {},
 ) {
     var editing by remember { mutableStateOf<MealUi?>(null) }
-    MealActionsDialog(editing, onDismiss = { editing = null }, onOpen = onOpenMeal, onSwap = onSwapMeal, onRemove = onRemoveMeal)
+    val canEdit = user.role != "readonly"
+    val availableTabs = if (user.role == "readonly") listOf(Tab.MENUS, Tab.RECIPES) else Tab.entries
+    MealActionsDialog(editing, onDismiss = { editing = null }, onOpen = onOpenMeal, onSwap = onSwapMeal, onRemove = onRemoveMeal, canEdit = canEdit)
     var tab by rememberSaveable { mutableStateOf(Tab.MENUS) }
     // A successful generation brings the user back to the menus.
     LaunchedEffect(generatedCount) { if (generatedCount > 0) tab = Tab.MENUS }
-    if (tab == Tab.GENERATE) {
+    if (tab == Tab.GENERATE && canEdit) {
         Box(Modifier.fillMaxSize()) {
             generate()
-            BottomBar(tab, Modifier.align(Alignment.BottomEnd)) { tab = it }
+            BottomBar(tab, availableTabs, Modifier.align(Alignment.BottomEnd)) { tab = it }
         }
         return
     }
@@ -87,13 +89,13 @@ fun HomeScreen(
                     ErrorText(error)
                     // No separator between days: the day titles and a wider gap group the meals.
                     days.forEachIndexed { i, day ->
-                        DaySection(day, first = i == 0, working = working, onOpen = onOpenMeal, onEdit = { editing = it })
+                        DaySection(day, first = i == 0, working = working, onOpen = onOpenMeal, onEdit = { editing = it }, canEdit = canEdit)
                     }
                 }
             } else {
                 Text(
                     when (tab) {
-                        Tab.MENUS -> "Aucun repas prévu : touchez « Générer » pour créer le menu."
+                        Tab.MENUS -> if (canEdit) "Aucun repas prévu : touchez « Générer » pour créer le menu." else "Aucun repas prévu pour le moment."
                         Tab.RECIPES -> "Les recettes arriveront ici."
                         Tab.GENERATE -> "La génération de menus arrivera ici."
                     },
@@ -102,7 +104,7 @@ fun HomeScreen(
                 )
             }
         }
-        BottomBar(tab, Modifier.align(Alignment.BottomEnd)) { tab = it }
+        BottomBar(tab, availableTabs, Modifier.align(Alignment.BottomEnd)) { tab = it }
     }
 }
 
@@ -134,7 +136,7 @@ private fun Modifier.zIndexShadow() =
 @Composable
 fun DaySection(
     day: DayUi, first: Boolean = false, working: String? = null,
-    onOpen: (MealUi) -> Unit, onEdit: (MealUi) -> Unit, extra: @Composable () -> Unit = {},
+    onOpen: (MealUi) -> Unit, onEdit: (MealUi) -> Unit, canEdit: Boolean = true, extra: @Composable () -> Unit = {},
 ) {
     Column {
         Row(Modifier.fillMaxWidth().padding(top = if (first) 18.dp else 34.dp, bottom = 14.dp, start = 4.dp, end = 4.dp),
@@ -144,7 +146,7 @@ fun DaySection(
                 color = Sunny.Ink.copy(alpha = 0.6f))
         }
         Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            day.meals.forEach { MealCard(it, Sunny.Peach, busy = working == it.id, onOpen = { onOpen(it) }, onEdit = { onEdit(it) }) }
+            day.meals.forEach { MealCard(it, Sunny.Peach, busy = working == it.id, onOpen = { onOpen(it) }, onEdit = { onEdit(it) }, canEdit = canEdit) }
             extra()
         }
     }
@@ -152,14 +154,14 @@ fun DaySection(
 
 /** A planned meal: tap the card for the recipe, the corner pencil to change it. */
 @Composable
-fun MealCard(meal: MealUi, accent: Color, busy: Boolean, onOpen: () -> Unit, onEdit: () -> Unit) {
+fun MealCard(meal: MealUi, accent: Color, busy: Boolean, onOpen: () -> Unit, onEdit: () -> Unit, canEdit: Boolean = true) {
     Box(
         Modifier.fillMaxWidth().height(104.dp)
             .shadow(4.dp, Shapes.Card, ambientColor = Color.Black, spotColor = Color.Black)
             .background(Sunny.Card, Shapes.Card).clip(Shapes.Card)
             .clickable(enabled = meal.recipeId != null, onClick = onOpen),
     ) {
-        Row(Modifier.fillMaxSize().padding(start = 12.dp, end = 52.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxSize().padding(start = 12.dp, end = if (canEdit) 52.dp else 16.dp), verticalAlignment = Alignment.CenterVertically) {
             RecipeThumb(meal.image, meal.picture, Modifier.size(76.dp).clip(RoundedCornerShape(16.dp)), emojiSize = 40.sp)
             Column(Modifier.padding(start = 12.dp)) {
                 Text(meal.slot.uppercase(), fontSize = 10.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold, color = Sunny.InkSoft)
@@ -174,14 +176,16 @@ fun MealCard(meal: MealUi, accent: Color, busy: Boolean, onOpen: () -> Unit, onE
             }
         }
         // Corner action glued to the card's bottom-right corner, as the basket buttons of the reference.
-        Box(
-            Modifier.align(Alignment.BottomEnd).size(46.dp)
-                .background(accent, RoundedCornerShape(topStart = 16.dp, bottomEnd = 22.dp))
-                .clickable(onClick = onEdit),
-            contentAlignment = Alignment.Center,
-        ) {
-            if (busy) CircularProgressIndicator(Modifier.size(20.dp), color = Color.White, strokeWidth = 2.dp)
-            else Icon(Icons.Filled.Edit, contentDescription = "Modifier", tint = Color.White, modifier = Modifier.size(20.dp))
+        if (canEdit) {
+            Box(
+                Modifier.align(Alignment.BottomEnd).size(46.dp)
+                    .background(accent, RoundedCornerShape(topStart = 16.dp, bottomEnd = 22.dp))
+                    .clickable(onClick = onEdit),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (busy) CircularProgressIndicator(Modifier.size(20.dp), color = Color.White, strokeWidth = 2.dp)
+                else Icon(Icons.Filled.Edit, contentDescription = "Modifier", tint = Color.White, modifier = Modifier.size(20.dp))
+            }
         }
         if (meal.locked) Icon(Icons.Filled.Lock, contentDescription = "Verrouillé", tint = Sunny.InkSoft,
             modifier = Modifier.align(Alignment.TopEnd).padding(10.dp).size(14.dp))
@@ -193,6 +197,7 @@ fun MealCard(meal: MealUi, accent: Color, busy: Boolean, onOpen: () -> Unit, onE
 fun MealActionsDialog(
     meal: MealUi?, onDismiss: () -> Unit,
     onOpen: (MealUi) -> Unit, onSwap: (MealUi) -> Unit, onRemove: (MealUi) -> Unit,
+    canEdit: Boolean = true,
 ) {
     if (meal == null) return
     AlertDialog(
@@ -202,10 +207,12 @@ fun MealActionsDialog(
         text = {
             Column {
                 if (meal.recipeId != null) DialogAction("Voir la recette") { onDismiss(); onOpen(meal) }
-                DialogAction(if (meal.locked) "Verrouillé : impossible de changer" else "Changer de recette", enabled = !meal.locked) {
-                    onDismiss(); onSwap(meal)
+                if (canEdit) {
+                    DialogAction(if (meal.locked) "Verrouillé : impossible de changer" else "Changer de recette", enabled = !meal.locked) {
+                        onDismiss(); onSwap(meal)
+                    }
+                    DialogAction("Retirer ce repas", enabled = !meal.locked, danger = true) { onDismiss(); onRemove(meal) }
                 }
-                DialogAction("Retirer ce repas", enabled = !meal.locked, danger = true) { onDismiss(); onRemove(meal) }
             }
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text("Fermer", color = Sunny.Slate) } },
@@ -232,7 +239,7 @@ private fun UserButton(onPreferences: () -> Unit) {
  * white semi-transparent circle and its label shown beside it.
  */
 @Composable
-private fun BottomBar(selected: Tab, modifier: Modifier, onSelect: (Tab) -> Unit) {
+private fun BottomBar(selected: Tab, tabs: List<Tab> = Tab.entries, modifier: Modifier = Modifier, onSelect: (Tab) -> Unit) {
     val icons = mapOf(Tab.MENUS to Icons.Filled.Home, Tab.RECIPES to Icons.Filled.Search, Tab.GENERATE to Icons.Filled.Refresh)
     val navInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     Box(modifier.fillMaxWidth().padding(bottom = 20.dp + navInset)) {
@@ -245,7 +252,7 @@ private fun BottomBar(selected: Tab, modifier: Modifier, onSelect: (Tab) -> Unit
             horizontalArrangement = Arrangement.spacedBy(4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Tab.entries.forEach { tab ->
+            tabs.forEach { tab ->
                 val on = tab == selected
                 Row(
                     Modifier
