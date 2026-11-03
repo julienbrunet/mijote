@@ -153,7 +153,7 @@ class ScreenshotTest {
             RecipesTab(app.mijote.RecipesState("pâtes", listOf(
                 app.mijote.data.RecipeSummary("r1", "Gratin de pâtes aux légumes", "vegetarian", 40, null, listOf("four", "hiver")),
                 app.mijote.data.RecipeSummary("r2", "Pâtes au saumon", "fish", 20, null, emptyList()),
-            )), canWrite = true, onQuery = {}, onOpen = {}, onPlan = {}, onNew = {})
+            )), canWrite = true, onQuery = {}, onOpen = {}, onPlan = {})
         }
     }
 
@@ -165,7 +165,19 @@ class ScreenshotTest {
                 app.mijote.data.RecipeSummary("r2", "Pâtes au saumon", "fish", 20, null, emptyList()),
                 app.mijote.data.RecipeSummary("r3", "Velouté de potimarron", "vegetarian", 30, null, listOf("soupe")),
             ), filters = app.mijote.data.RecipeFilters(dishTypes = setOf("vegetarian"), durations = setOf("quick"))),
-                canWrite = true, onQuery = {}, onOpen = {}, onPlan = {}, onNew = {})
+                canWrite = true, onQuery = {}, onOpen = {}, onPlan = {})
+        }
+    }
+
+    @Test
+    fun homeRecipesTab() = paparazzi.snapshot {
+        MijoteTheme {
+            HomeScreen(User("u1", "julien", "Julien", "admin"), onLogout = {}, tab = Tab.RECIPES, onAddRecipe = {}, recipes = {
+                RecipesTab(app.mijote.RecipesState("", listOf(
+                    app.mijote.data.RecipeSummary("r1", "Bowl au chèvre pané & crudités", "vegetarian", 15, null, listOf("Bowl")),
+                    app.mijote.data.RecipeSummary("r2", "Bowl surimi & tzatziki", "fish", 16, null, listOf("Bowl")),
+                )), canWrite = true, onQuery = {}, onOpen = {}, onPlan = {})
+            })
         }
     }
 

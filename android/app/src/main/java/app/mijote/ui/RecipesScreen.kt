@@ -43,8 +43,8 @@ import androidx.compose.runtime.setValue
 
 /**
  * "Recettes" tab: search by title or tag, a filter button (with the number of active filters)
- * opening a sheet, the active filters as removable pills, the active recipes (archived ones are left
- * out) and a round "+" above the navigation to add a recipe. Each card can plan its recipe on a day.
+ * opening a sheet, the active filters as removable pills and the active recipes (archived ones are left
+ * out). Each card can plan its recipe on a day; the "+" to add a recipe sits next to the navigation.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -54,7 +54,6 @@ fun RecipesTab(
     onQuery: (String) -> Unit,
     onOpen: (RecipeSummary) -> Unit,
     onPlan: (RecipeSummary) -> Unit,
-    onNew: () -> Unit,
     working: Boolean = false,
     onRefresh: () -> Unit = {},
     onPreferences: () -> Unit = {},
@@ -71,7 +70,7 @@ fun RecipesTab(
     }
     Box(Modifier.fillMaxSize()) {
         PullToRefreshBox(state.refreshing, onRefresh, Modifier.fillMaxSize().background(Sunny.Butter)) {
-            LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 180.dp)) {
+            LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 120.dp)) {
                 item {
                     // Same header as the other tabs, with the search, the filter button and the active filters.
                     HomeHeader("Recettes", list?.let { subtitle(it.size, state.query.isNotBlank(), filters.count) }, onPreferences) {
@@ -108,15 +107,6 @@ fun RecipesTab(
                     }
                 }
             }
-        }
-        if (canWrite) {
-            // Round "+" above the navigation pill, within reach of the right thumb.
-            Box(
-                Modifier.align(Alignment.BottomEnd).navigationBarsPadding().padding(end = 20.dp, bottom = 100.dp).size(60.dp)
-                    .shadow(10.dp, CircleShape, ambientColor = Sunny.PeachDeep, spotColor = Sunny.PeachDeep)
-                    .background(Sunny.PeachDeep, CircleShape).clip(CircleShape).clickable(onClickLabel = "Nouvelle recette", onClick = onNew),
-                contentAlignment = Alignment.Center,
-            ) { Icon(Icons.Filled.Add, contentDescription = "Nouvelle recette", tint = Color.White, modifier = Modifier.size(30.dp)) }
         }
     }
 }

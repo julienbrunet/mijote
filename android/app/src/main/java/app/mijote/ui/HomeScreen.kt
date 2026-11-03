@@ -1,6 +1,9 @@
 package app.mijote.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -74,6 +77,8 @@ fun HomeScreen(
     tab: Tab = Tab.MENUS,
     onTab: (Tab) -> Unit = {},
     refreshing: Boolean = false,
+    /** Adds a recipe: shown as a round "+" next to the navigation on the Recipes tab (members only). */
+    onAddRecipe: (() -> Unit)? = null,
     onRefresh: () -> Unit = {},
     recipes: @Composable () -> Unit = {},
     generate: @Composable () -> Unit = {},
@@ -86,7 +91,8 @@ fun HomeScreen(
     if ((tab == Tab.GENERATE && canEdit) || tab == Tab.RECIPES) {
         Box(Modifier.fillMaxSize()) {
             if (tab == Tab.RECIPES) recipes() else generate()
-            BottomBar(tab, availableTabs, Modifier.align(Alignment.BottomEnd), onTab)
+            BottomBar(tab, availableTabs, Modifier.align(Alignment.BottomEnd), onTab,
+                onAdd = onAddRecipe.takeIf { tab == Tab.RECIPES && canEdit })
         }
         return
     }
@@ -266,7 +272,10 @@ private fun UserButton(onPreferences: () -> Unit) {
  * with a white semi-transparent circle. Labels stay as content descriptions.
  */
 @Composable
-private fun BottomBar(selected: Tab, tabs: List<Tab> = Tab.entries, modifier: Modifier = Modifier, onSelect: (Tab) -> Unit) {
+private fun BottomBar(
+    selected: Tab, tabs: List<Tab> = Tab.entries, modifier: Modifier = Modifier, onSelect: (Tab) -> Unit,
+    onAdd: (() -> Unit)? = null,
+) {
     val icons = mapOf(Tab.MENUS to Icons.Filled.Home, Tab.RECIPES to Icons.Filled.Search,
         Tab.GENERATE to ImageVector.vectorResource(app.mijote.R.drawable.ic_meal_idea))
     val navInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
@@ -274,7 +283,8 @@ private fun BottomBar(selected: Tab, tabs: List<Tab> = Tab.entries, modifier: Mo
         Row(
             Modifier
                 .align(Alignment.BottomCenter)
-                .shadow(16.dp, RoundedCornerShape(40.dp), ambientColor = Sunny.PeachDeep, spotColor = Sunny.PeachDeep)
+                // Dark shadow so that the bar stands out from the list scrolling under it.
+                .shadow(20.dp, RoundedCornerShape(40.dp), ambientColor = Color.Black, spotColor = Color.Black)
                 .background(Sunny.PeachDeep, RoundedCornerShape(40.dp))
                 .padding(horizontal = 8.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -299,6 +309,14 @@ private fun BottomBar(selected: Tab, tabs: List<Tab> = Tab.entries, modifier: Mo
                 }
             }
         }
+        // "+" at the bottom right, as high as the bar, with an icon the size of the tab icons.
+        if (onAdd != null) Box(
+            Modifier.align(Alignment.CenterEnd).padding(end = 20.dp).size(60.dp)
+                .shadow(20.dp, CircleShape, ambientColor = Color.Black, spotColor = Color.Black)
+                .background(Sunny.Card, CircleShape).border(3.dp, Sunny.PeachDeep, CircleShape)
+                .clip(CircleShape).clickable(onClickLabel = "Nouvelle recette", onClick = onAdd),
+            contentAlignment = Alignment.Center,
+        ) { Icon(Icons.Filled.Add, contentDescription = "Nouvelle recette", tint = Sunny.PeachDeep, modifier = Modifier.size(24.dp)) }
     }
 }
 
