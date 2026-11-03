@@ -4,28 +4,23 @@
 html{min-height:100%;display:flex;flex-direction:column}
 body{flex:1;display:flex;flex-direction:column;margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 Inter,system-ui,sans-serif}
 
-/* Header: white sheet with rounded bottom corners, the logo and the "Mijote" wordmark, a Butter corner block holding the profile button (as the app's home header). */
-header.top{position:relative;background:var(--card);border-radius:0 0 40px 40px;box-shadow:var(--shadow);padding:18px 22px 16px}
-.brandrow{min-height:48px;padding-right:84px;display:flex;align-items:center}
-.brand{display:inline-flex;align-items:center;gap:12px;text-decoration:none}
-.brand img{display:block}.brand .wordmark{height:34px;width:auto}
-.brand small{align-self:flex-end;margin:0 0 4px 2px;color:var(--soft);font-size:13px;font-weight:600;letter-spacing:1px;text-transform:uppercase}
-.corner{position:absolute;top:0;right:0;width:84px;height:84px;display:grid;place-items:center;background:var(--butter);border-bottom-left-radius:32px}
-.corner a{display:grid;place-items:center;width:48px;height:48px;border-radius:50%;color:var(--ink)}
-.corner a:hover,.corner a.on{background:rgba(255,255,255,.55)}
-.corner svg{width:26px;height:26px;fill:currentColor}
-nav.main{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:14px}
-nav.main a{color:var(--ink);text-decoration:none;padding:7px 15px;border-radius:16px;font-weight:600;background:var(--bg)}
+/* Header: one compact row with the logo, the "Mijote" wordmark and the navigation pills; white sheet with rounded bottom corners. */
+header.top{position:relative;display:flex;flex-wrap:wrap;align-items:center;gap:8px 28px;background:var(--card);border-radius:0 0 32px 32px;box-shadow:var(--shadow);padding:10px 20px;min-height:64px}
+.brandrow{display:flex;align-items:center}
+.brand{display:inline-flex;align-items:center;gap:10px;text-decoration:none}
+.brand img{display:block}.brand img.logo{width:40px;height:40px}.brand .wordmark{height:28px;width:auto}
+.brand small{align-self:flex-end;margin:0 0 3px 2px;color:var(--soft);font-size:11px;font-weight:600;letter-spacing:1px;text-transform:uppercase}
+nav.main{flex:1;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+nav.main a{color:var(--ink);text-decoration:none;padding:6px 14px;border-radius:14px;font-weight:600;background:var(--bg)}
 nav.main a:hover{background:var(--butter-light)}
 nav.main a.on{background:var(--peach-deep);color:#fff}
 nav.main form{margin-left:auto}
-nav.main button.link{color:var(--slate);font-weight:600;padding:7px 4px}
-header.plain{padding-bottom:20px}
+nav.main button.link{color:var(--slate);font-weight:600;padding:6px 4px}
 
-main{width:100%;max-width:1040px;margin:0 auto;padding:20px 16px 40px;flex:1}
+main{width:100%;max-width:1040px;margin:0 auto;padding:8px 16px 40px;flex:1}
 .titlebar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 18px;margin:12px 0 18px}
 .titlebar h1{margin:0 auto 0 0}
-h1{font-weight:700;font-size:28px;color:var(--title);margin:12px 0 18px}
+h1{font-weight:700;font-size:26px;color:var(--title);margin:12px 0 14px}
 h2{font-size:18px;font-weight:700;color:var(--title);margin-top:0}
 h3{font-size:15px;font-weight:700;color:var(--title);margin:0 0 6px}
 a{color:var(--peach-deep);font-weight:600}
@@ -131,11 +126,52 @@ footer img{vertical-align:-5px;margin-right:6px}
 footer a{color:var(--title)}
 
 @media (max-width:600px){
-  header.top{padding:14px 16px;border-radius:0 0 32px 32px}
-  .brandrow{padding-right:76px}
-  .corner{width:76px;height:76px;border-bottom-left-radius:28px}
-  .brand .wordmark{height:28px}.brand img.logo{width:40px;height:40px}.brand small{display:none}
+  header.top{padding:10px 16px 12px;border-radius:0 0 28px 28px;gap:8px 16px}
+  nav.main{flex-basis:100%}
   nav.main a{padding:6px 11px}
+  .brand small{display:none}
   .meals{grid-template-columns:1fr}
   h1{font-size:24px}
+}
+
+/* Home page: the plan uses the whole width; one compact row per day, lunch and dinner side by side. */
+main.wide{max-width:1600px;padding-left:24px;padding-right:24px}
+.filters{background:var(--card);border-radius:18px;padding:10px 14px;margin:0 0 14px;box-shadow:var(--card-shadow)}
+.filters select{padding:4px 2px}
+.filters label{display:flex;align-items:center;gap:8px;white-space:nowrap}
+.plan{background:var(--card);border-radius:22px;box-shadow:var(--shadow);overflow:hidden;margin:0 0 14px}
+.plan-head,.plan-row{display:grid;grid-template-columns:170px 1fr 1fr}
+.plan-head span{padding:8px 14px;color:var(--soft);font-size:12px;font-weight:600;letter-spacing:1px;text-transform:uppercase;border-bottom:1px solid var(--track)}
+.plan-row{border-bottom:1px solid var(--track)}.plan-row:last-child{border-bottom:0}
+.plan-row:hover{background:#FFFBF4}
+.plan-row.today{background:var(--butter-light)}.plan-row.today .m-thumb{background:var(--card)}
+.plan-day{padding:8px 14px;display:flex;flex-direction:column;justify-content:center}
+.plan-day b{font-size:15px;color:var(--ink)}
+.plan-day small{font-size:11px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:rgba(74,74,74,.55)}
+.plan-cell{padding:6px 10px;border-left:1px solid var(--track);min-width:0;display:flex;align-items:center}
+.plan-none{color:var(--track);padding-left:6px}
+.m{display:flex;align-items:center;gap:10px;width:100%;min-width:0}
+.m-thumb{flex:none;width:44px;height:44px;border-radius:10px;object-fit:cover;background:var(--butter-light);display:grid;place-items:center;font-size:22px}
+.m-body{flex:1;min-width:0}
+.m-title{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:700;color:var(--ink);text-decoration:none;line-height:1.3}
+a.m-title:hover{color:var(--peach-deep)}
+.m.empty .m-title{color:var(--soft);font-weight:600}
+.m-meta{display:flex;flex-wrap:wrap;gap:2px 8px;align-items:center;font-size:12px;color:var(--soft);line-height:1.5}
+.m-meta .dish{font-size:10px;padding:0 6px}.m-meta .badge{font-size:11px;line-height:1.5}
+.m-slot{display:none;font-size:10px;letter-spacing:1px;font-weight:600;text-transform:uppercase;color:var(--soft)}
+.m-actions{flex:none;display:flex;gap:2px;opacity:.55}
+.plan-row:hover .m-actions,.m-actions:focus-within{opacity:1}
+.m-actions a,.m-actions button{display:grid;place-items:center;width:32px;height:32px;padding:0;border-radius:50%;background:none;color:var(--slate)}
+.m-actions a:hover{background:var(--butter-light);color:var(--peach-deep)}
+.m-actions button:hover{background:var(--err-bg);color:var(--err)}
+.m-actions svg{width:18px;height:18px;fill:currentColor}
+@media (max-width:760px){
+  main.wide{padding-left:16px;padding-right:16px}
+  .plan-head{display:none}
+  .plan-row{grid-template-columns:1fr}
+  .plan-day{flex-direction:row;justify-content:flex-start;align-items:baseline;gap:10px;padding:10px 14px 2px}
+  .plan-cell{border-left:0;padding:4px 10px}
+  .m-slot{display:block}
+  .plan-none{display:none}
+  .m-actions{opacity:1}
 }

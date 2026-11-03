@@ -23,10 +23,10 @@ MIJOTE_DATABASE_URL=postgres://... go run .
 Every API change updates both files in the same commit.
 
 Other routes: `GET /invite/<code>` (public invitation page) and the web admin under
-`/admin/` (setup wizard on first start; menu *Accueil*: upcoming meals as cards, editable;
+`/admin/` (setup wizard on first start; menu *Accueil*: upcoming meals as a compact plan, editable;
 *Recettes*: recipes, tags, usage statistics; *Utilisateurs*: accounts, invitations, sessions, login
 journal; *Système*: instance figures, versions, memory/CPU, database and image directory sizes;
-*Mon profil*: password, 2FA, API tokens).
+*Profil admin*: password, 2FA, API tokens).
 Security model: `requirements.md` §13. Lost 2FA phone: `mijote reset-2fa <username>`.
 
 ## Database migrations

@@ -37,11 +37,13 @@ func dayTitle(d, today time.Time) string {
 	return frWeekdays[d.Weekday()]
 }
 
+// mealDay is one row of the plan: a day with its lunch and dinner.
 type mealDay struct {
-	Label string // "Demain"
-	Date  string // "4 novembre 2026"
-	Today bool
-	Meals []store.MealListItem
+	Label  string // "Demain"
+	Date   string // "4 novembre 2026"
+	Today  bool
+	Lunch  *store.MealListItem
+	Dinner *store.MealListItem
 }
 
 type homePage struct {
@@ -73,20 +75,27 @@ func (a *Admin) home(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p := homePage{Past: f.Past, UserID: f.UserID, Users: users, Count: len(list), More: more, MaxRows: store.MealListMaxRows}
-	for _, m := range list {
-		if n := len(p.Days); n == 0 || !p.Days[n-1].Meals[0].Date.Equal(m.Date) {
+	var last time.Time
+	for i := range list {
+		m := &list[i]
+		if len(p.Days) == 0 || !last.Equal(m.Date) {
 			full := frDay(m.Date)
 			p.Days = append(p.Days, mealDay{Label: dayTitle(m.Date, today), Date: full[len(frWeekdays[m.Date.Weekday()])+1:],
 				Today: m.Date.Equal(today)})
+			last = m.Date
 		}
 		d := &p.Days[len(p.Days)-1]
-		d.Meals = append(d.Meals, m)
+		if m.Meal == "lunch" {
+			d.Lunch = m
+		} else {
+			d.Dinner = m
+		}
 	}
 	title := "Prochains repas"
 	if f.Past {
 		title = "Repas passés"
 	}
-	a.render(w, r, "home", http.StatusOK, view{Title: title, Nav: "home", Data: p})
+	a.render(w, r, "home", http.StatusOK, view{Title: title, Nav: "home", Wide: true, Data: p})
 }
 
 // oldMealsPage keeps the former meal list address working.

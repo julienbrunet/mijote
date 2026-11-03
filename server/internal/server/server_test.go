@@ -1169,7 +1169,7 @@ func TestAdminHomeSystemAndNavigation(t *testing.T) {
 		"/admin/sessions":      {`aria-current="page">Sessions</a>`},
 		"/admin/journal":       {`aria-current="page">Journal des connexions</a>`},
 		"/admin/system":        {`aria-current="page">Système</a>`, "1.2.3", "Base de données", "Dossier des images"},
-		"/admin/account":       {`aria-current="page">Mon profil</a>`, `href="/admin/tokens"`},
+		"/admin/account":       {`aria-current="page">Profil admin</a>`, `href="/admin/tokens"`},
 		"/admin/tokens":        {`aria-current="page">Jetons d&#39;API</a>`},
 	} {
 		res, page := web.do("GET", path, "", "")

@@ -88,7 +88,11 @@ var funcs = template.FuncMap{
 		}
 		return *s
 	},
-	"day":   func(t time.Time) string { return t.Format("02/01/2006") },
+	"day": func(t time.Time) string { return t.Format("02/01/2006") },
+	// mealrow packs a meal with what its row needs (past list, CSRF token).
+	"mealrow": func(m *store.MealListItem, past bool, csrf string) map[string]any {
+		return map[string]any{"M": m, "Past": past, "CSRF": csrf}
+	},
 	"bytes": formatBytes,
 	"dec":   func(v float64) string { return strings.Replace(strconv.FormatFloat(v, 'f', 2, 64), ".", ",", 1) },
 	"asset": func(name string) string { return "/admin/" + name + "?v=" + strings.Trim(staticFiles[name].etag, `"`) },
@@ -287,7 +291,7 @@ var navigation = []navItem{
 		{Key: "journal", Label: "Journal des connexions", Href: "/admin/journal"},
 	}},
 	{Key: "system", Label: "Système", Href: "/admin/system"},
-	{Key: "profile", Label: "Mon profil", Href: "/admin/account", Subs: []navItem{
+	{Key: "profile", Label: "Profil admin", Href: "/admin/account", Subs: []navItem{
 		{Key: "account", Label: "Mon compte", Href: "/admin/account"},
 		{Key: "tokens", Label: "Jetons d'API", Href: "/admin/tokens"},
 	}},
@@ -317,6 +321,7 @@ type view struct {
 	CSRF   string
 	User   *store.User
 	Data   any
+	Wide   bool // the page uses the whole width of the screen
 
 	// Filled by render.
 	Navigation []navItem

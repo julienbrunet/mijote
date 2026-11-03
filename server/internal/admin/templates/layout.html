@@ -11,15 +11,14 @@
 <script src="{{asset "admin.js"}}" defer></script>
 </head>
 <body>
-<header class="top{{if not .User}} plain{{end}}">
-<div class="brandrow"><a class="brand" href="/admin/"><img class="logo" src="{{asset "logo.svg"}}" alt="" width="48" height="48"><img class="wordmark" src="{{asset "wordmark.svg"}}" alt="Mijote" width="102" height="34"><small>Admin</small></a></div>
-{{if .User}}<div class="corner"><a href="/admin/account" title="Mon profil ({{.User.DisplayName}})" aria-label="Mon profil" {{if eq .Section.Key "profile"}}class="on"{{end}}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 12a4.5 4.5 0 1 0 0-9 4.5 4.5 0 0 0 0 9zm0 2.2c-3 0-9 1.5-9 4.5V21h18v-2.3c0-3-6-4.5-9-4.5z"/></svg></a></div>
-<nav class="main" aria-label="Menu principal">
+<header class="top">
+<div class="brandrow"><a class="brand" href="/admin/"><img class="logo" src="{{asset "logo.svg"}}" alt="" width="40" height="40"><img class="wordmark" src="{{asset "wordmark.svg"}}" alt="Mijote" width="84" height="28"><small>Admin</small></a></div>
+{{if .User}}<nav class="main" aria-label="Menu principal">
 {{range .Navigation}}<a href="{{.Href}}" {{if eq .Key $.Section.Key}}class="on" aria-current="page"{{end}}>{{.Label}}</a>
 {{end}}<form class="inline" method="post" action="/admin/logout"><input type="hidden" name="csrf" value="{{.CSRF}}"><button class="link">Déconnexion</button></form>
 </nav>{{end}}
 </header>
-<main>
+<main{{if .Wide}} class="wide"{{end}}>
 <h1>{{.Title}}</h1>
 {{with .Section.Subs}}<nav class="tabs sub" aria-label="{{$.Section.Label}}">{{range .}}<a href="{{.Href}}" {{if eq .Key $.Nav}}class="on" aria-current="page"{{end}}>{{.Label}}</a>{{end}}</nav>{{end}}
 {{if .Error}}<p class="error">{{.Error}}</p>{{end}}

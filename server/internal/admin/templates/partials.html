@@ -8,3 +8,16 @@
 <div class="meta">{{with .DishType}}<span class="dish dish-{{.}}">{{dish .}}</span>{{end}}{{with .Minutes}}<span>{{.}} min</span>{{end}}{{if .Title}}<span class="badge">repas libre</span>{{end}}{{if .Archived}}<span class="badge off">recette archivée</span>{{end}}{{if .Locked}}<span class="badge" title="Choisi à la main : une nouvelle génération le conserve">fixé</span>{{end}}</div>
 <div class="by" title="Planifié ou modifié en dernier le {{date .PlannedAt}}">{{with .PlannedBy}}Par {{.}} · {{end}}{{date .PlannedAt}}</div>
 </div>{{end}}
+
+{{/* Compact meal of the home page plan: thumbnail, title, tags and actions on one line. */}}
+{{define "mealrow"}}{{with .M}}<div class="m{{if not (or .RecipeID .Title)}} empty{{end}}">
+{{if .ImagePath}}<img class="m-thumb" src="/admin/recipes/{{deref .RecipeID}}/image?v={{.Version}}" alt="" width="44" height="44" loading="lazy">{{else}}<span class="m-thumb" aria-hidden="true">{{if .Title}}📝{{else}}{{emoji .DishType}}{{end}}</span>{{end}}
+<div class="m-body"><span class="m-slot">{{if eq .Meal "lunch"}}Midi{{else}}Soir{{end}}</span>
+{{if .RecipeID}}<a class="m-title" href="/admin/recipes/{{deref .RecipeID}}" title="{{deref .RecipeTitle}}">{{deref .RecipeTitle}}</a>
+{{else if .Title}}<span class="m-title" title="{{deref .Title}}">{{deref .Title}}</span>
+{{else}}<span class="m-title">Aucune recette ne convenait</span>{{end}}
+<div class="m-meta">{{with .DishType}}<span class="dish dish-{{.}}">{{dish .}}</span>{{end}}{{with .Minutes}}<span>{{.}} min</span>{{end}}{{if .Title}}<span class="badge">repas libre</span>{{end}}{{if .Archived}}<span class="badge off">recette archivée</span>{{end}}{{if .Locked}}<span class="badge" title="Choisi à la main : une nouvelle génération le conserve">fixé</span>{{end}}<span title="Planifié ou modifié en dernier le {{date .PlannedAt}}">{{with .PlannedBy}}par {{.}}{{else}}{{date .PlannedAt}}{{end}}</span></div>
+</div>
+{{if not $.Past}}<div class="m-actions"><a href="/admin/meals/{{.ID}}" title="Modifier ce repas" aria-label="Modifier ce repas"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17.25V21h3.75L17.8 9.94l-3.75-3.75L3 17.25zM20.7 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg></a>
+<form method="post" action="/admin/meals/{{.ID}}/delete" data-confirm="Retirer ce repas du menu ?"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button title="Retirer ce repas" aria-label="Retirer ce repas"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 19a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg></button></form></div>{{end}}
+</div>{{end}}{{end}}
