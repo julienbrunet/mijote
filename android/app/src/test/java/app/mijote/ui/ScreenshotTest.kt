@@ -172,7 +172,7 @@ class ScreenshotTest {
     @Test
     fun homeRecipesTab() = paparazzi.snapshot {
         MijoteTheme {
-            HomeScreen(User("u1", "julien", "Julien", "admin"), onLogout = {}, tab = Tab.RECIPES, onAddRecipe = {}, recipes = {
+            HomeScreen(User("u1", "julien", "Julien", "admin"), onLogout = {}, tab = Tab.RECIPES, onAddRecipe = {}, onFilterRecipes = {}, filterCount = 2, recipes = {
                 RecipesTab(app.mijote.RecipesState("", listOf(
                     app.mijote.data.RecipeSummary("r1", "Bowl au chèvre pané & crudités", "vegetarian", 15, null, listOf("Bowl")),
                     app.mijote.data.RecipeSummary("r2", "Bowl surimi & tzatziki", "fish", 16, null, listOf("Bowl")),

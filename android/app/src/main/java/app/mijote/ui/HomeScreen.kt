@@ -77,8 +77,11 @@ fun HomeScreen(
     tab: Tab = Tab.MENUS,
     onTab: (Tab) -> Unit = {},
     refreshing: Boolean = false,
-    /** Adds a recipe: shown as a round "+" next to the navigation on the Recipes tab (members only). */
+    /** Adds a recipe: a round "+" left of the navigation on the Recipes tab (members only). */
     onAddRecipe: (() -> Unit)? = null,
+    /** Opens the recipe filters: a round funnel right of the navigation on the Recipes tab. */
+    onFilterRecipes: (() -> Unit)? = null,
+    filterCount: Int = 0,
     onRefresh: () -> Unit = {},
     recipes: @Composable () -> Unit = {},
     generate: @Composable () -> Unit = {},
@@ -92,7 +95,8 @@ fun HomeScreen(
         Box(Modifier.fillMaxSize()) {
             if (tab == Tab.RECIPES) recipes() else generate()
             BottomBar(tab, availableTabs, Modifier.align(Alignment.BottomEnd), onTab,
-                onAdd = onAddRecipe.takeIf { tab == Tab.RECIPES && canEdit })
+                onAdd = onAddRecipe.takeIf { tab == Tab.RECIPES && canEdit },
+                onFilter = onFilterRecipes.takeIf { tab == Tab.RECIPES }, filterCount = filterCount)
         }
         return
     }
@@ -275,6 +279,8 @@ private fun UserButton(onPreferences: () -> Unit) {
 private fun BottomBar(
     selected: Tab, tabs: List<Tab> = Tab.entries, modifier: Modifier = Modifier, onSelect: (Tab) -> Unit,
     onAdd: (() -> Unit)? = null,
+    onFilter: (() -> Unit)? = null,
+    filterCount: Int = 0,
 ) {
     val icons = mapOf(Tab.MENUS to Icons.Filled.Home, Tab.RECIPES to Icons.Filled.Search,
         Tab.GENERATE to ImageVector.vectorResource(app.mijote.R.drawable.ic_meal_idea))
@@ -309,14 +315,21 @@ private fun BottomBar(
                 }
             }
         }
-        // "+" at the bottom right, as high as the bar, with an icon the size of the tab icons.
-        if (onAdd != null) Box(
-            Modifier.align(Alignment.CenterEnd).padding(end = 20.dp).size(60.dp)
-                .shadow(20.dp, CircleShape, ambientColor = Color.Black, spotColor = Color.Black)
-                .background(Sunny.Card, CircleShape).border(3.dp, Sunny.PeachDeep, CircleShape)
-                .clip(CircleShape).clickable(onClickLabel = "Nouvelle recette", onClick = onAdd),
-            contentAlignment = Alignment.Center,
-        ) { Icon(Icons.Filled.Add, contentDescription = "Nouvelle recette", tint = Sunny.PeachDeep, modifier = Modifier.size(24.dp)) }
+        // Round buttons on each side of the bar, as high as it, with icons the size of the tab icons:
+        // "+" on the left, the filters (with the number of active ones) on the right.
+        if (onAdd != null) RoundBarButton("Nouvelle recette", Modifier.align(Alignment.CenterStart).padding(start = 20.dp), onAdd) {
+            Icon(Icons.Filled.Add, contentDescription = "Nouvelle recette", tint = Sunny.PeachDeep, modifier = Modifier.size(24.dp))
+        }
+        if (onFilter != null) Box(Modifier.align(Alignment.CenterEnd).padding(end = 20.dp)) {
+            RoundBarButton("Filtres", Modifier, onFilter) {
+                Icon(ImageVector.vectorResource(app.mijote.R.drawable.ic_filter), contentDescription = "Filtres",
+                    tint = Sunny.PeachDeep, modifier = Modifier.size(24.dp))
+            }
+            if (filterCount > 0) Box(
+                Modifier.align(Alignment.TopEnd).size(22.dp).background(Sunny.PeachDeep, CircleShape).border(2.dp, Sunny.Card, CircleShape),
+                contentAlignment = Alignment.Center,
+            ) { Text("$filterCount", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White) }
+        }
     }
 }
 
@@ -355,4 +368,15 @@ private fun mealUi(s: MenuSlot): MealUi {
     }
     return MealUi(if (s.meal == "lunch") "Midi" else "Soir", s.title ?: s.recipe?.title ?: "Aucune recette disponible",
         dish, s.recipe?.minutes, picture, s.locked, id = s.id, recipeId = s.recipe?.id, image = s.recipe?.image, manual = s.manual)
+}
+
+@Composable
+private fun RoundBarButton(label: String, modifier: Modifier, onClick: () -> Unit, icon: @Composable () -> Unit) {
+    Box(
+        modifier.size(60.dp)
+            .shadow(20.dp, CircleShape, ambientColor = Color.Black, spotColor = Color.Black)
+            .background(Sunny.Card, CircleShape).border(3.dp, Sunny.PeachDeep, CircleShape)
+            .clip(CircleShape).clickable(onClickLabel = label, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) { icon() }
 }

@@ -72,6 +72,7 @@ class MainActivity : ComponentActivity() {
             val editor by vm.editor.collectAsStateWithLifecycle()
             val admin by vm.admin.collectAsStateWithLifecycle()
             // The recipe (id, title) the "plan on a day" dialog is open for.
+            var filterSheet by remember { mutableStateOf(false) }
             var planning by remember { mutableStateOf<Pair<String, String>?>(null) }
             MijoteTheme { CompositionLocalProvider(LocalImageLoader provides { path -> vm.image(path) }) {
                 UpdateDialog(update, vm.currentVersion, onInstall = vm::installUpdate, onDismiss = vm::dismissUpdate)
@@ -154,6 +155,7 @@ class MainActivity : ComponentActivity() {
                                 onRenameMeal = { meal, title -> vm.renameMeal(meal.id, title) },
                                 tab = tab, onTab = vm::selectTab,
                                 onAddRecipe = { vm.editRecipe(new = true) },
+                                onFilterRecipes = { filterSheet = true }, filterCount = recipes.filters.count,
                                 refreshing = menu.refreshing, onRefresh = { vm.loadMenu(manual = true) },
                                 recipes = {
                                     RecipesTab(recipes, canWrite = s.user.canWrite,
@@ -163,6 +165,7 @@ class MainActivity : ComponentActivity() {
                                         onRefresh = { vm.refreshRecipes() },
                                         onPreferences = vm::openPreferences,
                                         onFilters = vm::setRecipeFilters,
+                                        sheetOpen = filterSheet, onSheet = { filterSheet = it },
                                         working = menu.working != null)
                                 },
                             ) {

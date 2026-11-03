@@ -42,8 +42,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 
 /**
- * "Recettes" tab: search by title or tag, a filter button (with the number of active filters)
- * opening a sheet, the active filters as removable pills and the active recipes (archived ones are left
+ * "Recettes" tab: search by title or tag, a filter sheet (opened from the funnel next to the navigation), the active filters as removable pills and the active recipes (archived ones are left
  * out). Each card can plan its recipe on a day; the "+" to add a recipe sits next to the navigation.
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -58,14 +57,16 @@ fun RecipesTab(
     onRefresh: () -> Unit = {},
     onPreferences: () -> Unit = {},
     onFilters: (RecipeFilters) -> Unit = {},
+    /** The filter sheet is opened from the funnel next to the navigation (HomeScreen). */
+    sheetOpen: Boolean = false,
+    onSheet: (Boolean) -> Unit = {},
 ) {
     val list = state.shown
     val filters = state.filters
-    var sheet by remember { mutableStateOf(false) }
-    if (sheet) {
-        ModalBottomSheet(onDismissRequest = { sheet = false }, containerColor = Sunny.Card) {
+    if (sheetOpen) {
+        ModalBottomSheet(onDismissRequest = { onSheet(false) }, containerColor = Sunny.Card) {
             RecipeFiltersSheet(filters, tagsOf(state.recipes.orEmpty(), filters), state.recipes.orEmpty(),
-                onChange = onFilters, onDone = { sheet = false })
+                onChange = onFilters, onDone = { onSheet(false) })
         }
     }
     Box(Modifier.fillMaxSize()) {
@@ -74,10 +75,7 @@ fun RecipesTab(
                 item {
                     // Same header as the other tabs, with the search, the filter button and the active filters.
                     HomeHeader("Recettes", list?.let { subtitle(it.size, state.query.isNotBlank(), filters.count) }, onPreferences) {
-                        Row(Modifier.fillMaxWidth().padding(top = 18.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Box(Modifier.weight(1f)) { SearchField(state.query, onQuery) }
-                            FilterButton(filters.count) { sheet = true }
-                        }
+                        Box(Modifier.fillMaxWidth().padding(top = 18.dp)) { SearchField(state.query, onQuery) }
                         if (filters.count > 0) ActiveFilters(filters, onFilters)
                     }
                 }
@@ -127,21 +125,6 @@ private fun tagsOf(recipes: List<RecipeSummary>, f: RecipeFilters): List<String>
     val counts = recipes.flatMap { it.tags }.groupingBy { it.lowercase() }.eachCount()
     val top = counts.entries.sortedWith(compareByDescending<Map.Entry<String, Int>> { it.value }.thenBy { it.key }).take(20).map { it.key }
     return (top + f.tags.map { it.lowercase() }).distinct()
-}
-
-@Composable
-private fun FilterButton(count: Int, onClick: () -> Unit) {
-    Box(
-        Modifier.padding(start = 10.dp).size(56.dp).clip(Shapes.Control)
-            .background(if (count > 0) Sunny.PeachDeep else Sunny.ButterLight).clickable(onClickLabel = "Filtres", onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) {
-        Icon(painterResource(app.mijote.R.drawable.ic_filter), contentDescription = "Filtres", tint = if (count > 0) Color.White else Sunny.Ink)
-        if (count > 0) Box(
-            Modifier.align(Alignment.TopEnd).padding(6.dp).size(18.dp).background(Color.White, CircleShape),
-            contentAlignment = Alignment.Center,
-        ) { Text("$count", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Sunny.PeachDeep) }
-    }
 }
 
 /** The active filters as pills; touching one removes it. */
@@ -214,7 +197,7 @@ private fun Group(label: String, options: List<Pair<String, String>>, selected: 
 private fun SearchField(query: String, onQuery: (String) -> Unit) {
     TextField(
         value = query, onValueChange = onQuery, singleLine = true,
-        placeholder = { Text("Rechercher…", maxLines = 1) },
+        placeholder = { Text("Rechercher un titre, un tag…", maxLines = 1) },
         leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null, tint = Sunny.InkSoft) },
         trailingIcon = {
             if (query.isNotEmpty()) IconButton(onClick = { onQuery("") }) {
