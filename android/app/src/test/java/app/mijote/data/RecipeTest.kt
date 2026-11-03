@@ -63,4 +63,21 @@ class RecipeTest {
         val users = parseAccounts(JSONObject("""{"users":[{"id":"u1","username":"lea","displayName":"Léa","role":"member","disabled":true}]}"""))
         assertEquals(true, users[0].disabled)
     }
+
+    @Test
+    fun filtersCombineGroupsAndChoices() {
+        val veg = RecipeSummary("1", "Soupe", "vegetarian", 20, null, listOf("Hiver"), listOf("dinner"), listOf("winter"))
+        val fish = RecipeSummary("2", "Saumon", "fish", 45, null, emptyList(), listOf("lunch", "dinner"))
+        val meat = RecipeSummary("3", "Poulet", "meat", null, null, listOf("four"), listOf("lunch"), listOf("summer"))
+        val all = listOf(veg, fish, meat)
+        fun ids(f: RecipeFilters) = all.filter(f::matches).map { it.id }
+        assertEquals(listOf("1", "2", "3"), ids(RecipeFilters()))
+        assertEquals(listOf("1", "2"), ids(RecipeFilters(dishTypes = setOf("vegetarian", "fish"))))
+        assertEquals(listOf("1"), ids(RecipeFilters(dishTypes = setOf("vegetarian", "fish"), durations = setOf("quick"))))
+        assertEquals(listOf("1", "3"), ids(RecipeFilters(durations = setOf("quick")))) // no time counts as quick
+        assertEquals(listOf("2", "3"), ids(RecipeFilters(meals = setOf("lunch"))))
+        assertEquals(listOf("1", "2"), ids(RecipeFilters(seasons = setOf("winter")))) // no season = all year
+        assertEquals(listOf("1"), ids(RecipeFilters(tags = setOf("hiver"))))
+        assertEquals(3, RecipeFilters(dishTypes = setOf("fish"), meals = setOf("lunch"), tags = setOf("four")).count)
+    }
 }

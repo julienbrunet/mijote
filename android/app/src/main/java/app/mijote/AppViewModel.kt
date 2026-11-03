@@ -23,6 +23,7 @@ import app.mijote.data.Account
 import app.mijote.data.Invitations
 import app.mijote.data.NewInvitation
 import app.mijote.data.RecipeDraft
+import app.mijote.data.RecipeFilters
 import app.mijote.data.RecipeSummary
 import app.mijote.ui.Tab
 import android.widget.Toast
@@ -95,7 +96,11 @@ data class RecipesState(
     val query: String = "", val recipes: List<RecipeSummary>? = null, val loading: Boolean = false, val error: String? = null,
     /** A pull-to-refresh is running. */
     val refreshing: Boolean = false,
-)
+    val filters: RecipeFilters = RecipeFilters(),
+) {
+    /** The search results that pass the filters. */
+    val shown: List<RecipeSummary>? get() = recipes?.filter(filters::matches)
+}
 
 /** Recipe editor: [id] is null for a new recipe. */
 data class EditorState(val id: String?, val draft: RecipeDraft, val saving: Boolean = false, val error: String? = null)
@@ -448,6 +453,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun selectTab(t: Tab) {
         _tab.value = t
         if (t == Tab.RECIPES && _recipes.value.recipes == null) searchRecipes(_recipes.value.query)
+    }
+
+    fun setRecipeFilters(f: RecipeFilters) {
+        _recipes.update { it.copy(filters = f) }
     }
 
     private var searchJob: kotlinx.coroutines.Job? = null

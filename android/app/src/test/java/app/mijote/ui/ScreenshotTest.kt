@@ -158,6 +158,31 @@ class ScreenshotTest {
     }
 
     @Test
+    fun recipesTabFiltered() = paparazzi.snapshot {
+        MijoteTheme {
+            RecipesTab(app.mijote.RecipesState("", listOf(
+                app.mijote.data.RecipeSummary("r1", "Gratin de pâtes aux légumes", "vegetarian", 25, null, listOf("four", "hiver")),
+                app.mijote.data.RecipeSummary("r2", "Pâtes au saumon", "fish", 20, null, emptyList()),
+                app.mijote.data.RecipeSummary("r3", "Velouté de potimarron", "vegetarian", 30, null, listOf("soupe")),
+            ), filters = app.mijote.data.RecipeFilters(dishTypes = setOf("vegetarian"), durations = setOf("quick"))),
+                canWrite = true, onQuery = {}, onOpen = {}, onPlan = {}, onNew = {})
+        }
+    }
+
+    @Test
+    fun recipeFiltersSheet() = paparazzi.snapshot {
+        MijoteTheme {
+            androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.background(Sunny.Card)) {
+                RecipeFiltersSheet(app.mijote.data.RecipeFilters(dishTypes = setOf("vegetarian"), durations = setOf("quick")),
+                    listOf("four", "hiver", "soupe"), listOf(
+                        app.mijote.data.RecipeSummary("r1", "Gratin", "vegetarian", 25, null, listOf("four")),
+                        app.mijote.data.RecipeSummary("r2", "Saumon", "fish", 20, null, emptyList())),
+                    onChange = {}, onDone = {})
+            }
+        }
+    }
+
+    @Test
     fun recipeEditor() = paparazzi.snapshot {
         MijoteTheme {
             RecipeEditorScreen(app.mijote.EditorState(null, app.mijote.data.RecipeDraft(title = "Quiche lorraine", dishType = "meat",

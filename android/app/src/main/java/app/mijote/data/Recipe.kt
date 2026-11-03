@@ -59,14 +59,43 @@ private fun JSONArray?.strings(): List<String> = (0 until (this?.length() ?: 0))
 /** A recipe in the list of the Recipes tab. */
 data class RecipeSummary(
     val id: String, val title: String, val dishType: String, val minutes: Int?, val image: String?, val tags: List<String>,
+    val mealTypes: List<String> = listOf("lunch", "dinner"), val seasons: List<String> = emptyList(),
 )
+
+/** Longest time of a "quick" recipe in the filters; recipes without a time count as quick, as in generation. */
+const val QUICK_MINUTES = 30
+
+/**
+ * Filters of the Recipes tab, applied on the device to the search results. Within a group the
+ * choices add up (meat or fish); groups narrow each other (vegetarian and quick). A recipe without
+ * season suits every season.
+ */
+data class RecipeFilters(
+    val dishTypes: Set<String> = emptySet(),
+    val meals: Set<String> = emptySet(),
+    val durations: Set<String> = emptySet(), // "quick", "long"
+    val seasons: Set<String> = emptySet(),
+    val tags: Set<String> = emptySet(),
+) {
+    val count get() = dishTypes.size + meals.size + durations.size + seasons.size + tags.size
+
+    fun matches(r: RecipeSummary): Boolean {
+        val quick = (r.minutes ?: 0) <= QUICK_MINUTES
+        return (dishTypes.isEmpty() || r.dishType in dishTypes) &&
+            (meals.isEmpty() || r.mealTypes.any { it in meals }) &&
+            (durations.isEmpty() || (if (quick) "quick" else "long") in durations) &&
+            (seasons.isEmpty() || r.seasons.isEmpty() || r.seasons.any { it in seasons }) &&
+            (tags.isEmpty() || r.tags.any { t -> tags.any { it.equals(t, ignoreCase = true) } })
+    }
+}
 
 fun parseRecipeList(o: JSONObject): List<RecipeSummary> {
     val a = o.optJSONArray("recipes") ?: JSONArray()
     return (0 until a.length()).map {
         val r = a.getJSONObject(it)
         RecipeSummary(r.getString("id"), r.getString("title"), r.optString("dishType"),
-            r.intOrNull("totalMinutes") ?: r.intOrNull("prepMinutes"), r.stringOrNull("image"), r.optJSONArray("tags").strings())
+            r.intOrNull("totalMinutes") ?: r.intOrNull("prepMinutes"), r.stringOrNull("image"), r.optJSONArray("tags").strings(),
+            r.optJSONArray("mealTypes").strings().ifEmpty { listOf("lunch", "dinner") }, r.optJSONArray("seasons").strings())
     }
 }
 

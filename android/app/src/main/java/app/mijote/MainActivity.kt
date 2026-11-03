@@ -162,6 +162,7 @@ class MainActivity : ComponentActivity() {
                                         onNew = { vm.editRecipe(new = true) },
                                         onRefresh = { vm.refreshRecipes() },
                                         onPreferences = vm::openPreferences,
+                                        onFilters = vm::setRecipeFilters,
                                         working = menu.working != null)
                                 },
                             ) {
