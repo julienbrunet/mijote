@@ -122,7 +122,18 @@ class Api(private val baseUrl: String, private val http: Http = UrlConnectionHtt
         parseGenerated(call("POST", "/api/v1/menu/generate", JSONObject()
             .put("start", start.toString()).put("meals", meals).put("plan", plan.code), bearer = access))
 
-    /** Replaces the recipe of a planned meal by another suitable one (FR-ADJ-01). */
+    fun previewMenu(access: String, start: java.time.LocalDate, meals: Int, plan: MealPlan): MenuProposal =
+        MenuProposal.parse(call("POST", "/api/v1/menu/preview", JSONObject()
+            .put("start", start.toString()).put("meals", meals).put("plan", plan.code), bearer = access))
+
+    fun confirmMenu(access: String, proposal: MenuProposal): List<MenuSlot> =
+        parseGenerated(call("POST", "/api/v1/menu/confirm", proposal.toJson(), bearer = access))
+
+    fun previewRecipe(access: String, date: java.time.LocalDate, meal: String, slots: List<MenuSlot>, excludeId: String?): MenuRecipe =
+        parseSlot(call("POST", "/api/v1/menu/preview/recipe", JSONObject().put("date", date.toString()).put("meal", meal)
+            .put("slots", proposalSlotsJson(slots)).put("excludeId", excludeId.orEmpty()), bearer = access)).recipe!!
+
+    /** Replaces a recipe in the saved menu, outside the proposal workflow. */
     fun swapSlot(access: String, id: String): MenuSlot =
         parseSlot(call("POST", "/api/v1/menu/slots/$id/swap", bearer = access))
 

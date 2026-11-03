@@ -13,6 +13,8 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.util.LruCache
 import app.mijote.data.Menu
+import app.mijote.data.MenuSlot
+import app.mijote.data.MenuProposal
 import app.mijote.data.RecipeDetail
 import app.mijote.data.PrefsSessionStore
 import app.mijote.data.Session
@@ -71,7 +73,7 @@ data class UiState(
 /** Manual update check from the preferences: [message] tells the result. */
 data class UpdateCheck(val checking: Boolean = false, val message: String? = null)
 
-/** Period just generated, shown on the review screen (step 2 of the generation). */
+/** Period of the unsaved proposal shown on the review screen. */
 data class ReviewPeriod(val from: LocalDate, val to: LocalDate)
 
 data class MenuState(
@@ -80,6 +82,7 @@ data class MenuState(
     val error: String? = null,
     val generated: Int = 0,
     val review: ReviewPeriod? = null,
+    val proposal: MenuProposal? = null,
     /** Slot being changed (swap / remove) or "date|meal" of a meal being added: shows a spinner. */
     val working: String? = null,
     /** A pull-to-refresh is running. */
@@ -391,10 +394,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         _menu.update { it.copy(generating = true, error = null) }
         viewModelScope.launch {
             try {
-                val slots = session.authed { api, access -> api.generateMenu(access, start, meals, plan) }
-                val m = session.authed { api, access -> api.menu(access) }
-                val end = slots.maxOfOrNull { it.date } ?: start
-                _menu.update { MenuState(menu = m, generated = it.generated + 1, review = ReviewPeriod(start, end)) }
+                val proposal = session.authed { api, access -> api.previewMenu(access, start, meals, plan) }
+                _menu.update { it.copy(generating = false, proposal = proposal, review = ReviewPeriod(proposal.from, proposal.to)) }
                 _tab.value = Tab.MENUS
             } catch (e: SessionExpiredException) {
                 _menu.update { it.copy(generating = false) }
@@ -405,9 +406,58 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /** Validates the generated menu: it is already saved, the review just closes. */
+    /** Leaving the review discards its local draft, without touching planned meals. */
     fun closeReview() {
-        _menu.update { it.copy(review = null, error = null) }
+        if (_menu.value.working != null) return
+        _menu.update { it.copy(review = null, proposal = null, error = null) }
+    }
+
+    fun validateReview() {
+        val proposal = _menu.value.proposal ?: return
+        if (_menu.value.working != null) return
+        _menu.update { it.copy(working = "confirm", error = null) }
+        viewModelScope.launch {
+            try {
+                val saved = session.authed { api, access -> api.confirmMenu(access, proposal) }
+                _menu.update { state ->
+                    state.copy(menu = state.menu?.let { menu -> menu.copy(slots =
+                        (menu.slots.filter { it.date < proposal.from || it.date > proposal.to } + saved)
+                            .sortedWith(compareBy<MenuSlot> { it.date }.thenBy { it.meal != "lunch" })) },
+                        proposal = null, review = null, working = null, generated = state.generated + 1)
+                }
+            } catch (e: SessionExpiredException) {
+                _menu.update { it.copy(working = null) }; toLogin("Votre session a expiré : reconnectez-vous.")
+            } catch (e: IOException) {
+                _menu.update { it.copy(working = null, error = errorMessage(e)) }
+            }
+        }
+    }
+
+    private fun editProposal(edit: (MenuProposal) -> MenuProposal) {
+        if (_menu.value.working != null) return
+        _menu.update { state -> state.copy(proposal = state.proposal?.let(edit), error = null) }
+    }
+
+    private fun draftSlot(id: String, edit: (MenuSlot) -> MenuSlot) = editProposal { proposal ->
+        proposal.copy(slots = proposal.slots.map { if (it.id == id) edit(it) else it })
+    }
+
+    private fun draftRecipe(date: LocalDate, meal: String, existing: MenuSlot? = null) {
+        val proposal = _menu.value.proposal ?: return
+        if (_menu.value.working != null) return
+        _menu.update { it.copy(working = existing?.id ?: "$date|$meal", error = null) }
+        viewModelScope.launch {
+            try {
+                val recipe = session.authed { api, access -> api.previewRecipe(access, date, meal, proposal.slots, existing?.recipe?.id) }
+                val slot = MenuSlot(existing?.id ?: java.util.UUID.randomUUID().toString(), date, meal, recipe, false,
+                    people = existing?.people ?: (_state.value.screen as? Screen.Home)?.user?.people ?: 1)
+                _menu.update { it.copy(proposal = it.proposal?.withSlot(slot), working = null) }
+            } catch (e: SessionExpiredException) {
+                _menu.update { it.copy(working = null) }; toLogin("Votre session a expiré : reconnectez-vous.")
+            } catch (e: IOException) {
+                _menu.update { it.copy(working = null, error = errorMessage(e)) }
+            }
+        }
     }
 
     /** Runs a change of the planned meals, then reloads the menu; [done] is told on success. */
@@ -429,16 +479,29 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /** Another recipe for a planned meal. */
-    fun swapMeal(slotId: String) = change(slotId) { api, access -> api.swapSlot(access, slotId) }
+    fun moveMeal(slotId: String, targetId: String) = editProposal { it.move(slotId, targetId) }
 
-    /** One more meal (lunch or dinner) on a day. */
-    fun addMeal(date: LocalDate, meal: String) = change("$date|$meal") { api, access -> api.addSlot(access, date, meal) }
+    fun swapMeal(slotId: String) {
+        val proposal = _menu.value.proposal
+        if (proposal != null) {
+            proposal.slots.find { it.id == slotId }?.let { draftRecipe(it.date, it.meal, it) }
+        } else change(slotId) { api, access -> api.swapSlot(access, slotId) }
+    }
 
-    fun removeMeal(slotId: String) = change(slotId) { api, access -> api.removeSlot(access, slotId) }
+    fun addMeal(date: LocalDate, meal: String) {
+        if (_menu.value.proposal != null) draftRecipe(date, meal)
+        else change("$date|$meal") { api, access -> api.addSlot(access, date, meal) }
+    }
 
-    /** Number of people of a planned meal, for the whole family (review screen). */
-    fun setMealPeople(slotId: String, people: Int) = change(slotId) { api, access -> api.setSlotPeople(access, slotId, people) }
+    fun removeMeal(slotId: String) {
+        if (_menu.value.proposal != null) editProposal { it.copy(slots = it.slots.filterNot { slot -> slot.id == slotId }) }
+        else change(slotId) { api, access -> api.removeSlot(access, slotId) }
+    }
+
+    fun setMealPeople(slotId: String, people: Int) {
+        if (_menu.value.proposal != null) draftSlot(slotId) { it.copy(people = people.coerceIn(1,20)) }
+        else change(slotId) { api, access -> api.setSlotPeople(access, slotId, people) }
+    }
 
     private var peopleJob: kotlinx.coroutines.Job? = null
 
@@ -448,6 +511,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      */
     fun saveMealPeople(slotId: String, people: Int) {
         _recipe.update { if (it?.slotId == slotId) it.copy(slotPeople = people) else it }
+        if (_menu.value.proposal != null) {
+            setMealPeople(slotId, people)
+            return
+        }
         _menu.update { s -> s.copy(menu = s.menu?.let { m -> m.copy(slots = m.slots.map { if (it.id == slotId) it.copy(people = people) else it }) }) }
         peopleJob?.cancel()
         peopleJob = viewModelScope.launch {
@@ -467,13 +534,44 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      * Plans a recipe ([recipeId]) or a manual meal ([title]) on a day, from the recipe screens or the
      * menus; [replace] overwrites the meal already planned at that time (the dialog warned about it).
      */
-    fun planMeal(date: LocalDate, meal: String, recipeId: String?, title: String?, replace: Boolean) =
-        change("$date|$meal", "Ajouté au menu : ${app.mijote.ui.mealMoment(date, meal)}") { api, access ->
-            api.planSlot(access, date, meal, recipeId, title?.trim(), replace)
+    fun planMeal(date: LocalDate, meal: String, recipeId: String?, title: String?, replace: Boolean) {
+        val proposal = _menu.value.proposal
+        if (proposal == null) {
+            change("$date|$meal", "Ajouté au menu : ${app.mijote.ui.mealMoment(date, meal)}") { api, access ->
+                api.planSlot(access, date, meal, recipeId, title?.trim(), replace)
+            }
+            return
         }
+        if (date < proposal.from || date > proposal.to) {
+            _menu.update { it.copy(error = "Choisissez une date dans la période de la proposition.") }; return
+        }
+        if (title != null) {
+            if (!validDraftTitle(title)) return
+            val existing = proposal.slots.find { it.date == date && it.meal == meal }
+            editProposal { it.withSlot(MenuSlot(existing?.id ?: java.util.UUID.randomUUID().toString(), date, meal, null, true,
+                title = title.trim(), people = existing?.people ?: (_state.value.screen as? Screen.Home)?.user?.people ?: 1)) }
+        } else if (recipeId != null) {
+            val detail = _recipe.value?.recipe
+            if (detail != null && _recipe.value?.id == recipeId) {
+                val existing = proposal.slots.find { it.date == date && it.meal == meal }
+                val recipe = app.mijote.data.MenuRecipe(recipeId, detail.title, detail.dishType, detail.totalMinutes ?: detail.prepMinutes, detail.image)
+                editProposal { it.withSlot(MenuSlot(existing?.id ?: java.util.UUID.randomUUID().toString(), date, meal, recipe, true,
+                    people = existing?.people ?: (_state.value.screen as? Screen.Home)?.user?.people ?: 1)) }
+            }
+        } else draftRecipe(date, meal)
+    }
 
-    /** Changes a planned meal into a manual meal with this title (or renames a manual meal). */
-    fun renameMeal(slotId: String, title: String) = change(slotId) { api, access -> api.updateSlot(access, slotId, null, title.trim()) }
+    private fun validDraftTitle(title: String): Boolean {
+        if (title.trim().codePointCount(0, title.trim().length) in 1..100) return true
+        _menu.update { it.copy(error = "L’intitulé doit contenir entre 1 et 100 caractères.") }
+        return false
+    }
+
+    fun renameMeal(slotId: String, title: String) {
+        if (_menu.value.proposal != null) {
+            if (validDraftTitle(title)) draftSlot(slotId) { it.copy(title = title.trim(), recipe = null, locked = true) }
+        } else change(slotId) { api, access -> api.updateSlot(access, slotId, null, title.trim()) }
+    }
 
     private fun notice(text: String) {
         Toast.makeText(getApplication(), text, Toast.LENGTH_SHORT).show()
@@ -725,6 +823,7 @@ internal fun errorMessage(e: IOException): String = when {
     e !is ApiException -> "Serveur injoignable : vérifiez la connexion et l'adresse."
     e.code == "invalid_invitation" -> "Cette invitation est invalide, déjà utilisée ou expirée : demandez-en une nouvelle."
     e.code == "validation_error" -> e.message ?: "Données refusées par le serveur."
+    e.code == "menu_changed" -> "Le menu enregistré a changé. Cette validation n’a pas appliqué la proposition. Revenez aux idées de repas pour en générer une nouvelle."
     e.code == "not_found" -> "Introuvable : cet élément a peut-être été supprimé entre-temps."
     e.code == "not_mijote" || e.status == 404 -> "Cette adresse ne répond pas comme un serveur Mijote."
     e.code == "invalid_credentials" -> "Identifiant ou mot de passe incorrect."

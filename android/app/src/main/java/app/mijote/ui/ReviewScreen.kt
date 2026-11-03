@@ -1,5 +1,8 @@
 package app.mijote.ui
 
+import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -8,6 +11,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -18,6 +24,18 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.zIndex
+import kotlinx.coroutines.delay
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -26,7 +44,7 @@ import java.time.LocalDate
 
 /**
  * Step 2 of the menu generation: the proposed menu, day by day. Each meal can be opened, changed or removed,
- * and a meal can be added to any day (a lunch next to a dinner…). "Valider" closes the screen: the menu is saved.
+ * and a meal can be added to any day (a lunch next to a dinner…). Only "Valider ce menu" saves the draft.
  */
 @Composable
 fun ReviewScreen(
@@ -42,7 +60,49 @@ fun ReviewScreen(
     onAddManualMeal: (LocalDate, String, String) -> Unit = { _, _, _ -> },
     onRenameMeal: (MealUi, String) -> Unit = { _, _ -> },
     onMealPeople: (MealUi, Int) -> Unit = { _, _ -> },
+    onMoveMeal: (MealUi, MealUi) -> Unit = { _, _ -> },
+    onTab: (Tab) -> Unit = {},
 ) {
+    val scroll = rememberScrollState()
+    val meals = days.flatMap { it.meals }
+    val bounds = remember { mutableMapOf<String, Rect>() }
+    var viewport by remember { mutableStateOf(Rect.Zero) }
+    val footerHeight = with(LocalDensity.current) { 184.dp.toPx() }
+    var dragging by remember { mutableStateOf<MealUi?>(null) }
+    var dragY by remember { mutableFloatStateOf(0f) }
+    var dragStartY by remember { mutableFloatStateOf(0f) }
+    var target by remember { mutableStateOf<MealUi?>(null) }
+    var moving by remember { mutableStateOf<MealUi?>(null) }
+    val currentMove by rememberUpdatedState(onMoveMeal)
+    fun targetAtPointer(): MealUi? = meals.firstOrNull { meal ->
+        meal.id != dragging?.id && bounds[meal.id]?.let { dragY >= it.top && dragY <= it.bottom } == true
+    }
+    LaunchedEffect(dragging) {
+        while (dragging != null) {
+            val edge = 72f
+            val speed = when {
+                dragY < viewport.top + edge -> -18f
+                dragY > viewport.bottom - edge -> 18f
+                else -> 0f
+            }
+            if (speed != 0f) { scroll.scrollBy(speed); target = targetAtPointer() }
+            delay(16)
+        }
+    }
+    moving?.let { source ->
+        AlertDialog(onDismissRequest = { moving = null }, containerColor = Sunny.Card,
+            title = { Text("Déplacer ce repas", color = Sunny.Ink, fontWeight = FontWeight.Bold) },
+            text = {
+                Column(Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState())) {
+                    days.forEach { day -> day.meals.filter { it.id != source.id }.forEach { destination ->
+                        AddChoice("${day.label} · ${day.date} · ${destination.slot}", destination.title) {
+                            moving = null; currentMove(source, destination)
+                        }
+                    } }
+                }
+            },
+            confirmButton = { TextButton(onClick = { moving = null }) { Text("Annuler") } })
+    }
     // Covers of one meal, changed from the discreet "N pers." pill of its card.
     var peopleFor by remember { mutableStateOf<MealUi?>(null) }
     peopleFor?.let { m ->
@@ -72,7 +132,10 @@ fun ReviewScreen(
         MealTitleDialog("", onDismiss = { manualFor = null }) { manualFor = null; onAddManualMeal(day, meal, it) }
     }
     Box(Modifier.fillMaxSize().background(Sunny.Butter)) {
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+        Column(Modifier.fillMaxSize().onGloballyPositioned {
+            val rect = it.boundsInRoot()
+            viewport = Rect(rect.left, rect.top, rect.right, rect.bottom - footerHeight)
+        }.verticalScroll(scroll)) {
             Box(
                 Modifier.fillMaxWidth()
                     .shadow(6.dp, RoundedCornerShape(bottomStart = 40.dp, bottomEnd = 40.dp), ambientColor = Sunny.PeachDeep, spotColor = Sunny.PeachDeep)
@@ -81,16 +144,64 @@ fun ReviewScreen(
                 Column(Modifier.statusBarsPadding().padding(start = 24.dp, end = 24.dp, top = 28.dp, bottom = 26.dp)) {
                     Text("ÉTAPE 2 SUR 2", fontSize = 11.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold, color = Sunny.PeachDeep)
                     Spacer(Modifier.height(6.dp))
-                    ScreenTitle("Votre menu", period, size = 32)
-                    Text("Touchez un repas pour voir la recette, ou le crayon pour le changer.", fontSize = 13.sp,
-                        color = Sunny.InkSoft, modifier = Modifier.padding(top = 10.dp))
+                    ScreenTitle("Proposition de menu", period, size = 30)
+                    Text("Brouillon · pas encore enregistré.", fontSize = 13.sp,
+                        color = Sunny.InkTitle, modifier = Modifier.padding(top = 10.dp))
+
                 }
             }
-            Column(Modifier.padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 130.dp + 16.dp)) {
+            Column(Modifier.padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 220.dp)) {
                 ErrorText(error)
-                days.forEachIndexed { i, day ->
-                    DaySection(day, first = i == 0, working = working, onOpen = onOpenMeal, onEdit = { editing = it },
-                        onPeople = { peopleFor = it }) {
+                days.forEachIndexed { dayIndex, day ->
+                    Row(Modifier.fillMaxWidth().padding(top = if (dayIndex == 0) 18.dp else 34.dp, bottom = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(day.label, fontSize = 19.sp, fontWeight = FontWeight.Bold, color = Sunny.Ink, modifier = Modifier.weight(1f))
+                        Text(day.date.uppercase(), fontSize = 12.sp, color = Sunny.InkTitle)
+                    }
+                    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                        day.meals.forEach { meal ->
+                            key(meal.id) {
+                                var handleTop by remember { mutableFloatStateOf(0f) }
+                                Box(Modifier.fillMaxWidth().onGloballyPositioned { bounds[meal.id] = it.boundsInRoot() }
+                                    .zIndex(if (dragging?.id == meal.id) 1f else 0f)) {
+                                    Row(Modifier.fillMaxWidth().graphicsLayer {
+                                        if (dragging?.id == meal.id) { translationY = dragY - dragStartY; alpha = 0.8f }
+                                    }.then(if (target?.id == meal.id) Modifier.border(2.dp, Sunny.PeachDeep, Shapes.Card) else Modifier),
+                                        verticalAlignment = Alignment.CenterVertically) {
+                                        IconButton(onClick = { moving = meal }, enabled = working == null,
+                                            modifier = Modifier.width(40.dp).height(56.dp)
+                                                .onGloballyPositioned { handleTop = it.boundsInRoot().top }
+                                                .semantics {
+                                                    contentDescription = "Déplacer ${meal.title}"
+                                                    val index = meals.indexOfFirst { it.id == meal.id }
+                                                    customActions = if (working != null) emptyList() else listOfNotNull(
+                                                        if (index > 0) CustomAccessibilityAction("Monter d'un repas") { currentMove(meal, meals[index - 1]); true } else null,
+                                                        if (index < meals.lastIndex) CustomAccessibilityAction("Descendre d'un repas") { currentMove(meal, meals[index + 1]); true } else null)
+                                                }
+                                                .pointerInput(meal.id, working) {
+                                                    if (working == null) detectDragGesturesAfterLongPress(
+                                                        onDragStart = { position -> dragging = meal; dragY = handleTop + position.y; dragStartY = dragY },
+                                                        onDrag = { change, amount -> change.consume(); dragY += amount.y; target = targetAtPointer() },
+                                                        onDragCancel = { dragging = null; target = null },
+                                                        onDragEnd = {
+                                                            val destination = target
+                                                            dragging = null; target = null
+                                                            if (destination != null) currentMove(meal, destination)
+                                                        })
+                                                }) {
+                                            androidx.compose.foundation.Canvas(Modifier.size(18.dp, 24.dp)) {
+                                                for (x in listOf(0.3f, 0.7f)) for (y in listOf(0.2f, 0.5f, 0.8f)) {
+                                                    drawCircle(Sunny.PeachDeep, radius = 2.dp.toPx(), center = androidx.compose.ui.geometry.Offset(size.width * x, size.height * y))
+                                                }
+                                            }
+                                        }
+                                        Box(Modifier.weight(1f)) {
+                                            MealCard(meal, Sunny.Peach, busy = working == meal.id,
+                                                onOpen = { onOpenMeal(meal) }, onEdit = { editing = meal }, onPeople = { peopleFor = meal })
+                                        }
+                                    }
+                                }
+                            }
+                        }
                         day.missing.forEach { meal ->
                             val busy = working == "${day.day}|$meal"
                             AddMealButton(if (meal == "lunch") "Ajouter le midi" else "Ajouter le soir", busy) {
@@ -101,14 +212,16 @@ fun ReviewScreen(
                 }
             }
         }
-        Box(
-            Modifier.align(Alignment.BottomCenter).fillMaxWidth()
-                .background(Sunny.Butter.copy(alpha = 0.96f)).navigationBarsPadding().padding(horizontal = 20.dp, vertical = 14.dp),
-        ) {
-            Column {
-                PrimaryButton("Valider le menu", busy = false, onClick = onValidate)
+        Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().navigationBarsPadding()
+            .padding(start = 20.dp, end = 20.dp, bottom = 96.dp)) {
+            Button(onClick = onValidate, enabled = working == null && dragging == null,
+                shape = Shapes.Control,
+                colors = ButtonDefaults.buttonColors(containerColor = Sunny.PeachDeep, contentColor = Color.White),
+                modifier = Modifier.fillMaxWidth().height(54.dp)) {
+                Text(if (working == "confirm") "Enregistrement…" else "Valider ce menu", fontWeight = FontWeight.Bold, fontSize = 16.sp)
             }
         }
+        BottomBar(Tab.GENERATE, modifier = Modifier.align(Alignment.BottomEnd), onSelect = onTab)
     }
 }
 

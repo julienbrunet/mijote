@@ -183,18 +183,32 @@ func mealsFor(plan string, defaults []string, d time.Time) []string {
 // leaves out are removed (on the last day, slots after the last requested
 // meal are left alone).
 func (s *Store) GenerateMenu(ctx context.Context, userID string, req GenerateRequest) ([]MenuSlot, error) {
+	slots, _, err := s.generateMenu(ctx, userID, req, false)
+	return slots, err
+}
+
+var errPreviewRollback = errors.New("preview: roll back planned meals")
+
+// generateMenu reuses the planner for a non-persistent preview when preview is true.
+func (s *Store) generateMenu(ctx context.Context, userID string, req GenerateRequest, preview bool) ([]MenuSlot, []MenuSlot, error) {
 	if req.Meals < 1 || req.Meals > MaxGeneratedMeals {
-		return nil, invalid("le nombre de repas doit être compris entre 1 et 42")
+		return nil, nil, invalid("le nombre de repas doit être compris entre 1 et 42")
 	}
 	if !slices.Contains([]string{PlanDefault, PlanLunchDinner, PlanLunch, PlanDinner}, req.Plan) {
-		return nil, invalid("formule de repas inconnue")
+		return nil, nil, invalid("formule de repas inconnue")
 	}
-	var out []MenuSlot
+	var out, baseline []MenuSlot
 	err := s.tx(ctx, func(tx pgx.Tx) error {
 		// Locking the settings row serializes concurrent generations.
 		f, err := loadSettings(ctx, tx, true)
 		if err != nil {
 			return err
+		}
+		if preview {
+			baseline, err = menuSlotsIn(ctx, tx, req.Start, req.Start.AddDate(0, 0, maxGenerationDays-1))
+			if err != nil {
+				return err
+			}
 		}
 		recipes, err := planRecipes(ctx, tx)
 		if err != nil {
@@ -281,9 +295,15 @@ func (s *Store) GenerateMenu(ctx context.Context, userID string, req GenerateReq
 			}
 		}
 		out, err = menuSlotsIn(ctx, tx, req.Start, end)
+		if err == nil && preview {
+			return errPreviewRollback
+		}
 		return err
 	})
-	return out, err
+	if errors.Is(err, errPreviewRollback) {
+		err = nil
+	}
+	return out, baseline, err
 }
 
 func planRecipes(ctx context.Context, tx pgx.Tx) ([]menu.Recipe, error) {
