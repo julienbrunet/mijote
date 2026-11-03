@@ -94,11 +94,40 @@ class ScreenshotTest {
     }
 
     @Test
+    fun homeWithNotifications() = paparazzi.snapshot {
+        MijoteTheme { HomeScreen(User("u1", "parent", "Parent", "member"), onLogout = {}, days = sampleDays,
+            unreadNotifications = 2, onNotifications = {}) }
+    }
+
+    @Test
+    fun recipeReadonlyWish() = paparazzi.snapshot {
+        MijoteTheme {
+            RecipeScreen(app.mijote.RecipeState("r1", "Gratin de pâtes aux légumes",
+                app.mijote.data.RecipeDetail("r1", "Gratin de pâtes aux légumes", null, "vegetarian", 15, 25, 40, null,
+                    listOf(app.mijote.data.IngredientLine(100.0,"g","pâtes",null)), listOf("Cuire les pâtes, puis enfourner.")),
+                wish = app.mijote.data.WishStatus(false,5,1,4,java.time.Instant.parse("2026-11-08T23:00:00Z"))),
+                people = 1, onBack = {}, onWish = {})
+        }
+    }
+
+    @Test
+    fun notifications() = paparazzi.snapshot {
+        val now = java.time.Instant.parse("2026-11-03T18:00:00Z")
+        MijoteTheme {
+            NotificationsScreen(app.mijote.NotificationsState(unreadCount = 1, items = listOf(
+                app.mijote.data.RecipeNotification("n1","Léa","r1","Gratin de pâtes aux légumes",now,null),
+                app.mijote.data.RecipeNotification("n2","Max","r2","Poulet au pesto et tomates rôties",now.minusSeconds(3600),now))),
+                onBack = {}, onRefresh = {}, onMore = {}, onOpen = {}, onRead = {}, onDelete = {})
+        }
+    }
+
+    @Test
     fun preferences() = paparazzi.snapshot {
         MijoteTheme {
             PreferencesScreen(User("u1", "julien", "Julien", "admin", people = 4), "https://mesrepas.example.fr", "0.1.31",
                 checkingUpdate = false, updateMessage = "L'application est à jour.",
-                onPeople = {}, onCheckUpdate = {}, onChangeServer = {}, onLogout = {}, onBack = {})
+                onPeople = {}, onCheckUpdate = {}, onChangeServer = {}, onLogout = {}, onBack = {},
+                wishSettings = app.mijote.WishSettingsState(limit = 5), notificationCount = 2)
         }
     }
 

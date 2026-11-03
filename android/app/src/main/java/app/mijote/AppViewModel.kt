@@ -6,6 +6,8 @@ import android.os.Build
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import app.mijote.data.Api
+import app.mijote.data.WishStatus
+import app.mijote.data.RecipeNotification
 import app.mijote.data.ApiException
 import app.mijote.data.AppRelease
 import app.mijote.data.MealPlan
@@ -95,7 +97,15 @@ data class RecipeState(
     /** The planned meal the recipe was opened from: its number of people is shown and saved. */
     val slotId: String? = null,
     val slotPeople: Int? = null,
+    val wish: WishStatus? = null, val wishing: Boolean = false, val wishError: String? = null, val wishRevision: Int = 0,
 )
+
+data class NotificationsState(
+    val items: List<RecipeNotification> = emptyList(), val unreadCount: Int = 0,
+    val open: Boolean = false, val loading: Boolean = false, val hasMore: Boolean = false,
+    val working: String? = null, val error: String? = null,
+)
+data class WishSettingsState(val limit: Int? = null, val busy: Boolean = false, val error: String? = null)
 
 /** Recipes tab: [recipes] is null until the first answer. */
 data class RecipesState(
@@ -139,6 +149,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _menu = MutableStateFlow(MenuState())
     val menu: StateFlow<MenuState> = _menu.asStateFlow()
+
+    private val _notifications = MutableStateFlow(NotificationsState())
+    val notifications: StateFlow<NotificationsState> = _notifications.asStateFlow()
+    private val _wishSettings = MutableStateFlow(WishSettingsState())
+    val wishSettings: StateFlow<WishSettingsState> = _wishSettings.asStateFlow()
+    private var notificationsFromPreferences = false
 
     private val _recipe = MutableStateFlow<RecipeState?>(null)
     val recipe: StateFlow<RecipeState?> = _recipe.asStateFlow()
@@ -204,6 +220,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun toLogin(error: String? = null) {
+        _recipe.value = null
+        _notifications.value = NotificationsState()
+        _wishSettings.value = WishSettingsState()
+        notificationsFromPreferences = false
         val url = session.serverUrl
         _state.value = UiState(if (url == null) Screen.Server else Screen.Login(url), error = error)
     }
@@ -290,6 +310,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Reloads the planned meals; failures keep what is shown (offline reading). */
     fun loadMenu(manual: Boolean = false) {
+        loadNotifications()
         if (manual) {
             if (_menu.value.refreshing) return
             _menu.update { it.copy(refreshing = true, error = null) }
@@ -313,6 +334,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      * (FR-SHR-02, no real-time). Nothing runs while the app is in the background.
      */
     fun onAppForeground() {
+        if (_state.value.screen is Screen.Preferences) { loadNotifications(); loadWishSettings(); return }
         if (_state.value.screen !is Screen.Home) return
         loadMenu()
         if (_recipes.value.recipes != null) refreshRecipes(manual = false)
@@ -323,6 +345,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun refreshRecipes(manual: Boolean = true) = searchRecipes(_recipes.value.query, manual = manual)
 
     fun openPreferences() {
+        loadWishSettings()
         val home = _state.value.screen as? Screen.Home ?: return
         _check.value = UpdateCheck()
         _state.value = UiState(Screen.Preferences(home.user))
@@ -768,6 +791,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             try {
                 val r = session.authed { api, access -> api.recipe(access, id) }
                 _recipe.update { if (it?.id == id) it.copy(recipe = r) else it }
+                if (!r.archived && (_state.value.screen as? Screen.Home)?.user?.isReadonly == true) loadWishStatus(id)
             } catch (e: SessionExpiredException) {
                 _recipe.value = null
                 toLogin("Votre session a expiré : reconnectez-vous.")
@@ -779,12 +803,160 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    private fun signedInUser(): User? = when (val screen = _state.value.screen) {
+        is Screen.Home -> screen.user
+        is Screen.Preferences -> screen.user
+        is Screen.Admin -> screen.user
+        else -> null
+    }
+
+    private fun loadWishStatus(id: String) {
+        val actorId = signedInUser()?.id ?: return
+        val revision = _recipe.value?.takeIf { it.id == id }?.wishRevision ?: return
+        viewModelScope.launch {
+            try {
+                val status = session.authed { api, access -> api.wishStatus(access, id) }
+                if (signedInUser()?.id != actorId) return@launch
+                _recipe.update { if (it?.id == id && it.wishRevision == revision) it.copy(wish = status, wishError = null) else it }
+            } catch (e: SessionExpiredException) {
+                if (signedInUser()?.id != actorId) return@launch
+                toLogin("Votre session a expiré : reconnectez-vous.")
+            } catch (e: IOException) {
+                if (signedInUser()?.id != actorId) return@launch
+                _recipe.update { if (it?.id == id && it.wishRevision == revision) it.copy(wishError = errorMessage(e)) else it }
+            }
+        }
+    }
+
+    fun requestRecipe() {
+        val actorId = signedInUser()?.id ?: return
+        val recipe = _recipe.value ?: return
+        if (signedInUser()?.isReadonly != true || recipe.wishing || recipe.wish?.requested == true) return
+        _recipe.update { it?.copy(wishing = true, wishError = null, wishRevision = it.wishRevision + 1) }
+        viewModelScope.launch {
+            try {
+                val status = session.authed { api, access -> api.requestRecipe(access, recipe.id) }
+                if (signedInUser()?.id != actorId) return@launch
+                _recipe.update { if (it?.id == recipe.id) it.copy(wishing = false, wish = status) else it }
+            } catch (e: SessionExpiredException) {
+                if (signedInUser()?.id != actorId) return@launch
+                _recipe.update { it?.copy(wishing = false) }; toLogin("Votre session a expiré : reconnectez-vous.")
+            } catch (e: IOException) {
+                if (signedInUser()?.id != actorId) return@launch
+                _recipe.update { if (it?.id == recipe.id) it.copy(wishing = false, wishError = errorMessage(e)) else it }
+                loadWishStatus(recipe.id)
+            }
+        }
+    }
+
+    fun loadWishSettings() {
+        val actorId = signedInUser()?.id ?: return
+        if (signedInUser()?.canWrite != true || _wishSettings.value.busy) return
+        _wishSettings.update { it.copy(busy = true, error = null) }
+        viewModelScope.launch {
+            try {
+                val limit = session.authed { api, access -> api.wishLimit(access) }
+                if (signedInUser()?.id != actorId) return@launch
+                _wishSettings.value = WishSettingsState(limit)
+            } catch (e: SessionExpiredException) {
+                if (signedInUser()?.id != actorId) return@launch
+                _wishSettings.update { it.copy(busy = false) }; toLogin("Votre session a expiré : reconnectez-vous.")
+            } catch (e: IOException) {
+                if (signedInUser()?.id != actorId) return@launch
+                _wishSettings.update { it.copy(busy = false, error = errorMessage(e)) }
+            }
+        }
+    }
+
+    fun setWishLimit(limit: Int) {
+        val actorId = signedInUser()?.id ?: return
+        if (signedInUser()?.canWrite != true || _wishSettings.value.busy) return
+        _wishSettings.update { it.copy(busy = true, error = null) }
+        viewModelScope.launch {
+            try {
+                val saved = session.authed { api, access -> api.setWishLimit(access, limit) }
+                if (signedInUser()?.id != actorId) return@launch
+                _wishSettings.value = WishSettingsState(saved)
+            } catch (e: SessionExpiredException) {
+                if (signedInUser()?.id != actorId) return@launch
+                _wishSettings.update { it.copy(busy = false) }; toLogin("Votre session a expiré : reconnectez-vous.")
+            } catch (e: IOException) {
+                if (signedInUser()?.id != actorId) return@launch
+                _wishSettings.update { it.copy(busy = false, error = errorMessage(e)) }
+            }
+        }
+    }
+
+    fun openNotifications() {
+        val user = signedInUser()?.takeIf { it.canWrite } ?: return
+        notificationsFromPreferences = _state.value.screen is Screen.Preferences
+        _state.value = UiState(Screen.Home(user))
+        _notifications.update { it.copy(open = true) }
+        loadNotifications()
+    }
+    fun closeNotifications() {
+        _notifications.update { it.copy(open = false) }
+        if (notificationsFromPreferences) signedInUser()?.let { _state.value = UiState(Screen.Preferences(it)) }
+        notificationsFromPreferences = false
+    }
+    fun loadNotifications(more: Boolean = false) {
+        val actorId = signedInUser()?.id ?: return
+        if (signedInUser()?.canWrite != true) { _notifications.value = NotificationsState(); return }
+        if (_notifications.value.loading || _notifications.value.working != null) return
+        val offset = if (more) _notifications.value.items.size else 0
+        _notifications.update { it.copy(loading = true, error = null) }
+        viewModelScope.launch {
+            try {
+                val page = session.authed { api, access -> api.notifications(access, offset) }
+                if (signedInUser()?.id != actorId) return@launch
+                _notifications.update { it.copy(items = if (more) (it.items + page.items).distinctBy { n -> n.id } else page.items,
+                    unreadCount = page.unreadCount, hasMore = page.hasMore, loading = false) }
+            } catch (e: SessionExpiredException) {
+                if (signedInUser()?.id != actorId) return@launch
+                _notifications.update { it.copy(loading = false) }; toLogin("Votre session a expiré : reconnectez-vous.")
+            } catch (e: IOException) {
+                if (signedInUser()?.id != actorId) return@launch
+                if (e is ApiException && e.status == 403) _notifications.value = NotificationsState(error = errorMessage(e))
+                else _notifications.update { it.copy(loading = false, error = errorMessage(e)) }
+            }
+        }
+    }
+    fun readNotification(item: RecipeNotification) = changeNotification(item, delete = false)
+    fun deleteNotification(item: RecipeNotification) = changeNotification(item, delete = true)
+    private fun changeNotification(item: RecipeNotification, delete: Boolean) {
+        val actorId = signedInUser()?.id ?: return
+        if (_notifications.value.loading || _notifications.value.working != null || (!delete && item.readAt != null)) return
+        _notifications.update { it.copy(working = item.id, error = null) }
+        viewModelScope.launch {
+            try {
+                session.authed { api, access -> if (delete) api.deleteNotification(access, item.id) else api.readNotification(access, item.id) }
+                if (signedInUser()?.id != actorId) return@launch
+                _notifications.update { state -> state.copy(working = null,
+                    items = if (delete) state.items.filterNot { it.id == item.id } else state.items.map { if (it.id == item.id) it.copy(readAt = java.time.Instant.now()) else it },
+                    unreadCount = (state.unreadCount - if (item.readAt == null) 1 else 0).coerceAtLeast(0)) }
+            } catch (e: SessionExpiredException) {
+                if (signedInUser()?.id != actorId) return@launch
+                _notifications.update { it.copy(working = null) }; toLogin("Votre session a expiré : reconnectez-vous.")
+            } catch (e: IOException) {
+                if (signedInUser()?.id != actorId) return@launch
+                _notifications.update { it.copy(working = null, error = errorMessage(e)) }
+            }
+        }
+    }
+    fun openNotification(item: RecipeNotification) {
+        readNotification(item)
+        if (item.recipeAvailable) openRecipe(item.recipeId, item.recipeTitle)
+    }
+
     fun closeRecipe() {
         _recipe.value = null
     }
 
     /** Forgets what the signed-out account had loaded. */
     private fun resetData() {
+        _notifications.value = NotificationsState()
+        _wishSettings.value = WishSettingsState()
+        notificationsFromPreferences = false
         _menu.value = MenuState()
         _recipes.value = RecipesState()
         _recipe.value = null
@@ -822,6 +994,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 internal fun errorMessage(e: IOException): String = when {
     e !is ApiException -> "Serveur injoignable : vérifiez la connexion et l'adresse."
     e.code == "invalid_invitation" -> "Cette invitation est invalide, déjà utilisée ou expirée : demandez-en une nouvelle."
+    e.code == "wish_limit_reached" || e.code == "no_menu_creators" -> e.message ?: "Demande indisponible pour le moment."
     e.code == "validation_error" -> e.message ?: "Données refusées par le serveur."
     e.code == "menu_changed" -> "Le menu enregistré a changé. Cette validation n’a pas appliqué la proposition. Revenez aux idées de repas pour en générer une nouvelle."
     e.code == "not_found" -> "Introuvable : cet élément a peut-être été supprimé entre-temps."

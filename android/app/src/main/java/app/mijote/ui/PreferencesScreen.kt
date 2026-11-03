@@ -16,6 +16,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
+import app.mijote.WishSettingsState
 import app.mijote.R
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -45,6 +46,11 @@ fun PreferencesScreen(
     onBack: () -> Unit,
     onInvitations: () -> Unit = {},
     onAccounts: () -> Unit = {},
+    notificationCount: Int = 0,
+    onNotifications: () -> Unit = {},
+    wishSettings: WishSettingsState = WishSettingsState(),
+    onWishLimit: (Int) -> Unit = {},
+    onReloadWishSettings: () -> Unit = {},
 ) {
     Column(Modifier.fillMaxSize().background(Sunny.Cream).verticalScroll(rememberScrollState())) {
         Box(
@@ -77,7 +83,7 @@ fun PreferencesScreen(
                 Text("@${user.username} · $roleLabel",
                     fontSize = 13.sp, color = Sunny.InkSoft, modifier = Modifier.padding(top = 2.dp))
             }
-            SunnyCard {
+            if (user.canWrite) SunnyCard {
                 SectionLabel("REPAS")
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
@@ -90,6 +96,22 @@ fun PreferencesScreen(
                         modifier = Modifier.width(44.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                     StepTile("+", "Une personne de plus", user.people < MAX_PEOPLE) { onPeople(user.people + 1) }
                 }
+            }
+            if (user.canWrite) SunnyCard {
+                SectionLabel("ENVIES DE RECETTES")
+                AdminEntry("Notifications", if (notificationCount > 0) "$notificationCount non lue${if (notificationCount > 1) "s" else ""}" else "Les envies des membres en lecture seule", onNotifications)
+                Text("Limite de demandes par semaine", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = Sunny.Ink, modifier = Modifier.padding(top = 12.dp))
+                Text("Par compte en lecture seule · commune à toute la famille", fontSize = 13.sp, color = Sunny.InkTitle, modifier = Modifier.padding(top = 4.dp))
+                val limit = wishSettings.limit
+                if (limit != null) Row(Modifier.fillMaxWidth().padding(top = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("Maximum", fontSize = 14.sp, color = Sunny.Ink, modifier = Modifier.weight(1f))
+                    StepTile("−", "Une demande de moins", !wishSettings.busy && limit > 1) { onWishLimit(limit - 1) }
+                    Text("$limit", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = Sunny.Ink,
+                        modifier = Modifier.width(44.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                    StepTile("+", "Une demande de plus", !wishSettings.busy && limit < 100) { onWishLimit(limit + 1) }
+                } else if (wishSettings.busy) Text("Chargement…", color = Sunny.InkTitle, modifier = Modifier.padding(top = 12.dp))
+                ErrorText(wishSettings.error)
+                if (wishSettings.error != null) SecondaryAction("Réessayer", !wishSettings.busy, onReloadWishSettings)
             }
             if (user.isAdmin) SunnyCard {
                 SectionLabel("ADMINISTRATION")

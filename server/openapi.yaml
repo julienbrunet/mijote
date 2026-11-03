@@ -41,6 +41,8 @@ tags:
     description: The signed-in user and their preferences.
   - name: Recipes
     description: Shared recipe base, tags and recipe images.
+  - name: Notifications
+    description: Recipe wishes, personal inboxes and the shared weekly request limit.
   - name: Menu
     description: Planned meals, menu generation and per-meal adjustments.
   - name: Admin
@@ -513,6 +515,143 @@ paths:
                     type: array
                     items: { $ref: "#/components/schemas/Tag" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /api/v1/recipes/{id}/wish:
+    parameters:
+      - $ref: "#/components/parameters/RecipeId"
+    get:
+      tags: [Notifications]
+      operationId: recipeWishStatus
+      summary: Read-only member's pending wish and weekly quota for this recipe
+      description: Week runs Monday to Sunday in the family timezone. Each requester has their own usage against the instance-wide limit.
+      responses:
+        "200":
+          description: Pending request and quota.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WishStatus" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: Recipe is missing or archived. }
+    post:
+      tags: [Notifications]
+      operationId: requestRecipe
+      summary: Express a wish for this recipe (read-only accounts only)
+      description: |
+        Notifies each currently active admin/member separately. A duplicate pending wish
+        returns 200 without consuming more quota or sending another notification.
+        Does not plan a meal. Clearing notifications does not refund weekly quota.
+      responses:
+        "201":
+          description: Wish sent and quota consumed once.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WishStatus" }
+        "200":
+          description: Already pending; no additional notification or quota consumption.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WishStatus" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: Recipe is missing or archived. }
+        "409":
+          description: "wish_limit_reached or no_menu_creators; no wish is created."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+
+  /api/v1/settings/recipe-wishes:
+    get:
+      tags: [Notifications]
+      operationId: getRecipeWishSettings
+      summary: Read the instance-wide weekly wish limit (members and admins)
+      responses:
+        "200":
+          description: Shared setting, default 5.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WishSettings" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    put:
+      tags: [Notifications]
+      operationId: setRecipeWishSettings
+      summary: Set the weekly limit for every read-only account (members and admins)
+      description: Raising or lowering the limit takes effect immediately; existing weekly usage is retained.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/WishSettings" }
+      responses:
+        "200":
+          description: Saved instance setting.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WishSettings" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /api/v1/notifications:
+    get:
+      tags: [Notifications]
+      operationId: listNotifications
+      summary: List the caller's recipe-wish notifications (members and admins)
+      description: No other recipient's notification is visible. Unread count covers the complete inbox, not just this page.
+      parameters:
+        - { in: query, name: offset, schema: { type: integer, minimum: 0, default: 0 } }
+        - { in: query, name: limit, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
+      responses:
+        "200":
+          description: Newest first, with pagination and the unread count.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, unreadCount, hasMore]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/RecipeNotification" }
+                  unreadCount: { type: integer, minimum: 0 }
+                  hasMore: { type: boolean }
+        "400":
+          description: invalid_pagination
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/v1/notifications/{id}/read:
+    parameters:
+      - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+    put:
+      tags: [Notifications]
+      operationId: readNotification
+      summary: Mark one of the caller's notifications as read (idempotent)
+      responses:
+        "204": { description: Read; other recipients are unaffected. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: Notification does not exist or belongs to another user. }
+
+  /api/v1/notifications/{id}:
+    parameters:
+      - { in: path, name: id, required: true, schema: { type: string, format: uuid } }
+    delete:
+      tags: [Notifications]
+      operationId: deleteNotification
+      summary: Clear one of the caller's notifications
+      description: Deletes only this recipient's copy. The wish history and its quota usage remain.
+      responses:
+        "204": { description: Deleted. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: Notification does not exist or belongs to another user. }
 
   /api/v1/menu:
     get:
@@ -1303,6 +1442,35 @@ components:
         prepMinutes: { type: [integer, "null"] }
         totalMinutes: { type: [integer, "null"] }
         image: { type: [string, "null"] }
+
+    WishSettings:
+      type: object
+      required: [weeklyLimit]
+      properties:
+        weeklyLimit: { type: integer, minimum: 1, maximum: 100, default: 5 }
+
+    WishStatus:
+      type: object
+      required: [requested, weeklyLimit, used, remaining, resetsAt]
+      properties:
+        requested: { type: boolean, description: A notification for this wish is still present in an active creator's inbox. }
+        weeklyLimit: { type: integer, minimum: 1 }
+        used: { type: integer, minimum: 0 }
+        remaining: { type: integer, minimum: 0 }
+        resetsAt: { type: string, format: date-time, description: Next Monday midnight in the family timezone. }
+
+    RecipeNotification:
+      type: object
+      required: [id, requesterId, requesterName, recipeId, recipeTitle, recipeAvailable, createdAt, readAt]
+      properties:
+        id: { type: string, format: uuid }
+        requesterId: { type: string, format: uuid }
+        requesterName: { type: string }
+        recipeId: { type: string, format: uuid }
+        recipeTitle: { type: string }
+        recipeAvailable: { type: boolean, description: False when the recipe has since been archived. }
+        createdAt: { type: string, format: date-time }
+        readAt: { type: [string, "null"], format: date-time }
 
     MenuProposal:
       type: object

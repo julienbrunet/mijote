@@ -115,6 +115,21 @@ class Api(private val baseUrl: String, private val http: Http = UrlConnectionHtt
         User.fromJson(call("PUT", "/api/v1/me/preferences", JSONObject().put("people", people), bearer = access))
 
     /** Planned meals from today over the family horizon, and the generation info. */
+    fun wishStatus(access: String, recipeId: String): WishStatus =
+        WishStatus.parse(call("GET", "/api/v1/recipes/$recipeId/wish", bearer = access))
+
+    fun requestRecipe(access: String, recipeId: String): WishStatus =
+        WishStatus.parse(call("POST", "/api/v1/recipes/$recipeId/wish", JSONObject(), bearer = access))
+
+    fun wishLimit(access: String): Int = call("GET", "/api/v1/settings/recipe-wishes", bearer = access).getInt("weeklyLimit")
+    fun setWishLimit(access: String, limit: Int): Int = call("PUT", "/api/v1/settings/recipe-wishes",
+        JSONObject().put("weeklyLimit", limit), bearer = access).getInt("weeklyLimit")
+
+    fun notifications(access: String, offset: Int = 0): NotificationPage =
+        NotificationPage.parse(call("GET", "/api/v1/notifications?offset=$offset&limit=50", bearer = access))
+    fun readNotification(access: String, id: String) { call("PUT", "/api/v1/notifications/$id/read", JSONObject(), bearer = access) }
+    fun deleteNotification(access: String, id: String) { call("DELETE", "/api/v1/notifications/$id", bearer = access) }
+
     fun menu(access: String): Menu = parseMenu(call("GET", "/api/v1/menu", bearer = access))
 
     /** Generates [meals] meals from [start] (FR-GEN); answers 409 not_enough_recipes on a too small base. */

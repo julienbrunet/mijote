@@ -25,6 +25,7 @@ data class RecipeDetail(
     val tags: List<String> = emptyList(),
     /** In the favorites of the signed-in user (personal, not shared with the family). */
     val favorite: Boolean = false,
+    val archived: Boolean = false,
 )
 
 private fun JSONObject.intOrNull(key: String): Int? = if (isNull(key) || !has(key)) null else optInt(key)
@@ -54,6 +55,7 @@ fun parseRecipe(o: JSONObject): RecipeDetail {
         mealTypes = o.optJSONArray("mealTypes").strings().ifEmpty { listOf("lunch", "dinner") },
         tags = o.optJSONArray("tags").strings(),
         favorite = o.optBoolean("favorite"),
+        archived = !o.isNull("archivedAt"),
     )
 }
 
