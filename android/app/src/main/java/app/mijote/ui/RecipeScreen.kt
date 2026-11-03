@@ -101,7 +101,9 @@ fun RecipeScreen(
 
 
 @Composable
-private fun Content(r: RecipeDetail, people: Int) {
+private fun Content(r: RecipeDetail, defaultPeople: Int) {
+    // Number of people for this view only: starts from the user's preference, never saved.
+    var people by remember(r.id, defaultPeople) { mutableIntStateOf(defaultPeople) }
     Row(Modifier.padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
         dishTypeOf(r.dishType)?.let { DishTag(it.label, it.colors) }
     }
@@ -121,7 +123,16 @@ private fun Content(r: RecipeDetail, people: Int) {
         }
     }
     if (r.ingredients.isNotEmpty()) {
-        Section("Ingrédients", if (people > 1) "pour $people personnes" else "pour 1 personne")
+        Row(Modifier.fillMaxWidth().padding(top = 28.dp, bottom = 12.dp, start = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Ingrédients", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Sunny.Ink)
+                Text(if (people > 1) "pour $people personnes" else "pour 1 personne", fontSize = 13.sp, color = Sunny.InkTitle)
+            }
+            PeopleStep("−", "Une personne de moins", people > 1) { people-- }
+            Text("$people", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Sunny.Ink,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.width(36.dp))
+            PeopleStep("+", "Une personne de plus", people < 20) { people++ }
+        }
         Column(Modifier.fillMaxWidth().background(Sunny.Card, Shapes.Card).padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             r.ingredients.forEach { Text("•  ${it.text(people)}", fontSize = 15.sp, color = Sunny.Ink, lineHeight = 20.sp) }
         }
@@ -155,6 +166,14 @@ private fun SmallAction(text: String, icon: ImageVector, color: Color, modifier:
         Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(18.dp))
         Text(text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = color, modifier = Modifier.padding(start = 6.dp))
     }
+}
+
+@Composable
+private fun PeopleStep(sign: String, label: String, enabled: Boolean, onClick: () -> Unit) {
+    Box(
+        Modifier.size(40.dp).clip(Shapes.Control).background(Sunny.Card).clickable(enabled = enabled, onClickLabel = label, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) { Text(sign, fontSize = 20.sp, fontWeight = FontWeight.SemiBold, color = if (enabled) Sunny.Ink else Sunny.InkSoft) }
 }
 
 @Composable
