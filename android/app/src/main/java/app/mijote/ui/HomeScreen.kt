@@ -129,9 +129,8 @@ fun HomeScreen(
 
 /**
  * White header shared by the main tabs: logo tile and wordmark on the Menus tab, a plain [title]
- * elsewhere, [subtitle] below, then optional [extra] content (search field…). The user button sits in
- * a Butter corner block that starts below the status bar, so nothing coloured runs under the phone's
- * status icons.
+ * elsewhere, [subtitle] below, then optional [extra] content (search field…). The user button is a
+ * plain Butter circle at the top right.
  */
 @Composable
 fun HomeHeader(
@@ -142,9 +141,10 @@ fun HomeHeader(
         Modifier.fillMaxWidth().zIndexShadow()
             .background(Sunny.Card, RoundedCornerShape(bottomStart = 40.dp, bottomEnd = 40.dp)),
     ) {
+        // Profile button: a plain Butter circle on the white header.
         Box(
-            Modifier.align(Alignment.TopEnd).statusBarsPadding().size(84.dp)
-                .background(Sunny.Butter, RoundedCornerShape(bottomStart = 32.dp)),
+            Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(top = 20.dp, end = 20.dp).size(48.dp)
+                .background(Sunny.Butter, CircleShape).clip(CircleShape),
             contentAlignment = Alignment.Center,
         ) { UserButton(onPreferences) }
         Column(Modifier.statusBarsPadding().padding(start = 22.dp, end = 22.dp, top = 22.dp, bottom = 26.dp)) {
