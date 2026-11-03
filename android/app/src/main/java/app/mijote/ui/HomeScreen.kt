@@ -49,6 +49,8 @@ data class MealUi(
     val id: String = "", val recipeId: String? = null, val image: String? = null,
     /** A manual meal: a free text ("Commander une pizza"), not a recipe. */
     val manual: Boolean = false,
+    /** Covers of the meal (its own number, or the user's preference for older meals). */
+    val people: Int? = null,
 )
 
 /** One day of the menu. [missing] lists the meals ("lunch", "dinner") that can still be added (review screen). */
@@ -165,7 +167,7 @@ private fun Modifier.zIndexShadow() =
 @Composable
 fun DaySection(
     day: DayUi, first: Boolean = false, working: String? = null,
-    onOpen: (MealUi) -> Unit, onEdit: (MealUi) -> Unit, canEdit: Boolean = true, extra: @Composable () -> Unit = {},
+    onOpen: (MealUi) -> Unit, onEdit: (MealUi) -> Unit, canEdit: Boolean = true, onPeople: ((MealUi) -> Unit)? = null, extra: @Composable () -> Unit = {},
 ) {
     Column {
         Row(Modifier.fillMaxWidth().padding(top = if (first) 18.dp else 34.dp, bottom = 14.dp, start = 4.dp, end = 4.dp),
@@ -175,7 +177,10 @@ fun DaySection(
                 color = Sunny.Ink.copy(alpha = 0.6f))
         }
         Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            day.meals.forEach { MealCard(it, Sunny.Peach, busy = working == it.id, onOpen = { onOpen(it) }, onEdit = { onEdit(it) }, canEdit = canEdit) }
+            day.meals.forEach { m ->
+                MealCard(m, Sunny.Peach, busy = working == m.id, onOpen = { onOpen(m) }, onEdit = { onEdit(m) }, canEdit = canEdit,
+                    onPeople = onPeople?.let { { it(m) } })
+            }
             extra()
         }
     }
@@ -183,7 +188,10 @@ fun DaySection(
 
 /** A planned meal: tap the card for the recipe, the corner pencil to change it. */
 @Composable
-fun MealCard(meal: MealUi, accent: Color, busy: Boolean, onOpen: () -> Unit, onEdit: () -> Unit, canEdit: Boolean = true) {
+fun MealCard(
+    meal: MealUi, accent: Color, busy: Boolean, onOpen: () -> Unit, onEdit: () -> Unit, canEdit: Boolean = true,
+    onPeople: (() -> Unit)? = null,
+) {
     Box(
         Modifier.fillMaxWidth().height(104.dp)
             .shadow(4.dp, Shapes.Card, ambientColor = Color.Black, spotColor = Color.Black)
@@ -200,6 +208,15 @@ fun MealCard(meal: MealUi, accent: Color, busy: Boolean, onOpen: () -> Unit, onE
                     meal.dish?.let { DishTag(it.label, it.colors) }
                     meal.prepMinutes?.let {
                         Text("$it min", fontSize = 12.sp, color = Sunny.InkSoft, modifier = Modifier.padding(start = 8.dp))
+                    }
+                    // Covers of a recipe meal: a discreet pill, tappable where it can be changed (review screen).
+                    if (meal.recipeId != null) meal.people?.let { n ->
+                        Text("$n pers.", fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
+                            color = if (onPeople != null) Sunny.PeachDeep else Sunny.InkSoft,
+                            modifier = Modifier.padding(start = 8.dp).clip(RoundedCornerShape(8.dp))
+                                .background(if (onPeople != null) Sunny.PeachLight else Color.Transparent)
+                                .then(if (onPeople != null) Modifier.clickable(onClickLabel = "Nombre de personnes", onClick = onPeople) else Modifier)
+                                .padding(horizontal = if (onPeople != null) 8.dp else 0.dp, vertical = 3.dp))
                     }
                 }
             }
@@ -334,16 +351,16 @@ private fun BottomBar(
 }
 
 /** Groups the planned meals by day for the home screen. */
-fun menuDays(menu: Menu): List<DayUi> = menu.slots.groupBy { it.date }.toSortedMap().map { (date, slots) ->
-    DayUi(dayLabel(date, menu.today), shortDate(date), slots.sortedBy { it.meal != "lunch" }.map(::mealUi), day = date)
+fun menuDays(menu: Menu, people: Int = 1): List<DayUi> = menu.slots.groupBy { it.date }.toSortedMap().map { (date, slots) ->
+    DayUi(dayLabel(date, menu.today), shortDate(date), slots.sortedBy { it.meal != "lunch" }.map { mealUi(it, people) }, day = date)
 }
 
 /** Every day from [from] to [to], also the empty ones, with the meals that can still be added. */
-fun reviewDays(menu: Menu, from: LocalDate, to: LocalDate): List<DayUi> {
+fun reviewDays(menu: Menu, from: LocalDate, to: LocalDate, people: Int = 1): List<DayUi> {
     val byDate = menu.slots.groupBy { it.date }
     return generateSequence(from) { it.plusDays(1) }.takeWhile { !it.isAfter(to) }.map { d ->
         val slots = byDate[d].orEmpty().sortedBy { it.meal != "lunch" }
-        DayUi(dayLabel(d, menu.today), shortDate(d), slots.map(::mealUi), day = d,
+        DayUi(dayLabel(d, menu.today), shortDate(d), slots.map { mealUi(it, people) }, day = d,
             missing = listOf("lunch", "dinner").filter { m -> slots.none { it.meal == m } })
     }.toList()
 }
@@ -355,7 +372,7 @@ fun menuPeriod(menu: Menu): String? {
     return "${periodLabel(dates.min(), dates.max())} · ${menu.slots.size} repas"
 }
 
-private fun mealUi(s: MenuSlot): MealUi {
+private fun mealUi(s: MenuSlot, defaultPeople: Int): MealUi {
     val dish = when (s.recipe?.dishType) {
         "meat" -> DishType.MEAT
         "fish" -> DishType.FISH
@@ -367,7 +384,8 @@ private fun mealUi(s: MenuSlot): MealUi {
         else -> when (dish) { DishType.MEAT -> "🍗"; DishType.FISH -> "🐟"; DishType.VEGETARIAN -> "🥗"; null -> "🍽️" }
     }
     return MealUi(if (s.meal == "lunch") "Midi" else "Soir", s.title ?: s.recipe?.title ?: "Aucune recette disponible",
-        dish, s.recipe?.minutes, picture, s.locked, id = s.id, recipeId = s.recipe?.id, image = s.recipe?.image, manual = s.manual)
+        dish, s.recipe?.minutes, picture, s.locked, id = s.id, recipeId = s.recipe?.id, image = s.recipe?.image, manual = s.manual,
+        people = s.people ?: defaultPeople)
 }
 
 @Composable

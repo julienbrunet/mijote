@@ -39,6 +39,8 @@ fun RecipeScreen(
     canWrite: Boolean = false, canArchive: Boolean = false,
     onPlan: () -> Unit = {}, onEdit: () -> Unit = {}, onArchive: () -> Unit = {},
     onFavorite: () -> Unit = {},
+    /** Set when opened from a planned meal by a member: the number of people is saved for that meal. */
+    onMealPeople: ((Int) -> Unit)? = null,
 ) {
     var confirmArchive by remember { mutableStateOf(false) }
     if (confirmArchive) AlertDialog(
@@ -89,7 +91,7 @@ fun RecipeScreen(
                 if (state.error != null) ErrorText(state.error)
             }
             when {
-                r != null -> Content(r, people)
+                r != null -> Content(r, state.slotPeople ?: people, onMealPeople)
                 state.error != null -> ErrorText(state.error)
                 else -> Box(Modifier.fillMaxWidth().padding(top = 48.dp), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(color = Sunny.PeachDeep)
@@ -101,9 +103,11 @@ fun RecipeScreen(
 
 
 @Composable
-private fun Content(r: RecipeDetail, defaultPeople: Int) {
-    // Number of people for this view only: starts from the user's preference, never saved.
-    var people by remember(r.id, defaultPeople) { mutableIntStateOf(defaultPeople) }
+private fun Content(r: RecipeDetail, defaultPeople: Int, onMealPeople: ((Int) -> Unit)?) {
+    // From a planned meal (member): the meal's number of people, saved at each change.
+    // Otherwise: starts from the user's preference, for this view only.
+    var people by remember(r.id) { mutableIntStateOf(defaultPeople) }
+    val change = { n: Int -> people = n; onMealPeople?.invoke(n); Unit }
     Row(Modifier.padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
         dishTypeOf(r.dishType)?.let { DishTag(it.label, it.colors) }
     }
@@ -126,12 +130,13 @@ private fun Content(r: RecipeDetail, defaultPeople: Int) {
         Row(Modifier.fillMaxWidth().padding(top = 28.dp, bottom = 12.dp, start = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text("Ingrédients", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Sunny.Ink)
-                Text(if (people > 1) "pour $people personnes" else "pour 1 personne", fontSize = 13.sp, color = Sunny.InkTitle)
+                Text((if (people > 1) "pour $people personnes" else "pour 1 personne") +
+                    (if (onMealPeople != null) " · pour ce repas" else ""), fontSize = 13.sp, color = Sunny.InkTitle)
             }
-            PeopleStep("−", "Une personne de moins", people > 1) { people-- }
+            PeopleStep("−", "Une personne de moins", people > 1) { change(people - 1) }
             Text("$people", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Sunny.Ink,
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.width(36.dp))
-            PeopleStep("+", "Une personne de plus", people < 20) { people++ }
+            PeopleStep("+", "Une personne de plus", people < 20) { change(people + 1) }
         }
         Column(Modifier.fillMaxWidth().background(Sunny.Card, Shapes.Card).padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             r.ingredients.forEach { Text("•  ${it.text(people)}", fontSize = 15.sp, color = Sunny.Ink, lineHeight = 20.sp) }

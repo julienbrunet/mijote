@@ -124,6 +124,7 @@ Full schemas, parameters and responses: [`openapi.yaml`](openapi.yaml). "Write" 
 | `POST /api/v1/menu/generate` | write | Generate a period. |
 | `POST /api/v1/menu/slots` | write | Plan one meal (server pick, given recipe or manual meal). |
 | `PUT /api/v1/menu/slots/{id}` | write | Turn a meal into a given recipe or manual meal. |
+| `PUT /api/v1/menu/slots/{id}/people` | write | `{"people": 1..20}`: number of covers of the meal, shared by the family. |
 | `POST /api/v1/menu/slots/{id}/swap` | write | Another recipe picked by the server. |
 | `DELETE /api/v1/menu/slots/{id}` | write | Remove a meal. |
 | `GET·POST /api/v1/admin/invitations`, `POST …/{id}/revoke` | admin (app) | Invitations. |
@@ -289,6 +290,11 @@ arrays become empty). The image is kept.
 - **Change a meal**: `PUT /api/v1/menu/slots/{id}` `{"recipeId"}` or `{"title"}` (locked);
   `POST /api/v1/menu/slots/{id}/swap` for another server pick (unlocks);
   `DELETE /api/v1/menu/slots/{id}` to remove it.
+- **Covers of a meal**: each slot has `people` (1–20, shared by the family; `null` for
+  meals planned before it existed: use the user's `preferences.people`). Generation and
+  `POST /api/v1/menu/slots` set it to the planner's preference;
+  `PUT /api/v1/menu/slots/{id}/people` `{"people": 6}` changes it. Ingredient quantities
+  (stored for one person) are multiplied by it.
 
 ## 9. Rules for assistants
 

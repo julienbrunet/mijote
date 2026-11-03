@@ -143,6 +143,10 @@ class Api(private val baseUrl: String, private val http: Http = UrlConnectionHtt
         parseSlot(call("PUT", "/api/v1/menu/slots/$id", JSONObject().put("recipeId", recipeId.orEmpty()).put("title", title.orEmpty()),
             bearer = access))
 
+    /** Changes the number of people of a planned meal (1–20), for the whole family. */
+    fun setSlotPeople(access: String, id: String, people: Int): MenuSlot =
+        parseSlot(call("PUT", "/api/v1/menu/slots/$id/people", JSONObject().put("people", people), bearer = access))
+
     fun removeSlot(access: String, id: String) {
         call("DELETE", "/api/v1/menu/slots/$id", bearer = access)
     }

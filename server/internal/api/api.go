@@ -57,6 +57,7 @@ func (a *API) Routes(mux Mux) {
 		"POST /api/v1/menu/slots":              a.requireWrite(a.addSlot),
 		"POST /api/v1/menu/slots/{id}/swap":    a.requireWrite(a.swapSlot),
 		"PUT /api/v1/menu/slots/{id}":          a.requireWrite(a.updateSlot),
+		"PUT /api/v1/menu/slots/{id}/people":   a.requireWrite(a.setSlotPeople),
 		"DELETE /api/v1/menu/slots/{id}":       a.requireWrite(a.removeSlot),
 	} {
 		mux.Handle(pattern, a.authenticate(h))

@@ -175,6 +175,22 @@ func (a *API) updateSlot(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, slot)
 }
 
+// setSlotPeople changes the number of people of a meal: {"people": 1..20}.
+func (a *API) setSlotPeople(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		People int `json:"people"`
+	}
+	if !body(w, r, &in) {
+		return
+	}
+	slot, err := a.Store.SetSlotPeople(r.Context(), current(r).user.ID, r.PathValue("id"), in.People)
+	if err != nil {
+		menuSlotError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, slot)
+}
+
 // removeSlot removes a planned meal.
 func (a *API) removeSlot(w http.ResponseWriter, r *http.Request) {
 	if err := a.Store.RemoveSlot(r.Context(), current(r).user.ID, r.PathValue("id")); err != nil {

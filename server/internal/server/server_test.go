@@ -834,6 +834,22 @@ func TestMenuGeneration(t *testing.T) {
 		"recipeId": "00000000-0000-0000-0000-000000000000"})
 	expect(t, res, http.StatusUnprocessableEntity, "unknown recipe")
 
+	// Covers of a meal: the planner's preference (4 here), changed for the whole family.
+	_, day := app.api("GET", "/api/v1/menu?from=2026-11-03&to=2026-11-03", access, nil)
+	meal := day["slots"].([]any)[0].(map[string]any)
+	if meal["people"].(float64) != 4 {
+		t.Fatalf("meal people %v, want the planner's 4", meal["people"])
+	}
+	res, out = app.api("PUT", "/api/v1/menu/slots/"+meal["id"].(string)+"/people", access, map[string]any{"people": 6})
+	expect(t, res, http.StatusOK, "set meal people")
+	if out["people"].(float64) != 6 {
+		t.Fatalf("meal people not saved %v", out)
+	}
+	res, _ = app.api("PUT", "/api/v1/menu/slots/"+meal["id"].(string)+"/people", access, map[string]any{"people": 0})
+	expect(t, res, http.StatusUnprocessableEntity, "meal people out of range")
+	res, _ = app.api("PUT", "/api/v1/menu/slots/00000000-0000-0000-0000-000000000000/people", access, map[string]any{"people": 2})
+	expect(t, res, http.StatusNotFound, "people of an unknown meal")
+
 	// Lunch-only plan.
 	res, out = app.api("POST", "/api/v1/menu/generate", access, map[string]any{"start": "2026-12-01", "meals": 2, "plan": "lunch"})
 	expect(t, res, http.StatusOK, "lunch plan")

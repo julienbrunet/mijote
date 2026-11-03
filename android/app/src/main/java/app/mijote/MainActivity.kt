@@ -107,7 +107,9 @@ class MainActivity : ComponentActivity() {
                     is Screen.Home -> {
                         val m = menu.menu
                         val review = menu.review
-                        val open = { meal: app.mijote.ui.MealUi -> meal.recipeId?.let { vm.openRecipe(it, meal.title) }; Unit }
+                        val open = { meal: app.mijote.ui.MealUi ->
+                            meal.recipeId?.let { vm.openRecipe(it, meal.title, slotId = meal.id, slotPeople = meal.people) }; Unit
+                        }
                         val today = m?.today ?: LocalDate.now()
                         planning?.let { (recipeId, heading) ->
                             PlanMealDialog(heading, today, m?.slots.orEmpty(),
@@ -130,11 +132,12 @@ class MainActivity : ComponentActivity() {
                                 canWrite = s.user.canWrite, canArchive = s.user.isAdmin,
                                 onPlan = { planning = shown.id to (shown.recipe?.title ?: shown.title) },
                                 onEdit = { vm.editRecipe(new = false) }, onArchive = vm::archiveRecipe,
-                                onFavorite = { vm.toggleFavorite(shown.id) })
+                                onFavorite = { vm.toggleFavorite(shown.id) },
+                                onMealPeople = shown.slotId?.takeIf { s.user.canWrite }?.let { slot -> { n: Int -> vm.saveMealPeople(slot, n) } })
                         } else if (review != null && m != null) {
                             ReviewScreen(
                                 period = periodLabel(review.from, review.to),
-                                days = reviewDays(m, review.from, review.to),
+                                days = reviewDays(m, review.from, review.to, s.user.people),
                                 working = menu.working, error = menu.error,
                                 onOpenMeal = open,
                                 onSwapMeal = { vm.swapMeal(it.id) },
@@ -143,11 +146,12 @@ class MainActivity : ComponentActivity() {
                                 onValidate = vm::closeReview,
                                 onAddManualMeal = { date, meal, title -> vm.planMeal(date, meal, null, title, replace = false) },
                                 onRenameMeal = { meal, title -> vm.renameMeal(meal.id, title) },
+                                onMealPeople = { meal, n -> vm.setMealPeople(meal.id, n) },
                             )
                         } else {
                             HomeScreen(
                                 s.user, onLogout = vm::logout,
-                                period = m?.let(::menuPeriod), days = m?.let(::menuDays).orEmpty(),
+                                period = m?.let(::menuPeriod), days = m?.let { menuDays(it, s.user.people) }.orEmpty(),
                                 generatedCount = 0, onNewWeek = vm::loadMenu, onPreferences = vm::openPreferences,
                                 working = menu.working, error = menu.error,
                                 onOpenMeal = open,

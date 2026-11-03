@@ -677,6 +677,35 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/SlotNotFound" }
 
+  /api/v1/menu/slots/{id}/people:
+    parameters:
+      - $ref: "#/components/parameters/SlotId"
+    put:
+      tags: [Menu]
+      operationId: setMenuSlotPeople
+      summary: Change the number of people of a planned meal
+      description: Shared by the family; recipe quantities (stored for one person) are multiplied by it.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [people]
+              properties:
+                people: { type: integer, minimum: 1, maximum: 20 }
+      responses:
+        "200":
+          description: The updated meal.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MenuSlot" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/SlotNotFound" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
   /api/v1/menu/slots/{id}/swap:
     parameters:
       - $ref: "#/components/parameters/SlotId"
@@ -1180,7 +1209,7 @@ components:
       description: |
         One planned meal. It holds a recipe, or a manual meal (`title`), never both; both
         null means no recipe suited the meal.
-      required: [id, date, meal, recipe, title, locked, version]
+      required: [id, date, meal, recipe, title, people, locked, version]
       properties:
         id: { type: string, format: uuid }
         date: { type: string, format: date }
@@ -1190,6 +1219,13 @@ components:
             - { $ref: "#/components/schemas/MenuRecipe" }
             - { type: "null" }
         title: { type: [string, "null"], description: Free text of a manual meal. }
+        people:
+          type: [integer, "null"]
+          minimum: 1
+          maximum: 20
+          description: |
+            Number of covers, shared by the family. Set to the planner's preference when the
+            meal is planned; null for meals planned before it existed (use the user's preference).
         locked: { type: boolean, description: Kept when the period is generated again. }
         version: { type: integer }
 

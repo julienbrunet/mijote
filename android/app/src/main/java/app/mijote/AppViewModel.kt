@@ -89,6 +89,9 @@ data class MenuState(
 /** Recipe detail screen: [recipe] is null while loading. */
 data class RecipeState(
     val id: String, val title: String, val recipe: RecipeDetail? = null, val error: String? = null, val busy: Boolean = false,
+    /** The planned meal the recipe was opened from: its number of people is shown and saved. */
+    val slotId: String? = null,
+    val slotPeople: Int? = null,
 )
 
 /** Recipes tab: [recipes] is null until the first answer. */
@@ -434,6 +437,32 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun removeMeal(slotId: String) = change(slotId) { api, access -> api.removeSlot(access, slotId) }
 
+    /** Number of people of a planned meal, for the whole family (review screen). */
+    fun setMealPeople(slotId: String, people: Int) = change(slotId) { api, access -> api.setSlotPeople(access, slotId, people) }
+
+    private var peopleJob: kotlinx.coroutines.Job? = null
+
+    /**
+     * The stepper of a recipe opened from a planned meal: the meal's number of people changes at
+     * once on screen and is saved after a short pause (several taps make one request).
+     */
+    fun saveMealPeople(slotId: String, people: Int) {
+        _recipe.update { if (it?.slotId == slotId) it.copy(slotPeople = people) else it }
+        _menu.update { s -> s.copy(menu = s.menu?.let { m -> m.copy(slots = m.slots.map { if (it.id == slotId) it.copy(people = people) else it }) }) }
+        peopleJob?.cancel()
+        peopleJob = viewModelScope.launch {
+            kotlinx.coroutines.delay(600)
+            try {
+                session.authed { api, access -> api.setSlotPeople(access, slotId, people) }
+            } catch (e: SessionExpiredException) {
+                toLogin("Votre session a expiré : reconnectez-vous.")
+            } catch (e: IOException) {
+                notice(errorMessage(e))
+                loadMenu()
+            }
+        }
+    }
+
     /**
      * Plans a recipe ([recipeId]) or a manual meal ([title]) on a day, from the recipe screens or the
      * menus; [replace] overwrites the meal already planned at that time (the dialog warned about it).
@@ -635,8 +664,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** Opens a recipe; [keep] reloads the one shown without clearing it first. */
-    fun openRecipe(id: String, title: String, keep: Boolean = false) {
-        if (!keep || _recipe.value?.id != id) _recipe.value = RecipeState(id, title)
+    fun openRecipe(id: String, title: String, keep: Boolean = false, slotId: String? = null, slotPeople: Int? = null) {
+        if (!keep || _recipe.value?.id != id) _recipe.value = RecipeState(id, title, slotId = slotId, slotPeople = slotPeople)
         viewModelScope.launch {
             try {
                 val r = session.authed { api, access -> api.recipe(access, id) }

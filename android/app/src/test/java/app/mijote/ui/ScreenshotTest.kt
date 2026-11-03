@@ -121,6 +121,20 @@ class ScreenshotTest {
     }
 
     @Test
+    fun reviewWithPeople() = paparazzi.snapshot {
+        MijoteTheme {
+            ReviewScreen("2 → 3 novembre", listOf(
+                DayUi("Aujourd'hui", "lun. 2 nov.", listOf(
+                    MealUi("Midi", "Poulet au pesto et tomates rôties", DishType.MEAT, 25, "🍗", false, id = "s1", recipeId = "r1", people = 4),
+                    MealUi("Soir", "Velouté de potimarron", DishType.VEGETARIAN, 35, "🥣", false, id = "s2", recipeId = "r2", people = 6))),
+            ), working = null, error = null, onOpenMeal = {}, onSwapMeal = {}, onRemoveMeal = {}, onAddMeal = { _, _ -> }, onValidate = {})
+        }
+    }
+
+    @Test
+    fun peopleDialog() = paparazzi.snapshot { MijoteTheme { PeopleDialog("Velouté de potimarron", 6, onDismiss = {}, onConfirm = {}) } }
+
+    @Test
     fun recipe() = paparazzi.snapshot {
         MijoteTheme {
             RecipeScreen(

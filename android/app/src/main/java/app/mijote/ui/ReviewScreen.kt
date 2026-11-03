@@ -41,7 +41,13 @@ fun ReviewScreen(
     onValidate: () -> Unit,
     onAddManualMeal: (LocalDate, String, String) -> Unit = { _, _, _ -> },
     onRenameMeal: (MealUi, String) -> Unit = { _, _ -> },
+    onMealPeople: (MealUi, Int) -> Unit = { _, _ -> },
 ) {
+    // Covers of one meal, changed from the discreet "N pers." pill of its card.
+    var peopleFor by remember { mutableStateOf<MealUi?>(null) }
+    peopleFor?.let { m ->
+        PeopleDialog(m.title, m.people ?: 1, onDismiss = { peopleFor = null }) { peopleFor = null; onMealPeople(m, it) }
+    }
     var editing by remember { mutableStateOf<MealUi?>(null) }
     MealActionsDialog(editing, onDismiss = { editing = null }, onOpen = onOpenMeal, onSwap = onSwapMeal, onRemove = onRemoveMeal,
         onRename = onRenameMeal)
@@ -83,7 +89,8 @@ fun ReviewScreen(
             Column(Modifier.padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 130.dp + 16.dp)) {
                 ErrorText(error)
                 days.forEachIndexed { i, day ->
-                    DaySection(day, first = i == 0, working = working, onOpen = onOpenMeal, onEdit = { editing = it }) {
+                    DaySection(day, first = i == 0, working = working, onOpen = onOpenMeal, onEdit = { editing = it },
+                        onPeople = { peopleFor = it }) {
                         day.missing.forEach { meal ->
                             val busy = working == "${day.day}|$meal"
                             AddMealButton(if (meal == "lunch") "Ajouter le midi" else "Ajouter le soir", busy) {
@@ -127,4 +134,38 @@ fun AddMealButton(text: String, busy: Boolean, onClick: () -> Unit) {
             Text(text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Sunny.PeachDeep, modifier = Modifier.padding(start = 8.dp))
         }
     }
+}
+
+/** Number of people of one meal (1–20), shared by the family. */
+@Composable
+fun PeopleDialog(title: String, initial: Int, onDismiss: () -> Unit, onConfirm: (Int) -> Unit) {
+    var n by remember { mutableIntStateOf(initial.coerceIn(1, 20)) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = Sunny.Card,
+        title = {
+            Column {
+                Text("NOMBRE DE PERSONNES", fontSize = 11.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold, color = Sunny.PeachDeep)
+                Text(title, fontWeight = FontWeight.Bold, color = Sunny.Ink, fontSize = 18.sp, maxLines = 2)
+            }
+        },
+        text = {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                StepBox("−", n > 1) { n-- }
+                Text("$n", fontSize = 28.sp, fontWeight = FontWeight.Bold, color = Sunny.Ink, modifier = Modifier.width(64.dp),
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                StepBox("+", n < 20) { n++ }
+            }
+        },
+        confirmButton = { TextButton(onClick = { onConfirm(n) }) { Text("Enregistrer", color = Sunny.PeachDeep, fontWeight = FontWeight.Bold) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Annuler", color = Sunny.Slate) } },
+    )
+}
+
+@Composable
+private fun StepBox(sign: String, enabled: Boolean, onClick: () -> Unit) {
+    Box(
+        Modifier.size(48.dp).clip(Shapes.Control).background(Sunny.ButterLight).clickable(enabled = enabled, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) { Text(sign, fontSize = 22.sp, fontWeight = FontWeight.SemiBold, color = if (enabled) Sunny.Ink else Sunny.InkSoft) }
 }

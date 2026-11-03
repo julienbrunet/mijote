@@ -53,9 +53,12 @@ type MenuSlot struct {
 	Recipe *MenuRecipe `json:"recipe"`
 	// Title is the free text of a manual meal ("Commander une pizza"); a slot
 	// has a recipe or a title, never both (both null: no recipe suited it).
-	Title   *string `json:"title"`
-	Locked  bool    `json:"locked"`
-	Version int     `json:"version"`
+	Title *string `json:"title"`
+	// People is the number of covers of the meal, shared by the family (1–20); null for
+	// meals planned before it existed (clients then use the user's preference).
+	People  *int `json:"people"`
+	Locked  bool `json:"locked"`
+	Version int  `json:"version"`
 }
 
 // GenerationInfo tells the app whether generation is possible and its defaults.
@@ -123,7 +126,7 @@ func (s *Store) MenuSlots(ctx context.Context, from, to time.Time) ([]MenuSlot, 
 }
 
 func menuSlotsIn(ctx context.Context, q querier, from, to time.Time) ([]MenuSlot, error) {
-	rows, err := q.Query(ctx, `SELECT m.id::text, to_char(m.date, 'YYYY-MM-DD'), m.meal::text, m.title, m.locked, m.version,
+	rows, err := q.Query(ctx, `SELECT m.id::text, to_char(m.date, 'YYYY-MM-DD'), m.meal::text, m.title, m.people::int, m.locked, m.version,
 			r.id::text, r.title, r.dish_type::text, r.prep_minutes, r.total_minutes, r.image_path
 		FROM menu_slot m LEFT JOIN recipe r ON r.id = m.recipe_id
 		WHERE m.deleted_at IS NULL AND m.date BETWEEN $1 AND $2
@@ -135,7 +138,7 @@ func menuSlotsIn(ctx context.Context, q querier, from, to time.Time) ([]MenuSlot
 		var m MenuSlot
 		var id, title, dish, img *string
 		var r MenuRecipe
-		err := row.Scan(&m.ID, &m.Date, &m.Meal, &m.Title, &m.Locked, &m.Version, &id, &title, &dish, &r.PrepMinutes, &r.TotalMinutes, &img)
+		err := row.Scan(&m.ID, &m.Date, &m.Meal, &m.Title, &m.People, &m.Locked, &m.Version, &id, &title, &dish, &r.PrepMinutes, &r.TotalMinutes, &img)
 		if id != nil {
 			r.ID, r.Title, r.DishType = *id, *title, *dish
 			if img != nil {
@@ -199,6 +202,11 @@ func (s *Store) GenerateMenu(ctx context.Context, userID string, req GenerateReq
 		}
 		if len(recipes) < f.min || len(recipes) == 0 {
 			return &ErrNotEnoughRecipes{Have: len(recipes), Need: max(f.min, 1)}
+		}
+		// New meals are planned for the number of people of whoever generates them.
+		people, err := userPeople(ctx, tx, userID)
+		if err != nil {
+			return err
 		}
 
 		// The period: the requested number of meals, day after day.
@@ -264,11 +272,11 @@ func (s *Store) GenerateMenu(ctx context.Context, userID string, req GenerateReq
 			if sl.RecipeID != "" {
 				rid = &sl.RecipeID
 			}
-			if _, err := tx.Exec(ctx, `INSERT INTO menu_slot (date, meal, recipe_id, updated_by, updated_at)
-				VALUES ($1, $2, $3, $4, $5)
+			if _, err := tx.Exec(ctx, `INSERT INTO menu_slot (date, meal, recipe_id, updated_by, updated_at, people)
+				VALUES ($1, $2, $3, $4, $5, $6)
 				ON CONFLICT (date, meal) DO UPDATE SET recipe_id = $3, title = NULL, locked = false, deleted_at = NULL,
-					updated_by = $4, updated_at = $5, version = menu_slot.version + 1`,
-				sl.Date, sl.Meal, rid, userID, now); err != nil {
+					updated_by = $4, updated_at = $5, people = $6, version = menu_slot.version + 1`,
+				sl.Date, sl.Meal, rid, userID, now, people); err != nil {
 				return err
 			}
 		}
@@ -520,11 +528,15 @@ func (s *Store) AddSlot(ctx context.Context, userID string, req SlotRequest) (Me
 			}
 		}
 		var id string
-		err := tx.QueryRow(ctx, `INSERT INTO menu_slot (date, meal, recipe_id, title, locked, updated_by, updated_at)
-			VALUES ($1, $2, $3, $4, $5, $6, $7)
+		people, err := userPeople(ctx, tx, userID)
+		if err != nil {
+			return err
+		}
+		err = tx.QueryRow(ctx, `INSERT INTO menu_slot (date, meal, recipe_id, title, locked, updated_by, updated_at, people)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 			ON CONFLICT (date, meal) DO UPDATE SET recipe_id = $3, title = $4, locked = $5, deleted_at = NULL,
-				updated_by = $6, updated_at = $7, version = menu_slot.version + 1
-			RETURNING id::text`, req.Date, req.Meal, rp, title, chosen, userID, s.now()).Scan(&id)
+				updated_by = $6, updated_at = $7, people = $8, version = menu_slot.version + 1
+			RETURNING id::text`, req.Date, req.Meal, rp, title, chosen, userID, s.now(), people).Scan(&id)
 		if err != nil {
 			return err
 		}
@@ -584,4 +596,36 @@ func (s *Store) RemoveSlot(ctx context.Context, userID, id string) error {
 		return ErrNotFound
 	}
 	return nil
+}
+
+// userPeople is the user's preferred number of people, used for the meals they plan.
+func userPeople(ctx context.Context, tx pgx.Tx, userID string) (*int, error) {
+	var n *int
+	err := tx.QueryRow(ctx, `SELECT people FROM app_user WHERE id::text = $1`, userID).Scan(&n)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	return n, err
+}
+
+// SetSlotPeople changes the number of people of a planned meal (1–20), for the
+// whole family; the recipe quantities follow it.
+func (s *Store) SetSlotPeople(ctx context.Context, userID, id string, people int) (MenuSlot, error) {
+	if people < 1 || people > 20 {
+		return MenuSlot{}, invalid("le nombre de personnes doit être compris entre 1 et 20")
+	}
+	var out MenuSlot
+	err := s.tx(ctx, func(tx pgx.Tx) error {
+		if _, err := slotByID(ctx, tx, id); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `UPDATE menu_slot SET people = $2, updated_by = $3, updated_at = $4, version = version + 1
+			WHERE id::text = $1`, id, people, userID, s.now()); err != nil {
+			return err
+		}
+		var err error
+		out, err = oneSlot(ctx, tx, id)
+		return err
+	})
+	return out, err
 }

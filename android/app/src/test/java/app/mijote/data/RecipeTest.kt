@@ -51,6 +51,8 @@ class RecipeTest {
         val s = parseSlot(JSONObject("""{"id":"s1","date":"2026-11-02","meal":"dinner","locked":true,"recipe":null,"title":"Commander une pizza"}"""))
         assertEquals("Commander une pizza", s.title)
         assertEquals(true, s.manual)
+        assertEquals(null, s.people)
+        assertEquals(6, parseSlot(JSONObject("""{"id":"s3","date":"2026-11-02","meal":"dinner","locked":false,"recipe":null,"people":6}""")).people)
         val r = parseSlot(JSONObject("""{"id":"s2","date":"2026-11-02","meal":"lunch","locked":false,"recipe":null,"title":null}"""))
         assertEquals(false, r.manual)
 
