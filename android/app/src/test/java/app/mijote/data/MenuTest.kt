@@ -10,6 +10,17 @@ class MenuTest {
     private val weekdaysDinner = listOf("dinner", "dinner", "dinner", "dinner", "dinner", "lunch_dinner", "none")
 
     @Test
+    fun homeHighlightsOnlyTheServerTodayEvenWhenAnotherDayComesFirst() {
+        val today = LocalDate.of(2026, 11, 3)
+        val slots = listOf(-1L, 0L, 1L).map { offset ->
+            MenuSlot("s$offset", today.plusDays(offset), "dinner", null, locked = false, title = "Pizza")
+        }
+        val info = GenerationInfo(12, 10, 7, weekdaysDinner)
+        assertEquals(listOf(false, true, false), app.mijote.ui.menuDays(Menu(today, slots, info)).map { it.isToday })
+        assertEquals(listOf(false), app.mijote.ui.menuDays(Menu(today, slots.takeLast(1), info)).map { it.isToday })
+    }
+
+    @Test
     fun parsesMenu() {
         val m = parseMenu(JSONObject("""{"today":"2026-11-02","generation":{"recipeCount":12,"minRecipes":10,"horizonDays":7,
             "defaultMeals":["dinner","dinner","dinner","dinner","dinner","lunch_dinner","none"]},

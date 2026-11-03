@@ -57,6 +57,7 @@ data class MealUi(
 data class DayUi(
     val label: String, val date: String, val meals: List<MealUi>,
     val day: LocalDate? = null, val missing: List<String> = emptyList(),
+    val isToday: Boolean = false,
 )
 
 /** Signed-in shell on the Butter background: white header, the days as a list, corner tabs. */
@@ -109,9 +110,12 @@ fun HomeScreen(
             if (tab == Tab.MENUS && days.isNotEmpty()) {
                 Column(Modifier.padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 120.dp)) {
                     ErrorText(error)
-                    // No separator between days: the day titles and a wider gap group the meals.
-                    days.forEachIndexed { i, day ->
+                    days.filter { it.isToday }.forEachIndexed { i, day ->
                         DaySection(day, first = i == 0, working = working, onOpen = onOpenMeal, onEdit = { editing = it }, canEdit = canEdit)
+                    }
+                    val otherDays = days.filterNot { it.isToday }
+                    if (otherDays.any { it.meals.isNotEmpty() }) {
+                        CompactMealList(otherDays, working = working, onOpen = onOpenMeal, onEdit = { editing = it }, canEdit = canEdit)
                     }
                 }
             } else {
@@ -182,6 +186,60 @@ fun DaySection(
                     onPeople = onPeople?.let { { it(m) } })
             }
             extra()
+        }
+    }
+}
+
+/** A flat list of compact meals: the date belongs to each row, with no day heading. */
+@Composable
+private fun CompactMealList(
+    days: List<DayUi>, working: String?,
+    onOpen: (MealUi) -> Unit, onEdit: (MealUi) -> Unit, canEdit: Boolean,
+) {
+    Column(Modifier.padding(top = 18.dp).fillMaxWidth()
+        .shadow(2.dp, Shapes.Card).background(Sunny.Card, Shapes.Card).clip(Shapes.Card)) {
+        days.flatMap { day -> day.meals.map { day to it } }.forEachIndexed { index, (day, meal) ->
+            if (index > 0) HorizontalDivider(Modifier.padding(horizontal = 16.dp), color = Sunny.Butter, thickness = 1.dp)
+            Row(
+                Modifier.fillMaxWidth().heightIn(min = 64.dp)
+                    .clickable(enabled = meal.recipeId != null || (meal.manual && canEdit),
+                        onClick = { if (meal.manual) onEdit(meal) else onOpen(meal) })
+                    .padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                val dateParts = day.day?.let {
+                    it.dayOfMonth.toString() to it.format(java.time.format.DateTimeFormatter.ofPattern("MMM", java.util.Locale.FRENCH)).trimEnd('.')
+                } ?: (day.date.substringBefore(' ') to day.date.substringAfter(' ').trimEnd('.'))
+                Column(
+                    Modifier.padding(end = 12.dp).width(46.dp).heightIn(min = 48.dp)
+                        .background(Sunny.ButterLight, RoundedCornerShape(12.dp)).padding(vertical = 6.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                ) {
+                    Text(dateParts.first, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Sunny.Ink, lineHeight = 22.sp)
+                    Text(dateParts.second, fontSize = 11.sp, fontWeight = FontWeight.Medium, color = Sunny.Ink.copy(alpha = 0.65f))
+                }
+                Column(Modifier.weight(1f).padding(end = 4.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("${day.label} · ${meal.slot}", fontSize = 12.sp, fontWeight = FontWeight.Medium,
+                            color = Sunny.Ink.copy(alpha = 0.65f), maxLines = 1, overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false))
+                        if (meal.locked && !meal.manual) Icon(Icons.Filled.Lock,
+                            contentDescription = "Conservé si le menu est généré à nouveau", tint = Sunny.InkSoft,
+                            modifier = Modifier.padding(start = 5.dp).size(11.dp))
+                    }
+                    Text(meal.title, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = Sunny.Ink,
+                        maxLines = 3, overflow = TextOverflow.Ellipsis, lineHeight = 20.sp,
+                        modifier = Modifier.padding(top = 4.dp))
+                }
+                if (canEdit) IconButton(onClick = { onEdit(meal) }, modifier = Modifier.size(48.dp)) {
+                    Box(Modifier.size(32.dp).background(Sunny.Peach, RoundedCornerShape(10.dp)), contentAlignment = Alignment.Center) {
+                        if (working == meal.id) CircularProgressIndicator(Modifier.size(18.dp), color = Color.White, strokeWidth = 2.dp)
+                        else Icon(Icons.Filled.Edit, contentDescription = "Modifier : ${meal.title}", tint = Color.White,
+                            modifier = Modifier.size(17.dp))
+                    }
+                }
+            }
         }
     }
 }
@@ -352,7 +410,7 @@ private fun BottomBar(
 
 /** Groups the planned meals by day for the home screen. */
 fun menuDays(menu: Menu, people: Int = 1): List<DayUi> = menu.slots.groupBy { it.date }.toSortedMap().map { (date, slots) ->
-    DayUi(dayLabel(date, menu.today), shortDate(date), slots.sortedBy { it.meal != "lunch" }.map { mealUi(it, people) }, day = date)
+    DayUi(dayLabel(date, menu.today), shortDate(date), slots.sortedBy { it.meal != "lunch" }.map { mealUi(it, people) }, day = date, isToday = date == menu.today)
 }
 
 /** Every day from [from] to [to], also the empty ones, with the meals that can still be added. */

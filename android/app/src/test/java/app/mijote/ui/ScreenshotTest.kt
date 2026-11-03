@@ -53,6 +53,21 @@ class ScreenshotTest {
     }
 
     @Test
+    fun homeLongRecipeTitle() = paparazzi.snapshot {
+        val days = sampleDays.mapIndexed { index, day ->
+            if (index == 2) day.copy(meals = day.meals.mapIndexed { mealIndex, meal ->
+                if (mealIndex == 0) meal.copy(title = "Gratin de pâtes aux courgettes, tomates rôties et mozzarella fondante") else meal
+            }) else day
+        }
+        MijoteTheme { HomeScreen(User("u1", "julien", "Julien", "admin"), onLogout = {}, period = "2 → 8 novembre · 11 repas", days = days) }
+    }
+
+    @Test
+    fun homeCompactDays() = paparazzi.snapshot {
+        MijoteTheme { HomeScreen(User("u1", "julien", "Julien", "admin"), onLogout = {}, period = "2 → 8 novembre · 11 repas", days = sampleDays.drop(1)) }
+    }
+
+    @Test
     fun homeWithMenuReadonly() = paparazzi.snapshot {
         MijoteTheme { HomeScreen(User("u2", "enfant", "Enfant", "readonly"), onLogout = {}, period = "2 → 8 novembre · 11 repas", days = sampleDays) }
     }
@@ -265,13 +280,13 @@ class ScreenshotTest {
         DayUi("Aujourd'hui", "lun. 2 nov.", listOf(
             MealUi("Midi", "Poulet au pesto et tomates rôties", DishType.MEAT, 25, "🍗", locked = true),
             MealUi("Soir", "Velouté de potimarron", DishType.VEGETARIAN, 35, "🥣", locked = false),
-        )),
+        ), isToday = true),
         DayUi("Demain", "mar. 3 nov.", listOf(
             MealUi("Soir", "Saumon, riz et brocolis", DishType.FISH, 20, "🐟", locked = false),
-        )),
+        ), day = LocalDate.of(2026, 11, 3)),
         DayUi("Mercredi", "4 nov.", listOf(
             MealUi("Midi", "Gratin de pâtes aux légumes", DishType.VEGETARIAN, 40, "🧀", locked = false),
             MealUi("Soir", "Commander une pizza", null, null, "📝", locked = true, manual = true),
-        )),
+        ), day = LocalDate.of(2026, 11, 4)),
     )
 }
