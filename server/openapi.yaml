@@ -549,6 +549,105 @@ paths:
               schema: { $ref: "#/components/schemas/Error" }
         "401": { $ref: "#/components/responses/Unauthorized" }
 
+  /api/v1/menu/preview:
+    post:
+      tags: [Menu]
+      operationId: previewMenu
+      summary: Propose a menu without saving any planned meal
+      description: Uses the generation planner inside a rolled-back transaction. All edits remain client-side until confirmation; abandoning a proposal needs no request.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [meals]
+              properties:
+                start: { type: string, format: date }
+                meals: { type: integer, minimum: 1, maximum: 42 }
+                plan: { type: string, enum: [default, lunch_dinner, lunch, dinner], default: default }
+      responses:
+        "200":
+          description: Editable draft and versions of the saved meals it would replace.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MenuProposal" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/NotEnoughRecipes" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /api/v1/menu/preview/recipe:
+    post:
+      tags: [Menu]
+      operationId: previewMenuRecipe
+      summary: Pick a recipe for a draft without modifying the saved menu
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [date, meal, slots]
+              properties:
+                date: { type: string, format: date }
+                meal: { type: string, enum: [lunch, dinner] }
+                excludeId: { type: string, description: Recipe to avoid when replacing a draft meal. }
+                slots:
+                  type: array
+                  maxItems: 120
+                  items: { $ref: "#/components/schemas/ProposalSlot" }
+      responses:
+        "200":
+          description: A temporary slot carrying the picked recipe; not saved.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MenuSlot" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/NotEnoughRecipes" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
+  /api/v1/menu/confirm:
+    post:
+      tags: [Menu]
+      operationId: confirmMenuProposal
+      summary: Atomically publish the edited proposal to the shared menu
+      description: |
+        Only this operation saves an Android proposal. Replaces the exact inclusive
+        period with the submitted slots, including removals. Validates every slot
+        before writing. A stale baseline returns menu_changed, without overwriting
+        intervening changes. Recipes, manual titles, locks and people are saved together.
+        Client-only slot IDs are ignored; the response contains the saved slot IDs.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MenuProposal" }
+      responses:
+        "200":
+          description: Saved meals in the confirmed period.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  slots:
+                    type: array
+                    items: { $ref: "#/components/schemas/MenuSlot" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/SlotNotFound" }
+        "409":
+          description: "menu_changed: regenerate a proposal; the saved menu was modified since preview. Nothing was overwritten."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "422": { $ref: "#/components/responses/ValidationError" }
+
   /api/v1/menu/generate:
     post:
       tags: [Menu]
@@ -558,7 +657,8 @@ paths:
         Plans `meals` meals day after day from `start` according to `plan` (60 days at
         most). In the period, locked meals and manual meals are kept and count among the
         meals; other meals are re-picked; unlocked meals the plan leaves out are removed.
-        The result is saved and shared with the whole family.
+        The result is saved and shared with the whole family. Legacy immediate-save
+        operation; Android uses preview and confirm for its two-step workflow.
       requestBody:
         required: true
         content:
@@ -1203,6 +1303,48 @@ components:
         prepMinutes: { type: [integer, "null"] }
         totalMinutes: { type: [integer, "null"] }
         image: { type: [string, "null"] }
+
+    MenuProposal:
+      type: object
+      required: [from, to, slots, base]
+      properties:
+        from: { type: string, format: date }
+        to: { type: string, format: date, description: Inclusive, at most 60 days from the start. }
+        slots:
+          type: array
+          maxItems: 120
+          items: { $ref: "#/components/schemas/ProposalSlot" }
+        base:
+          type: array
+          maxItems: 120
+          items:
+            type: object
+            required: [id, version]
+            properties:
+              id: { type: string, format: uuid }
+              version: { type: integer }
+
+    ProposalSlot:
+      type: object
+      required: [date, meal]
+      description: Draft IDs are temporary. Preview includes recipe display metadata; confirmation only needs its ID.
+      properties:
+        id: { type: string }
+        date: { type: string, format: date }
+        meal: { type: string, enum: [lunch, dinner] }
+        title: { type: [string, "null"], maxLength: 100 }
+        locked: { type: boolean, default: false }
+        people: { type: [integer, "null"], minimum: 1, maximum: 20 }
+        recipe:
+          type: [object, "null"]
+          required: [id]
+          properties:
+            id: { type: string, format: uuid }
+            title: { type: string }
+            dishType: { type: string }
+            prepMinutes: { type: [integer, "null"] }
+            totalMinutes: { type: [integer, "null"] }
+            image: { type: [string, "null"] }
 
     MenuSlot:
       type: object

@@ -939,6 +939,10 @@ func TestReadonlyRoleAndSharedMenus(t *testing.T) {
 	expect(t, res, http.StatusForbidden, "readonly cannot delete recipe")
 
 	// Readonly user cannot modify menu slots or generate menus.
+	for _, path := range []string{"/api/v1/menu/preview", "/api/v1/menu/preview/recipe", "/api/v1/menu/confirm"} {
+		res, _ = app.api("POST", path, roAccess, map[string]any{})
+		expect(t, res, http.StatusForbidden, "readonly cannot propose or confirm menus")
+	}
 	res, _ = app.api("POST", "/api/v1/menu/generate", roAccess, map[string]any{"start": "2026-11-05", "meals": 2, "plan": "dinner"})
 	expect(t, res, http.StatusForbidden, "readonly cannot generate menu")
 	res, _ = app.api("POST", "/api/v1/menu/slots", roAccess, map[string]any{"date": "2026-11-10", "meal": "dinner"})

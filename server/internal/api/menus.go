@@ -61,6 +61,14 @@ func (a *API) getMenu(w http.ResponseWriter, r *http.Request) {
 
 // generateMenu plans {"meals": N, "start": "YYYY-MM-DD", "plan": "default|lunch_dinner|lunch|dinner"}.
 func (a *API) generateMenu(w http.ResponseWriter, r *http.Request) {
+	a.generate(w, r, false)
+}
+
+func (a *API) previewMenu(w http.ResponseWriter, r *http.Request) {
+	a.generate(w, r, true)
+}
+
+func (a *API) generate(w http.ResponseWriter, r *http.Request, preview bool) {
 	var in struct {
 		Start string `json:"start"`
 		Meals int    `json:"meals"`
@@ -87,6 +95,15 @@ func (a *API) generateMenu(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		req.Start = d
+	}
+	if preview {
+		proposal, err := a.Store.PreviewMenu(r.Context(), current(r).user.ID, req)
+		if err != nil {
+			menuSlotError(w, r, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, proposal)
+		return
 	}
 	slots, err := a.Store.GenerateMenu(r.Context(), current(r).user.ID, req)
 	if e, ok := store.IsNotEnoughRecipes(err); ok {
@@ -198,4 +215,44 @@ func (a *API) removeSlot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (a *API) confirmMenu(w http.ResponseWriter, r *http.Request) {
+	var proposal store.MenuProposal
+	if !body(w, r, &proposal) {
+		return
+	}
+	slots, err := a.Store.ConfirmMenu(r.Context(), current(r).user.ID, proposal)
+	if errors.Is(err, store.ErrMenuChanged) {
+		problem(w, http.StatusConflict, "menu_changed", "Le menu a changé depuis la proposition. Générez une nouvelle proposition pour ne pas écraser ces modifications.")
+		return
+	}
+	if err != nil {
+		menuSlotError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"slots": slots})
+}
+
+func (a *API) previewRecipe(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		Date      string           `json:"date"`
+		Meal      string           `json:"meal"`
+		ExcludeID string           `json:"excludeId"`
+		Slots     []store.MenuSlot `json:"slots"`
+	}
+	if !body(w, r, &in) {
+		return
+	}
+	date, ok := parseDate(in.Date)
+	if !ok {
+		problem(w, http.StatusUnprocessableEntity, "validation_error", "date invalide")
+		return
+	}
+	recipe, err := a.Store.PreviewRecipe(r.Context(), date, in.Meal, in.ExcludeID, in.Slots)
+	if err != nil {
+		menuSlotError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, store.MenuSlot{ID: "preview", Date: in.Date, Meal: in.Meal, Recipe: recipe})
 }

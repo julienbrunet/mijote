@@ -351,7 +351,7 @@ private fun UserButton(onPreferences: () -> Unit) {
  * with a white semi-transparent circle. Labels stay as content descriptions.
  */
 @Composable
-private fun BottomBar(
+internal fun BottomBar(
     selected: Tab, tabs: List<Tab> = Tab.entries, modifier: Modifier = Modifier, onSelect: (Tab) -> Unit,
     onAdd: (() -> Unit)? = null,
     onFilter: (() -> Unit)? = null,

@@ -112,6 +112,25 @@ class ScreenshotTest {
     }
 
     @Test
+    fun generateWithNavigation() = generationForm()
+
+    @Test
+    fun generateWithNavigationScrolled() = generationForm(bottom = true)
+
+    private fun generationForm(bottom: Boolean = false) = paparazzi.snapshot {
+        MijoteTheme {
+            HomeScreen(User("u1", "julien", "Julien", "admin"), onLogout = {}, tab = Tab.GENERATE, generate = {
+                GenerateScreen(GenerationInfo(24, 10, 7, List(7) { "dinner" }), LocalDate.of(2026, 11, 2),
+                    people = 4, busy = false, error = null, onGenerate = { _, _, _ -> },
+                    scrollState = androidx.compose.foundation.rememberScrollState(initial = if (bottom) Int.MAX_VALUE else 0),
+                    slots = listOf(
+                        app.mijote.data.MenuSlot("s1", LocalDate.of(2026, 11, 3), "dinner", null, locked = false),
+                        app.mijote.data.MenuSlot("s2", LocalDate.of(2026, 11, 4), "dinner", null, locked = true, title = "Pizza")))
+            })
+        }
+    }
+
+    @Test
     fun generate() = paparazzi.snapshot {
         MijoteTheme {
             GenerateScreen(GenerationInfo(24, 10, 7, listOf("dinner", "dinner", "dinner", "dinner", "dinner", "lunch_dinner", "lunch_dinner")),
@@ -132,6 +151,16 @@ class ScreenshotTest {
         MijoteTheme {
             ReviewScreen("2 → 4 novembre", sampleDays.mapIndexed { i, d -> d.copy(missing = if (i == 1) listOf("lunch") else emptyList()) },
                 working = null, error = null, onOpenMeal = {}, onSwapMeal = {}, onRemoveMeal = {}, onAddMeal = { _, _ -> }, onValidate = {})
+        }
+    }
+
+    @Test
+    fun reviewWithMoveHandles() = paparazzi.snapshot {
+        MijoteTheme {
+            ReviewScreen("2 → 4 novembre", sampleDays.mapIndexed { dayIndex, day ->
+                day.copy(meals = day.meals.mapIndexed { mealIndex, meal -> meal.copy(id = "s$dayIndex-$mealIndex") })
+            }, working = null, error = null, onOpenMeal = {}, onSwapMeal = {}, onRemoveMeal = {},
+                onAddMeal = { _, _ -> }, onValidate = {})
         }
     }
 

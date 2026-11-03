@@ -137,13 +137,15 @@ class MainActivity : ComponentActivity() {
                         } else if (review != null && m != null) {
                             ReviewScreen(
                                 period = periodLabel(review.from, review.to),
-                                days = reviewDays(m, review.from, review.to, s.user.people),
+                                days = reviewDays(m.copy(slots = menu.proposal?.slots.orEmpty()), review.from, review.to, s.user.people),
                                 working = menu.working, error = menu.error,
                                 onOpenMeal = open,
                                 onSwapMeal = { vm.swapMeal(it.id) },
                                 onRemoveMeal = { vm.removeMeal(it.id) },
                                 onAddMeal = vm::addMeal,
-                                onValidate = vm::closeReview,
+                                onValidate = vm::validateReview,
+                                onMoveMeal = { source, target -> vm.moveMeal(source.id, target.id) },
+                                onTab = { selected -> if (menu.working == null) { vm.closeReview(); vm.selectTab(selected) } },
                                 onAddManualMeal = { date, meal, title -> vm.planMeal(date, meal, null, title, replace = false) },
                                 onRenameMeal = { meal, title -> vm.renameMeal(meal.id, title) },
                                 onMealPeople = { meal, n -> vm.setMealPeople(meal.id, n) },

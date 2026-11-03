@@ -121,6 +121,9 @@ Full schemas, parameters and responses: [`openapi.yaml`](openapi.yaml). "Write" 
 | `PUT·DELETE /api/v1/recipes/{id}/favorite` | any user | Add the recipe to / remove it from **the caller's own** favorites (`204`). Personal, not shared with the family; read-only users have favorites too. |
 | `GET /api/v1/tags` | any user | Tags with their recipe count. |
 | `GET /api/v1/menu?from=&to=` | any user | Planned meals and generation info. |
+| `POST /api/v1/menu/preview` | write | Generate an unsaved proposal (`from`, `to`, `slots`, `base`). |
+| `POST /api/v1/menu/preview/recipe` | write | Pick a draft recipe using `date`, `meal`, `slots` and optional `excludeId`, without saving any slot. |
+| `POST /api/v1/menu/confirm` | write | Atomically save the edited proposal; returns saved `slots`; 409 `menu_changed` if the baseline is stale. |
 | `POST /api/v1/menu/generate` | write | Generate a period. |
 | `POST /api/v1/menu/slots` | write | Plan one meal (server pick, given recipe or manual meal). |
 | `PUT /api/v1/menu/slots/{id}` | write | Turn a meal into a given recipe or manual meal. |
@@ -287,6 +290,7 @@ arrays become empty). The image is kept.
 - **Plan one meal**: `POST /api/v1/menu/slots` `{"date","meal"}` plus `recipeId` (that
   recipe, locked), `title` (manual meal, 1–100 characters, locked), or neither (server
   pick). `409 slot_exists` if already planned, unless `"replace": true`.
+- **Android proposal workflow**: call `POST /api/v1/menu/preview` with the same request as generation. This leaves **all saved menu rows unchanged**, including deletions, versions and audit stamps. Keep the returned inclusive `from`/`to` and `base` (IDs and versions) unchanged. Edit `slots` locally: remove/add meals, edit free text, covers, or reorder contents among dates. Use `POST /api/v1/menu/preview/recipe` with `{date, meal, slots, excludeId?}` for another random recipe without saving. Abandoning the proposal needs no request. Only `POST /api/v1/menu/confirm` with `{from,to,base,slots}` writes the shared menu: the entire period is replaced atomically, including explicit removals. Each slot needs `date`, `meal`, optional `recipe:{id}` or `title`, `locked` and `people`; preview IDs are temporary and ignored at confirmation. Both `slots` and `base` arrays are required (an explicit empty `slots` clears the period). Invalid drafts fail without partial changes. Concurrent changes return 409 `menu_changed`; regenerate rather than replacing the baseline. All three endpoints require write access. `/menu/generate` remains an immediate-save endpoint for older clients and scripts; the Android two-step flow no longer calls it.
 - **Change a meal**: `PUT /api/v1/menu/slots/{id}` `{"recipeId"}` or `{"title"}` (locked);
   `POST /api/v1/menu/slots/{id}/swap` for another server pick (unlocks);
   `DELETE /api/v1/menu/slots/{id}` to remove it.
