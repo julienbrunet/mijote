@@ -14,6 +14,7 @@ import (
 	"github.com/julienbrunet/mijote/server/internal/auth"
 	"github.com/julienbrunet/mijote/server/internal/images"
 	"github.com/julienbrunet/mijote/server/internal/store"
+	"github.com/julienbrunet/mijote/server/internal/sysinfo"
 )
 
 // APIVersions lists the REST API versions this server supports.
@@ -21,8 +22,11 @@ var APIVersions = []string{"v1"}
 
 // New returns the root HTTP handler. Signing keys are generated on first start
 // and kept in the database (server_secret).
-func New(ctx context.Context, pool *pgxpool.Pool, proxies auth.Proxies, imageDir string) (http.Handler, error) {
+func New(ctx context.Context, pool *pgxpool.Pool, proxies auth.Proxies, imageDir, version string) (http.Handler, error) {
 	st := store.New(pool)
+	if err := st.RecordServerStart(ctx, version); err != nil {
+		return nil, err
+	}
 	jwtKey, err := st.Secret(ctx, "jwt_key", 32)
 	if err != nil {
 		return nil, err
@@ -34,10 +38,11 @@ func New(ctx context.Context, pool *pgxpool.Pool, proxies auth.Proxies, imageDir
 	// One guard for the app and the admin: the limits apply to both.
 	guard := auth.NewGuard()
 	imgs := images.Dir{Path: imageDir}
-	adm, err := admin.New(st, guard, proxies, adminKey, imgs)
+	adm, err := admin.New(st, guard, proxies, adminKey, imgs, version, sysinfo.NewSampler(ctx))
 	if err != nil {
 		return nil, err
 	}
+	adm.APIVersions = APIVersions
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/versions", func(w http.ResponseWriter, r *http.Request) {

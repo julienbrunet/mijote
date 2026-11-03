@@ -119,7 +119,7 @@ var csrfRe = regexp.MustCompile(`name="csrf" value="([0-9a-f]+)"`)
 func TestAuthFlow(t *testing.T) {
 	pool := testDB(t)
 	ctx := context.Background()
-	h, err := New(ctx, pool, nil, t.TempDir())
+	h, err := New(ctx, pool, nil, t.TempDir(), "test")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -216,7 +216,7 @@ func TestAuthFlow(t *testing.T) {
 func TestInvitationFlow(t *testing.T) {
 	pool := testDB(t)
 	ctx := context.Background()
-	h, err := New(ctx, pool, nil, t.TempDir())
+	h, err := New(ctx, pool, nil, t.TempDir(), "test")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -329,7 +329,7 @@ func (c *client) api(method, path, token string, v any) (*http.Response, map[str
 func TestRecipes(t *testing.T) {
 	pool := testDB(t)
 	ctx := context.Background()
-	h, err := New(ctx, pool, nil, t.TempDir())
+	h, err := New(ctx, pool, nil, t.TempDir(), "test")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -492,7 +492,7 @@ func TestRecipeImages(t *testing.T) {
 	pool := testDB(t)
 	ctx := context.Background()
 	dir := t.TempDir()
-	h, err := New(ctx, pool, nil, dir)
+	h, err := New(ctx, pool, nil, dir, "test")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -591,7 +591,7 @@ func mustAdmin(t *testing.T, st *store.Store) store.User {
 func TestAPITokens(t *testing.T) {
 	pool := testDB(t)
 	ctx := context.Background()
-	h, err := New(ctx, pool, nil, t.TempDir())
+	h, err := New(ctx, pool, nil, t.TempDir(), "test")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -667,7 +667,7 @@ func TestAPITokens(t *testing.T) {
 func TestMenuGeneration(t *testing.T) {
 	pool := testDB(t)
 	ctx := context.Background()
-	h, err := New(ctx, pool, nil, t.TempDir())
+	h, err := New(ctx, pool, nil, t.TempDir(), "test")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -847,7 +847,7 @@ func TestMenuGeneration(t *testing.T) {
 func TestReadonlyRoleAndSharedMenus(t *testing.T) {
 	pool := testDB(t)
 	ctx := context.Background()
-	h, err := New(ctx, pool, nil, t.TempDir())
+	h, err := New(ctx, pool, nil, t.TempDir(), "test")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -961,7 +961,7 @@ func TestReadonlyRoleAndSharedMenus(t *testing.T) {
 func TestAppAdmin(t *testing.T) {
 	pool := testDB(t)
 	ctx := context.Background()
-	h, err := New(ctx, pool, nil, t.TempDir())
+	h, err := New(ctx, pool, nil, t.TempDir(), "test")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1047,7 +1047,7 @@ func TestAppAdmin(t *testing.T) {
 func TestAdminMealList(t *testing.T) {
 	pool := testDB(t)
 	ctx := context.Background()
-	h, err := New(ctx, pool, nil, t.TempDir())
+	h, err := New(ctx, pool, nil, t.TempDir(), "test")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1102,23 +1102,175 @@ func TestAdminMealList(t *testing.T) {
 	res, _ = app.api("POST", "/api/v1/menu/slots", lea, map[string]any{"date": day(1), "meal": "lunch", "title": "Pique-nique"})
 	expect(t, res, http.StatusCreated, "manual meal")
 
-	res, page = web.do("GET", "/admin/meals", "", "")
+	// The home page shows the upcoming meals as cards; the former address redirects there.
+	res, _ = web.do("GET", "/admin/meals?period=past", "", "")
+	if res.StatusCode != http.StatusMovedPermanently || res.Header.Get("Location") != "/admin/?period=past" {
+		t.Fatalf("old meal list address: %d %s", res.StatusCode, res.Header.Get("Location"))
+	}
+	res, page = web.do("GET", "/admin/", "", "")
 	expect(t, res, http.StatusOK, "meal list")
-	if !strings.Contains(page, "Pique-nique") || !strings.Contains(page, "Léa") || !strings.Contains(page, "aujourd'hui") ||
-		strings.Count(page, `href="/admin/recipes/`) != 2 || !strings.Contains(page, ">Liste de repas</a>") {
+	if !strings.Contains(page, "Pique-nique") || !strings.Contains(page, "Léa") || !strings.Contains(page, "Aujourd&#39;hui") ||
+		strings.Count(page, `href="/admin/recipes/`) != 2 || !strings.Contains(page, `class="on" aria-current="page">Accueil</a>`) {
 		t.Fatalf("upcoming meals incomplete:\n%s", page)
 	}
 	leaUser, _ := st.UserByUsername(ctx, "lea")
-	_, page = web.do("GET", "/admin/meals?user="+leaUser.ID, "", "")
+	_, page = web.do("GET", "/admin/?user="+leaUser.ID, "", "")
 	if !strings.Contains(page, "Pique-nique") || strings.Contains(page, `href="/admin/recipes/`) {
 		t.Fatal("filter by planner")
 	}
-	_, page = web.do("GET", "/admin/meals?period=past", "", "")
-	if strings.Count(page, `href="/admin/recipes/`) != 1 || strings.Contains(page, "Pique-nique") {
+	_, page = web.do("GET", "/admin/?period=past", "", "")
+	if strings.Count(page, `href="/admin/recipes/`) != 1 || strings.Contains(page, "Pique-nique") || strings.Contains(page, "/admin/meals/") {
 		t.Fatal("past meals")
 	}
-	res, _ = web.do("GET", "/admin/meals?user=not-a-uuid", "", "")
+	res, _ = web.do("GET", "/admin/?user=not-a-uuid", "", "")
 	expect(t, res, http.StatusOK, "unknown planner")
-	res, _ = newClient(t, srv.URL).do("GET", "/admin/meals", "", "")
-	expect(t, res, http.StatusSeeOther, "meal list needs a session")
+	res, _ = newClient(t, srv.URL).do("GET", "/admin/meals/x", "", "")
+	expect(t, res, http.StatusSeeOther, "meal page needs a session")
+}
+
+func TestAdminHomeSystemAndNavigation(t *testing.T) {
+	pool := testDB(t)
+	ctx := context.Background()
+	h, err := New(ctx, pool, nil, t.TempDir(), "1.2.3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(h)
+	defer srv.Close()
+	st := store.New(pool)
+
+	// The version is not disclosed before signing in; the footer links to the repository.
+	web := newClient(t, srv.URL)
+	web.form("/admin/setup", url.Values{"username": {"julien"}, "password": {"secret-pass"}, "confirm": {"secret-pass"}})
+	_, page := web.do("GET", "/admin/login", "", "")
+	if strings.Contains(page, "1.2.3") || !strings.Contains(page, "https://github.com/julienbrunet/mijote") ||
+		!strings.Contains(page, "/admin/wordmark.svg?v=") {
+		t.Fatal("login page footer and brand")
+	}
+	web.form("/admin/login", url.Values{"password": {"secret-pass"}})
+
+	// Static files of the admin.
+	for name, ctype := range map[string]string{"admin.css": "text/css", "logo.svg": "image/svg+xml", "wordmark.svg": "image/svg+xml"} {
+		res, _ := web.do("GET", "/admin/"+name, "", "")
+		expect(t, res, http.StatusOK, name)
+		if !strings.HasPrefix(res.Header.Get("Content-Type"), ctype) || res.Header.Get("ETag") == "" {
+			t.Fatalf("%s: %s", name, res.Header.Get("Content-Type"))
+		}
+	}
+
+	// Every page of the navigation renders, with its section highlighted and its tabs.
+	for path, want := range map[string][]string{
+		"/admin/":              {`aria-current="page">Accueil</a>`, "Prochains repas"},
+		"/admin/recipes":       {`aria-current="page">Recettes</a>`, `href="/admin/recipes/stats"`},
+		"/admin/tags":          {`aria-current="page">Étiquettes</a>`},
+		"/admin/recipes/stats": {`aria-current="page">Statistiques</a>`, "Équilibre des types de plat"},
+		"/admin/accounts":      {`aria-current="page">Utilisateurs</a>`, `href="/admin/journal"`},
+		"/admin/invitations":   {`aria-current="page">Invitations</a>`},
+		"/admin/sessions":      {`aria-current="page">Sessions</a>`},
+		"/admin/journal":       {`aria-current="page">Journal des connexions</a>`},
+		"/admin/system":        {`aria-current="page">Système</a>`, "1.2.3", "Base de données", "Dossier des images"},
+		"/admin/account":       {`aria-current="page">Mon profil</a>`, `href="/admin/tokens"`},
+		"/admin/tokens":        {`aria-current="page">Jetons d&#39;API</a>`},
+	} {
+		res, page := web.do("GET", path, "", "")
+		expect(t, res, http.StatusOK, path)
+		for _, w := range append(want, "serveur 1.2.3", "Code source sur GitHub") {
+			if !strings.Contains(page, w) {
+				t.Fatalf("%s: missing %q", path, w)
+			}
+		}
+	}
+
+	// Recipes and planned meals from the app.
+	app := newClient(t, srv.URL)
+	_, tok := app.json("/api/v1/auth/login", map[string]string{"username": "julien", "password": "secret-pass"})
+	julien := tok["accessToken"].(string)
+	var ids []string
+	for i := range 6 {
+		res, rec := app.api("POST", "/api/v1/recipes", julien, map[string]any{
+			"title": "Plat " + string(rune('A'+i)), "dishType": []string{"meat", "fish", "vegetarian"}[i%3], "mealTypes": []string{"dinner"}})
+		expect(t, res, http.StatusCreated, "create recipe")
+		ids = append(ids, rec["id"].(string))
+	}
+	today, _ := st.Today(ctx)
+	day := func(n int) string { return today.AddDate(0, 0, n).Format(time.DateOnly) }
+	res, _ := app.api("POST", "/api/v1/menu/slots", julien, map[string]any{"date": day(-2), "meal": "dinner", "recipeId": ids[0]})
+	expect(t, res, http.StatusCreated, "past meal")
+	res, slot := app.api("POST", "/api/v1/menu/slots", julien, map[string]any{"date": day(1), "meal": "dinner", "recipeId": ids[1]})
+	expect(t, res, http.StatusCreated, "upcoming meal")
+	slotID := slot["id"].(string)
+
+	// The home page shows the meal as a card with its actions.
+	_, page = web.do("GET", "/admin/", "", "")
+	csrf := csrfRe.FindStringSubmatch(page)[1]
+	if !strings.Contains(page, "Demain") || !strings.Contains(page, "Plat B") || !strings.Contains(page, `href="/admin/meals/`+slotID+`"`) ||
+		!strings.Contains(page, `action="/admin/meals/`+slotID+`/delete"`) {
+		t.Fatalf("meal card:\n%s", page)
+	}
+
+	// Change the recipe, turn it into a manual meal, draw another recipe, then remove it.
+	res, page = web.do("GET", "/admin/meals/"+slotID, "", "")
+	expect(t, res, http.StatusOK, "meal page")
+	if !strings.Contains(page, "Pour le soir") || !strings.Contains(page, "Plat F") {
+		t.Fatal("meal page lists the recipes")
+	}
+	res, _ = web.form("/admin/meals/"+slotID+"/recipe", url.Values{"csrf": {csrf}, "recipe": {ids[2]}})
+	expect(t, res, http.StatusSeeOther, "set recipe")
+	slots, _ := st.MenuSlots(ctx, today.AddDate(0, 0, 1), today.AddDate(0, 0, 1))
+	if len(slots) != 1 || slots[0].Recipe == nil || slots[0].Recipe.ID != ids[2] || !slots[0].Locked {
+		t.Fatalf("recipe not set: %+v", slots)
+	}
+	res, _ = web.form("/admin/meals/"+slotID+"/recipe", url.Values{"csrf": {csrf}, "recipe": {"not-a-recipe"}})
+	expect(t, res, http.StatusUnprocessableEntity, "unknown recipe")
+	res, _ = web.form("/admin/meals/"+slotID+"/title", url.Values{"csrf": {csrf}, "title": {"Pizza"}})
+	expect(t, res, http.StatusSeeOther, "manual meal")
+	res, _ = web.form("/admin/meals/"+slotID+"/title", url.Values{"csrf": {csrf}, "title": {"  "}})
+	expect(t, res, http.StatusUnprocessableEntity, "blank title")
+	_, page = web.do("GET", "/admin/?ok=meal_saved", "", "")
+	if !strings.Contains(page, "Pizza") || !strings.Contains(page, "repas libre") || !strings.Contains(page, "Repas modifié.") {
+		t.Fatal("manual meal on the home page")
+	}
+	res, page = web.form("/admin/meals/"+slotID+"/swap", url.Values{"csrf": {csrf}})
+	expect(t, res, http.StatusUnprocessableEntity, "swap below the minimum recipe count")
+	if !strings.Contains(page, "6 sur les 10") {
+		t.Fatal("swap error message")
+	}
+	for i := range 4 {
+		res, _ := app.api("POST", "/api/v1/recipes", julien, map[string]any{
+			"title": "Extra " + string(rune('A'+i)), "dishType": "vegetarian", "mealTypes": []string{"lunch"}})
+		expect(t, res, http.StatusCreated, "create recipe")
+	}
+	res, _ = web.form("/admin/meals/"+slotID+"/swap", url.Values{"csrf": {csrf}})
+	expect(t, res, http.StatusSeeOther, "swap")
+	slots, _ = st.MenuSlots(ctx, today.AddDate(0, 0, 1), today.AddDate(0, 0, 1))
+	if len(slots) != 1 || slots[0].Recipe == nil || slots[0].Title != nil {
+		t.Fatalf("swap: %+v", slots)
+	}
+	res, _ = web.form("/admin/meals/"+slotID+"/delete", url.Values{})
+	expect(t, res, http.StatusForbidden, "delete needs the CSRF token")
+	res, _ = web.form("/admin/meals/"+slotID+"/delete", url.Values{"csrf": {csrf}})
+	expect(t, res, http.StatusSeeOther, "delete")
+	res, _ = web.form("/admin/meals/"+slotID+"/delete", url.Values{"csrf": {csrf}})
+	expect(t, res, http.StatusNotFound, "already deleted")
+	res, _ = web.do("GET", "/admin/meals/"+slotID, "", "")
+	expect(t, res, http.StatusNotFound, "deleted meal page")
+
+	// Usage statistics: the past meal counts, the others were never served.
+	_, page = web.do("GET", "/admin/recipes/stats?period=30", "", "")
+	if !strings.Contains(page, "9 recette(s) active(s) n'ont encore jamais été servies") || !strings.Contains(page, "1 repas · 100 %") {
+		t.Fatalf("stats:\n%s", page)
+	}
+
+	// The system page counts the content and warns about the admin's missing 2FA.
+	_, page = web.do("GET", "/admin/system", "", "")
+	for _, w := range []string{"<b>10</b><span>Recettes</span>", "<b>1</b><span>Repas passés</span>", "double authentification",
+		"Instance installée le", "PostgreSQL", "Aucun repas planifié à venir."} {
+		if !strings.Contains(page, w) {
+			t.Fatalf("system page: missing %q", w)
+		}
+	}
+	versions, _ := st.ServerVersions(ctx, 10)
+	if len(versions) != 1 || versions[0].Version != "1.2.3" {
+		t.Fatalf("server versions: %+v", versions)
+	}
 }

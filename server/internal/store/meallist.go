@@ -28,6 +28,10 @@ type MealListItem struct {
 	RecipeID    *string
 	RecipeTitle *string
 	Archived    bool    // the recipe was archived since
+	DishType    *string // of the recipe
+	Minutes     *int    // total time of the recipe
+	ImagePath   *string // recipe thumbnail file
+	Version     int     // recipe version (cache buster of its image)
 	Title       *string // manual meal
 	Locked      bool
 	PlannedBy   *string // display name of the account that last planned or changed the meal
@@ -48,22 +52,13 @@ func (s *Store) MealList(ctx context.Context, f MealListFilter) ([]MealListItem,
 		}
 		user = &f.UserID
 	}
-	rows, err := s.Pool.Query(ctx, `SELECT m.id::text, m.date, m.meal::text, r.id::text, r.title, r.archived_at IS NOT NULL,
-			m.title, m.locked, u.display_name, m.updated_at
-		FROM menu_slot m
-		LEFT JOIN recipe r ON r.id = m.recipe_id
-		LEFT JOIN app_user u ON u.id = m.updated_by
+	rows, err := s.Pool.Query(ctx, mealListSelect+`
 		WHERE m.deleted_at IS NULL AND `+cond+` AND ($2::uuid IS NULL OR m.updated_by = $2)
 		ORDER BY `+order+` LIMIT $3`, f.Today, user, MealListMaxRows+1)
 	if err != nil {
 		return nil, false, err
 	}
-	list, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (MealListItem, error) {
-		var m MealListItem
-		err := row.Scan(&m.ID, &m.Date, &m.Meal, &m.RecipeID, &m.RecipeTitle, &m.Archived,
-			&m.Title, &m.Locked, &m.PlannedBy, &m.PlannedAt)
-		return m, err
-	})
+	list, err := pgx.CollectRows(rows, scanMealListItem)
 	if err != nil {
 		return nil, false, err
 	}
@@ -75,4 +70,32 @@ func (s *Store) MealList(ctx context.Context, f MealListFilter) ([]MealListItem,
 		list = []MealListItem{}
 	}
 	return list, more, nil
+}
+
+const mealListSelect = `SELECT m.id::text, m.date, m.meal::text, r.id::text, r.title, r.archived_at IS NOT NULL,
+		r.dish_type::text, r.total_minutes, r.image_path, coalesce(r.version, 0),
+		m.title, m.locked, u.display_name, m.updated_at
+	FROM menu_slot m
+	LEFT JOIN recipe r ON r.id = m.recipe_id
+	LEFT JOIN app_user u ON u.id = m.updated_by`
+
+func scanMealListItem(row pgx.CollectableRow) (MealListItem, error) {
+	var m MealListItem
+	err := row.Scan(&m.ID, &m.Date, &m.Meal, &m.RecipeID, &m.RecipeTitle, &m.Archived,
+		&m.DishType, &m.Minutes, &m.ImagePath, &m.Version,
+		&m.Title, &m.Locked, &m.PlannedBy, &m.PlannedAt)
+	return m, err
+}
+
+// MealListItem returns one planned meal of the meal list.
+func (s *Store) MealListItem(ctx context.Context, id string) (MealListItem, error) {
+	if !validUUID(id) {
+		return MealListItem{}, ErrNotFound
+	}
+	rows, err := s.Pool.Query(ctx, mealListSelect+` WHERE m.id = $1 AND m.deleted_at IS NULL`, id)
+	if err != nil {
+		return MealListItem{}, err
+	}
+	m, err := pgx.CollectExactlyOneRow(rows, scanMealListItem)
+	return m, notFound(err)
 }

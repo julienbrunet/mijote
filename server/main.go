@@ -73,7 +73,7 @@ func run() error {
 	if err := os.MkdirAll(cfg.ImageDir, 0o750); err != nil {
 		return fmt.Errorf("MIJOTE_IMAGE_DIR: %w", err)
 	}
-	handler, err := server.New(ctx, pool, proxies, cfg.ImageDir)
+	handler, err := server.New(ctx, pool, proxies, cfg.ImageDir, version)
 	if err != nil {
 		return err
 	}
