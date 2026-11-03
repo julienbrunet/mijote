@@ -1279,7 +1279,7 @@ func TestAdminHomeSystemAndNavigation(t *testing.T) {
 func TestFavorites(t *testing.T) {
 	pool := testDB(t)
 	ctx := context.Background()
-	h, err := New(ctx, pool, nil, t.TempDir())
+	h, err := New(ctx, pool, nil, t.TempDir(), "test")
 	if err != nil {
 		t.Fatal(err)
 	}
