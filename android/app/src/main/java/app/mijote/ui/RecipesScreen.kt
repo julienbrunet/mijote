@@ -35,7 +35,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.ui.res.painterResource
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -146,7 +146,7 @@ private fun FilterButton(count: Int, onClick: () -> Unit) {
             .background(if (count > 0) Sunny.PeachDeep else Sunny.ButterLight).clickable(onClickLabel = "Filtres", onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(Icons.AutoMirrored.Filled.List, contentDescription = "Filtres", tint = if (count > 0) Color.White else Sunny.Ink)
+        Icon(painterResource(app.mijote.R.drawable.ic_filter), contentDescription = "Filtres", tint = if (count > 0) Color.White else Sunny.Ink)
         if (count > 0) Box(
             Modifier.align(Alignment.TopEnd).padding(6.dp).size(18.dp).background(Color.White, CircleShape),
             contentAlignment = Alignment.Center,
