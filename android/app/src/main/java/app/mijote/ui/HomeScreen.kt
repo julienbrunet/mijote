@@ -13,6 +13,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
@@ -86,6 +87,8 @@ fun HomeScreen(
     onFilterRecipes: (() -> Unit)? = null,
     filterCount: Int = 0,
     onRefresh: () -> Unit = {},
+    onNotifications: (() -> Unit)? = null,
+    unreadNotifications: Int = 0,
     recipes: @Composable () -> Unit = {},
     generate: @Composable () -> Unit = {},
 ) {
@@ -127,7 +130,8 @@ fun HomeScreen(
                 )
             }
         }
-        BottomBar(tab, availableTabs, Modifier.align(Alignment.BottomEnd), onTab)
+        BottomBar(tab, availableTabs, Modifier.align(Alignment.BottomEnd), onTab,
+            onNotifications = onNotifications.takeIf { canEdit }, unreadNotifications = unreadNotifications)
     }
 }
 
@@ -356,6 +360,8 @@ internal fun BottomBar(
     onAdd: (() -> Unit)? = null,
     onFilter: (() -> Unit)? = null,
     filterCount: Int = 0,
+    onNotifications: (() -> Unit)? = null,
+    unreadNotifications: Int = 0,
 ) {
     val icons = mapOf(Tab.MENUS to Icons.Filled.Home, Tab.RECIPES to Icons.Filled.Search,
         Tab.GENERATE to ImageVector.vectorResource(app.mijote.R.drawable.ic_meal_idea))
@@ -392,6 +398,15 @@ internal fun BottomBar(
         }
         // Round buttons on each side of the bar, as high as it, with icons the size of the tab icons:
         // "+" on the left, the filters (with the number of active ones) on the right.
+        if (onNotifications != null) Box(Modifier.align(Alignment.CenterStart).padding(start = 20.dp)) {
+            RoundBarButton("Notifications : $unreadNotifications non lues", Modifier, onNotifications) {
+                Icon(Icons.Filled.Notifications, contentDescription = "Notifications : $unreadNotifications non lues", tint = Sunny.PeachDeep, modifier = Modifier.size(24.dp))
+            }
+            if (unreadNotifications > 0) Box(Modifier.align(Alignment.TopEnd).heightIn(min = 22.dp).widthIn(min = 22.dp)
+                .background(Sunny.PeachDeep, CircleShape).border(2.dp, Sunny.Card, CircleShape).padding(horizontal = 4.dp), contentAlignment = Alignment.Center) {
+                Text(if (unreadNotifications > 99) "99+" else "$unreadNotifications", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+            }
+        }
         if (onAdd != null) RoundBarButton("Nouvelle recette", Modifier.align(Alignment.CenterStart).padding(start = 20.dp), onAdd) {
             Icon(Icons.Filled.Add, contentDescription = "Nouvelle recette", tint = Sunny.PeachDeep, modifier = Modifier.size(24.dp))
         }

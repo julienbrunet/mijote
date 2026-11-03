@@ -39,6 +39,7 @@ fun RecipeScreen(
     canWrite: Boolean = false, canArchive: Boolean = false,
     onPlan: () -> Unit = {}, onEdit: () -> Unit = {}, onArchive: () -> Unit = {},
     onFavorite: () -> Unit = {},
+    onWish: (() -> Unit)? = null,
     /** Set when opened from a planned meal by a member: the number of people is saved for that meal. */
     onMealPeople: ((Int) -> Unit)? = null,
 ) {
@@ -73,6 +74,21 @@ fun RecipeScreen(
         }
         Column(Modifier.padding(horizontal = 22.dp).padding(top = 22.dp, bottom = 48.dp).navigationBarsPadding()) {
             Text(r?.title ?: state.title, fontSize = 28.sp, lineHeight = 32.sp, fontWeight = FontWeight.Bold, color = Sunny.InkTitle)
+            if (r != null && !r.archived && onWish != null) {
+                val wish = state.wish
+                Button(onClick = onWish, enabled = !state.wishing && wish?.requested != true && wish?.remaining != 0,
+                    shape = Shapes.Control,
+                    colors = ButtonDefaults.buttonColors(containerColor = Sunny.PeachDeep, contentColor = Color.White),
+                    modifier = Modifier.fillMaxWidth().padding(top = 16.dp).height(52.dp)) {
+                    Text(if (state.wishing) "Envoi…" else if (wish?.requested == true) "Envie envoyée" else "J’ai envie de cette recette",
+                        fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                }
+                Text(if (wish?.requested == true) "Les personnes qui créent les menus ont été informées."
+                    else if (wish != null) "${wish.remaining} demande${if (wish.remaining > 1) "s" else ""} restante${if (wish.remaining > 1) "s" else ""} cette semaine · maximum ${wish.weeklyLimit}."
+                    else "Partagez votre envie avec les personnes qui créent les menus.",
+                    fontSize = 13.sp, color = Sunny.InkTitle, modifier = Modifier.padding(top = 8.dp))
+                ErrorText(state.wishError)
+            }
             if (r != null && canWrite) {
                 Button(
                     onClick = onPlan, enabled = !state.busy, shape = Shapes.Control,

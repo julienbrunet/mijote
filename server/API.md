@@ -120,6 +120,11 @@ Full schemas, parameters and responses: [`openapi.yaml`](openapi.yaml). "Write" 
 | `DELETE /api/v1/recipes/{id}/image` | write | Remove the image. |
 | `PUT·DELETE /api/v1/recipes/{id}/favorite` | any user | Add the recipe to / remove it from **the caller's own** favorites (`204`). Personal, not shared with the family; read-only users have favorites too. |
 | `GET /api/v1/tags` | any user | Tags with their recipe count. |
+| `GET·POST /api/v1/recipes/{id}/wish` | readonly | Pending wish/quota status; submit a wish to active menu creators (201 new, 200 already pending). |
+| `GET·PUT /api/v1/settings/recipe-wishes` | write | Shared `{ "weeklyLimit": 5 }`, range 1–100; each read-only account has its own weekly usage. |
+| `GET /api/v1/notifications?offset=0&limit=50` | write | Caller's inbox: `{items, unreadCount, hasMore}`, newest first, limit 1–100. |
+| `PUT /api/v1/notifications/{id}/read` | write | Mark own notification read (204, idempotent). |
+| `DELETE /api/v1/notifications/{id}` | write | Delete own notification (204), not other recipients' copies or quota history. |
 | `GET /api/v1/menu?from=&to=` | any user | Planned meals and generation info. |
 | `POST /api/v1/menu/preview` | write | Generate an unsaved proposal (`from`, `to`, `slots`, `base`). |
 | `POST /api/v1/menu/preview/recipe` | write | Pick a draft recipe using `date`, `meal`, `slots` and optional `excludeId`, without saving any slot. |
@@ -303,7 +308,7 @@ arrays become empty). The image is kept.
 ## 9. Rules for assistants
 
 - Use a personal API token; never ask for or store a user's password.
-- Check the role first if unsure: `GET /api/v1/me` (`readonly` cannot write).
+- Check the role first if unsure: `GET /api/v1/me` (`readonly` cannot edit menus or recipes, but may manage personal favorites and submit recipe wishes).
 - Never send an image URL to the server: download the image and upload its bytes.
 - Quantities are for one person; `unit` must be one of the 20 codes or `null`.
 - `dishType` is required and drives menu balance: ask the user when the recipe is
@@ -314,3 +319,11 @@ arrays become empty). The image is kept.
   `GET /api/v1/menu` and confirm with the user: the menu is shared by the whole family.
 - On `422`, read `message` (French), fix the data and retry once; on `401` with a personal
   token, the token is expired or revoked: ask the admin for a new one.
+
+### Recipe wishes and in-app notifications
+
+Read-only users can say they want an active recipe with `POST /api/v1/recipes/{id}/wish`. Each currently active admin/member receives a personal notification containing the requester's name and recipe title. No meal is planned automatically. `GET` on the same path returns `{requested, weeklyLimit, used, remaining, resetsAt}`. Repeating a pending wish returns 200 without another request or notification; a new wish returns 201. Once all active recipients have cleared its notifications, the recipe can be requested again within the remaining quota.
+
+The default limit is **5 requests per read-only account per calendar week**. Weeks start Monday at midnight in the family timezone (including daylight saving). Every member/admin may change the **instance-wide** limit in `GET/PUT /settings/recipe-wishes` (1–100). Changes take effect immediately, without clearing usage. Requests are checked transactionally: parallel requests cannot exceed the limit. `409 wish_limit_reached` means the limit is spent; `409 no_menu_creators` means no active recipient exists. Neither failure consumes quota. Missing or archived recipes return 404; writers cannot submit wishes (403).
+
+`GET /notifications` only returns the authenticated writer's inbox and unread total. Marking read or deleting a notification belonging to someone else returns 404; read-only callers get 403. Clearing a notification never refunds quota and does not affect other recipients. Archived recipes remain named in old notifications with `recipeAvailable:false`. The Android app refreshes notifications on sign-in, foreground return, menu refresh and explicit inbox refresh; it uses no background polling or push service. A bell with unread count opens the inbox; the preferences also link to it. Read-only preferences hide the number-of-people setting.

@@ -22,6 +22,7 @@ import app.mijote.ui.ServerScreen
 import app.mijote.ui.UpdateDialog
 import app.mijote.ui.LocalImageLoader
 import app.mijote.ui.RecipeScreen
+import app.mijote.ui.NotificationsScreen
 import app.mijote.ui.ReviewScreen
 import app.mijote.ui.menuDays
 import app.mijote.ui.menuPeriod
@@ -71,6 +72,8 @@ class MainActivity : ComponentActivity() {
             val recipes by vm.recipes.collectAsStateWithLifecycle()
             val editor by vm.editor.collectAsStateWithLifecycle()
             val admin by vm.admin.collectAsStateWithLifecycle()
+            val notifications by vm.notifications.collectAsStateWithLifecycle()
+            val wishSettings by vm.wishSettings.collectAsStateWithLifecycle()
             // The recipe (id, title) the "plan on a day" dialog is open for.
             var filterSheet by remember { mutableStateOf(false) }
             var planning by remember { mutableStateOf<Pair<String, String>?>(null) }
@@ -89,7 +92,9 @@ class MainActivity : ComponentActivity() {
                             onPeople = vm::setPeople, onCheckUpdate = vm::checkForUpdate, onChangeServer = vm::leaveServer,
                             onLogout = vm::logout, onBack = vm::closePreferences,
                             onInvitations = { vm.openAdmin(AdminSection.INVITATIONS) },
-                            onAccounts = { vm.openAdmin(AdminSection.ACCOUNTS) })
+                            onAccounts = { vm.openAdmin(AdminSection.ACCOUNTS) },
+                            notificationCount = notifications.unreadCount, onNotifications = vm::openNotifications,
+                            wishSettings = wishSettings, onWishLimit = vm::setWishLimit, onReloadWishSettings = vm::loadWishSettings)
                     }
                     is Screen.Admin -> {
                         BackHandler(onBack = vm::closeAdmin)
@@ -122,6 +127,7 @@ class MainActivity : ComponentActivity() {
                         val edited = editor
                         if (edited != null) BackHandler(onBack = vm::closeEditor)
                         else if (recipe != null) BackHandler(onBack = vm::closeRecipe)
+                        else if (notifications.open) BackHandler(onBack = vm::closeNotifications)
                         else if (review != null) BackHandler(onBack = vm::closeReview)
                         else if (tab != Tab.MENUS) BackHandler { vm.selectTab(Tab.MENUS) }
                         val shown = recipe
@@ -133,7 +139,12 @@ class MainActivity : ComponentActivity() {
                                 onPlan = { planning = shown.id to (shown.recipe?.title ?: shown.title) },
                                 onEdit = { vm.editRecipe(new = false) }, onArchive = vm::archiveRecipe,
                                 onFavorite = { vm.toggleFavorite(shown.id) },
+                                onWish = if (s.user.isReadonly) vm::requestRecipe else null,
                                 onMealPeople = shown.slotId?.takeIf { s.user.canWrite }?.let { slot -> { n: Int -> vm.saveMealPeople(slot, n) } })
+                        } else if (notifications.open) {
+                            NotificationsScreen(notifications, onBack = vm::closeNotifications,
+                                onRefresh = { vm.loadNotifications() }, onMore = { vm.loadNotifications(more = true) },
+                                onOpen = vm::openNotification, onRead = vm::readNotification, onDelete = vm::deleteNotification)
                         } else if (review != null && m != null) {
                             ReviewScreen(
                                 period = periodLabel(review.from, review.to),
@@ -164,6 +175,7 @@ class MainActivity : ComponentActivity() {
                                 onAddRecipe = { vm.editRecipe(new = true) },
                                 onFilterRecipes = { filterSheet = true }, filterCount = recipes.filters.count,
                                 refreshing = menu.refreshing, onRefresh = { vm.loadMenu(manual = true) },
+                                onNotifications = if (s.user.canWrite) vm::openNotifications else null, unreadNotifications = notifications.unreadCount,
                                 recipes = {
                                     RecipesTab(recipes, canWrite = s.user.canWrite,
                                         onQuery = { vm.searchRecipes(it, debounce = true) },
