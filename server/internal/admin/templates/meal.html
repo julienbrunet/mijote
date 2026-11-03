@@ -1,0 +1,26 @@
+{{define "content"}}{{with .Data}}
+<p class="muted">{{.Label}}</p>
+<div class="meals" style="margin-bottom:18px">{{template "mealcard" .M}}</article></div>
+<div class="cols">
+<section class="card"><h2>Choisir une recette</h2>
+<form method="post" action="/admin/meals/{{.M.ID}}/recipe"><input type="hidden" name="csrf" value="{{$.CSRF}}">
+<label>Recette<select name="recipe" required><option value="">Choisir…</option>
+{{if .Suitable}}<optgroup label="Pour le {{if eq .M.Meal "lunch"}}midi{{else}}soir{{end}}">{{range .Suitable}}<option value="{{.ID}}" {{if eq .ID (deref $.Data.M.RecipeID)}}selected{{end}}>{{.Title}}</option>{{end}}</optgroup>{{end}}
+{{if .Others}}<optgroup label="Autres recettes">{{range .Others}}<option value="{{.ID}}" {{if eq .ID (deref $.Data.M.RecipeID)}}selected{{end}}>{{.Title}}</option>{{end}}</optgroup>{{end}}
+</select></label>
+<p><button>Planifier cette recette</button></p>
+</form>
+<form method="post" action="/admin/meals/{{.M.ID}}/swap"><input type="hidden" name="csrf" value="{{$.CSRF}}">
+<p><button class="secondary">Autre recette au hasard</button></p>
+<p class="muted">Le hasard suit les mêmes règles que la génération (recettes récentes évitées, équilibre des types de plat).</p>
+</form></section>
+<section class="card"><h2>Repas libre</h2>
+<form method="post" action="/admin/meals/{{.M.ID}}/title"><input type="hidden" name="csrf" value="{{$.CSRF}}">
+<label>Intitulé<input type="text" name="title" maxlength="100" required value="{{deref .M.Title}}" placeholder="Restes, pizza, chez les grands-parents…"></label>
+<p><button>Enregistrer le repas libre</button></p>
+</form></section>
+</div>
+<section class="card"><div class="toolbar"><h2>Retirer ce repas</h2>
+<form method="post" action="/admin/meals/{{.M.ID}}/delete" data-confirm="Retirer ce repas du menu ?"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="secondary">Retirer du menu</button></form></div></section>
+<p class="muted">Une recette ou un repas libre choisi ici est « fixé » : générer à nouveau la période le conserve. <a href="/admin/">Retour aux repas</a></p>
+{{end}}{{end}}

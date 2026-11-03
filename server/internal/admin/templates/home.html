@@ -1,6 +1,19 @@
-{{define "content"}}<div class="card">
-<p>Bonjour {{.User.DisplayName}}.</p>
-<p><b>Planification</b> : <a href="/admin/meals">Liste de repas</a> · <a href="/admin/recipes">Recettes</a> · <a href="/admin/tags">Étiquettes</a></p>
-<p><b>Famille</b> : <a href="/admin/accounts">Comptes</a> · <a href="/admin/invitations">Invitations</a></p>
-<p class="muted">Les réglages de la famille arriveront ici.</p>
-</div>{{end}}
+{{define "content"}}{{with .Data}}
+<section class="card"><form method="get" action="/admin/" class="toolbar">
+<nav class="tabs" aria-label="Période">
+<a href="/admin/?user={{.UserID}}" {{if not .Past}}class="on" aria-current="page"{{end}}>À venir</a>
+<a href="/admin/?period=past&amp;user={{.UserID}}" {{if .Past}}class="on" aria-current="page"{{end}}>Passés</a>
+</nav>
+{{if .Past}}<input type="hidden" name="period" value="past">{{end}}
+<label>Planifié par<select name="user"><option value="">Tout le monde</option>{{range .Users}}<option value="{{.ID}}" {{if eq .ID $.Data.UserID}}selected{{end}}>{{.DisplayName}}</option>{{end}}</select></label>
+<button>Filtrer</button>
+<span class="muted">{{.Count}} repas{{if .More}} (les {{.MaxRows}} {{if .Past}}plus récents{{else}}premiers{{end}}){{end}}</span>
+</form></section>
+{{range .Days}}<div class="day-head"><h2>{{.Label}}</h2><span>{{.Date}}</span></div>
+<div class="meals">{{range .Meals}}{{template "mealcard" .}}{{if not $.Data.Past}}
+<a class="edit" href="/admin/meals/{{.ID}}" title="Modifier ce repas" aria-label="Modifier ce repas"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17.25V21h3.75L17.8 9.94l-3.75-3.75L3 17.25zM20.7 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg></a>
+<form class="remove" method="post" action="/admin/meals/{{.ID}}/delete" data-confirm="Retirer ce repas du menu ?"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button title="Retirer ce repas" aria-label="Retirer ce repas"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 19a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg></button></form>{{end}}
+</article>{{end}}</div>
+{{else}}<section class="card"><p class="muted">{{if .Past}}Aucun repas passé.{{else}}Aucun repas planifié à venir : les membres génèrent les menus depuis l'application.{{end}}</p></section>{{end}}
+<p class="muted">La liste de repas est partagée par toute la famille. « Planifié par » indique la dernière personne qui a planifié ou modifié le repas (génération du menu, échange, choix d'une recette ou d'un repas libre). Les menus se génèrent depuis l'application ; ici, vous pouvez modifier ou retirer un repas à venir.</p>
+{{end}}{{end}}

@@ -247,10 +247,6 @@ func (a *Admin) logout(w http.ResponseWriter, r *http.Request) {
 
 // ---------- Account ----------
 
-func (a *Admin) home(w http.ResponseWriter, r *http.Request) {
-	a.render(w, r, "home", http.StatusOK, view{Title: "Administration", Nav: "home"})
-}
-
 func (a *Admin) changePassword(w http.ResponseWriter, r *http.Request) {
 	s := current(r)
 	next := r.FormValue("new")

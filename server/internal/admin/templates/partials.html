@@ -1,0 +1,10 @@
+{{/* Blocks shared by several pages. */}}
+{{define "mealcard"}}<article class="meal{{if not (or .RecipeID .Title)}} empty{{end}}">
+{{if .ImagePath}}<img class="thumb" src="/admin/recipes/{{deref .RecipeID}}/image?v={{.Version}}" alt="" width="76" height="76" loading="lazy">{{else}}<span class="thumb" aria-hidden="true">{{if .Title}}📝{{else}}{{emoji .DishType}}{{end}}</span>{{end}}
+<div><div class="slot">{{if eq .Meal "lunch"}}Midi{{else}}Soir{{end}}</div>
+{{if .RecipeID}}<a class="name" href="/admin/recipes/{{deref .RecipeID}}">{{deref .RecipeTitle}}</a>
+{{else if .Title}}<span class="name">{{deref .Title}}</span>
+{{else}}<span class="name">Aucune recette ne convenait</span>{{end}}
+<div class="meta">{{with .DishType}}<span class="dish dish-{{.}}">{{dish .}}</span>{{end}}{{with .Minutes}}<span>{{.}} min</span>{{end}}{{if .Title}}<span class="badge">repas libre</span>{{end}}{{if .Archived}}<span class="badge off">recette archivée</span>{{end}}{{if .Locked}}<span class="badge" title="Choisi à la main : une nouvelle génération le conserve">fixé</span>{{end}}</div>
+<div class="by" title="Planifié ou modifié en dernier le {{date .PlannedAt}}">{{with .PlannedBy}}Par {{.}} · {{end}}{{date .PlannedAt}}</div>
+</div>{{end}}

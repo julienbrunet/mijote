@@ -1,7 +1,8 @@
-// Package admin serves the server-rendered web admin (FR-ADM-01). For now it
-// covers the setup wizard, sign-in with TOTP two-factor authentication, the
-// account page, session tracking, the login journal, accounts, invitations,
-// the meal list, recipes and tags.
+// Package admin serves the server-rendered web admin (FR-ADM-01): the setup
+// wizard, sign-in with TOTP two-factor authentication, the home page with the
+// planned meals, recipes (tags, usage statistics), users (accounts,
+// invitations, sessions, login journal), the system page and the profile of
+// the admin (account, API tokens).
 package admin
 
 import (
@@ -12,28 +13,51 @@ import (
 	"html/template"
 	"log/slog"
 	"net/http"
+	"path"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/julienbrunet/mijote/server/internal/auth"
 	"github.com/julienbrunet/mijote/server/internal/images"
 	"github.com/julienbrunet/mijote/server/internal/store"
+	"github.com/julienbrunet/mijote/server/internal/sysinfo"
 )
 
 //go:embed templates/*.html
 var templateFS embed.FS
 
-// adminJS is the only script of the admin (copy buttons), served from 'self'
-// because the CSP forbids inline scripts.
+// Static files of the admin, served from 'self': admin.js is the only script
+// (the CSP forbids inline scripts), admin.css the "Sunny Kit" stylesheet, and
+// the logo and wordmark are the app's (requirements.md §8).
 //
-//go:embed static/admin.js
-var adminJS []byte
+//go:embed static
+var staticFS embed.FS
 
-var adminJSTag = func() string {
-	h := sha256.Sum256(adminJS)
-	return `"` + hex.EncodeToString(h[:8]) + `"`
+type staticFile struct {
+	data        []byte
+	contentType string
+	etag        string
+}
+
+var staticFiles = func() map[string]staticFile {
+	types := map[string]string{".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml"}
+	out := map[string]staticFile{}
+	entries, _ := staticFS.ReadDir("static")
+	for _, e := range entries {
+		b, err := staticFS.ReadFile("static/" + e.Name())
+		if err != nil {
+			panic(err)
+		}
+		h := sha256.Sum256(b)
+		out[e.Name()] = staticFile{b, types[path.Ext(e.Name())], `"` + hex.EncodeToString(h[:8]) + `"`}
+	}
+	return out
 }()
+
+// RepoURL is the source repository, linked from the footer.
+const RepoURL = "https://github.com/julienbrunet/mijote"
 
 var funcs = template.FuncMap{
 	"date": func(t time.Time) string { return t.Local().Format("02/01/2006 15:04") },
@@ -64,6 +88,59 @@ var funcs = template.FuncMap{
 		}
 		return *s
 	},
+	"day":   func(t time.Time) string { return t.Format("02/01/2006") },
+	"bytes": formatBytes,
+	"dec":   func(v float64) string { return strings.Replace(strconv.FormatFloat(v, 'f', 2, 64), ".", ",", 1) },
+	"asset": func(name string) string { return "/admin/" + name + "?v=" + strings.Trim(staticFiles[name].etag, `"`) },
+	"dish": func(code *string) string {
+		if code == nil {
+			return ""
+		}
+		for _, o := range store.DishTypes {
+			if o.Code == *code {
+				return o.Label
+			}
+		}
+		return *code
+	},
+	"emoji": func(code *string) string {
+		if code == nil {
+			return "🍽️"
+		}
+		switch *code {
+		case "meat":
+			return "🍗"
+		case "fish":
+			return "🐟"
+		case "vegetarian":
+			return "🥗"
+		}
+		return "🍽️"
+	},
+}
+
+// formatBytes prints a size with a binary unit, the French way ("1,5 Mo").
+func formatBytes(v any) string {
+	var n float64
+	switch b := v.(type) {
+	case int64:
+		n = float64(b)
+	case uint64:
+		n = float64(b)
+	case int:
+		n = float64(b)
+	}
+	units := []string{"o", "Ko", "Mo", "Go", "To"}
+	i := 0
+	for n >= 1024 && i < len(units)-1 {
+		n /= 1024
+		i++
+	}
+	prec := 1
+	if i == 0 || n >= 100 {
+		prec = 0
+	}
+	return strings.Replace(strconv.FormatFloat(n, 'f', prec, 64), ".", ",", 1) + " " + units[i]
 }
 
 var eventLabels = map[string]string{
@@ -87,15 +164,23 @@ type Admin struct {
 	// Key signs CSRF tokens and the two-factor challenge cookie.
 	Key    []byte
 	Images images.Dir
+	// Version is the server version, shown in the footer and on the system page.
+	Version string
+	// APIVersions are the REST API versions served (system page).
+	APIVersions []string
+	// CPU measures the processor time used by the server (system page).
+	CPU *sysinfo.Sampler
 
 	pages map[string]*template.Template
 }
 
 // New parses the templates.
-func New(st *store.Store, guard *auth.Guard, proxies auth.Proxies, key []byte, imgs images.Dir) (*Admin, error) {
-	a := &Admin{Store: st, Guard: guard, Proxies: proxies, Key: key, Images: imgs, pages: map[string]*template.Template{}}
-	for _, p := range []string{"setup", "login", "login_2fa", "home", "account", "sessions", "journal", "accounts", "invitations", "invite", "tokens", "meals", "recipes", "recipe", "tags", "error"} {
-		t, err := template.New("layout.html").Funcs(funcs).ParseFS(templateFS, "templates/layout.html", "templates/"+p+".html")
+func New(st *store.Store, guard *auth.Guard, proxies auth.Proxies, key []byte, imgs images.Dir, version string, cpu *sysinfo.Sampler) (*Admin, error) {
+	a := &Admin{Store: st, Guard: guard, Proxies: proxies, Key: key, Images: imgs, Version: version, CPU: cpu,
+		pages: map[string]*template.Template{}}
+	for _, p := range []string{"setup", "login", "login_2fa", "home", "meal", "account", "sessions", "journal", "accounts",
+		"invitations", "invite", "tokens", "recipes", "recipe", "recipe_stats", "tags", "system", "error"} {
+		t, err := template.New("layout.html").Funcs(funcs).ParseFS(templateFS, "templates/layout.html", "templates/partials.html", "templates/"+p+".html")
 		if err != nil {
 			return nil, err
 		}
@@ -114,7 +199,9 @@ func (a *Admin) Routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /admin/login/2fa", a.twoFALogin)
 	// Public page behind the shared invitation link (no session).
 	mux.HandleFunc("GET /invite/{code}", a.invitePage)
-	mux.HandleFunc("GET /admin/admin.js", serveAdminJS)
+	for name := range staticFiles {
+		mux.HandleFunc("GET /admin/"+name, serveStatic(name))
+	}
 
 	protected := map[string]http.HandlerFunc{
 		"GET /admin/{$}":                        a.home,
@@ -138,7 +225,14 @@ func (a *Admin) Routes(mux *http.ServeMux) {
 		"GET /admin/invitations":                a.invitationsPage,
 		"POST /admin/invitations":               a.createInvitation,
 		"POST /admin/invitations/{id}/revoke":   a.revokeInvitation,
-		"GET /admin/meals":                      a.mealsPage,
+		"GET /admin/meals":                      a.oldMealsPage,
+		"GET /admin/meals/{id}":                 a.mealPage,
+		"POST /admin/meals/{id}/recipe":         a.setMealRecipe,
+		"POST /admin/meals/{id}/title":          a.setMealTitle,
+		"POST /admin/meals/{id}/swap":           a.swapMeal,
+		"POST /admin/meals/{id}/delete":         a.deleteMeal,
+		"GET /admin/recipes/stats":              a.recipeStatsPage,
+		"GET /admin/system":                     a.systemPage,
 		"GET /admin/tokens":                     a.tokensPage,
 		"POST /admin/tokens":                    a.createToken,
 		"POST /admin/tokens/{id}/revoke":        a.revokeToken,
@@ -161,28 +255,84 @@ func (a *Admin) Routes(mux *http.ServeMux) {
 	}
 }
 
-func serveAdminJS(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("ETag", adminJSTag)
-	http.ServeContent(w, r, "admin.js", time.Time{}, bytes.NewReader(adminJS))
+func serveStatic(name string) http.HandlerFunc {
+	f := staticFiles[name]
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", f.contentType)
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("ETag", f.etag)
+		http.ServeContent(w, r, name, time.Time{}, bytes.NewReader(f.data))
+	}
+}
+
+// navItem is an entry of the main navigation; a section groups sub-pages,
+// shown as tabs under the page title.
+type navItem struct {
+	Key, Label, Href string
+	Subs             []navItem
+}
+
+// navigation is the main menu of the admin (requirements.md §4.8).
+var navigation = []navItem{
+	{Key: "home", Label: "Accueil", Href: "/admin/"},
+	{Key: "recipes", Label: "Recettes", Href: "/admin/recipes", Subs: []navItem{
+		{Key: "recipes", Label: "Recettes", Href: "/admin/recipes"},
+		{Key: "tags", Label: "Étiquettes", Href: "/admin/tags"},
+		{Key: "stats", Label: "Statistiques", Href: "/admin/recipes/stats"},
+	}},
+	{Key: "users", Label: "Utilisateurs", Href: "/admin/accounts", Subs: []navItem{
+		{Key: "accounts", Label: "Comptes", Href: "/admin/accounts"},
+		{Key: "invitations", Label: "Invitations", Href: "/admin/invitations"},
+		{Key: "sessions", Label: "Sessions", Href: "/admin/sessions"},
+		{Key: "journal", Label: "Journal des connexions", Href: "/admin/journal"},
+	}},
+	{Key: "system", Label: "Système", Href: "/admin/system"},
+	{Key: "profile", Label: "Mon profil", Href: "/admin/account", Subs: []navItem{
+		{Key: "account", Label: "Mon compte", Href: "/admin/account"},
+		{Key: "tokens", Label: "Jetons d'API", Href: "/admin/tokens"},
+	}},
+}
+
+// section returns the navigation section holding the page key.
+func section(page string) (navItem, bool) {
+	for _, s := range navigation {
+		if s.Key == page {
+			return s, true
+		}
+		for _, sub := range s.Subs {
+			if sub.Key == page {
+				return s, true
+			}
+		}
+	}
+	return navItem{}, false
 }
 
 // view is the data passed to every page.
 type view struct {
 	Title  string
-	Nav    string
+	Nav    string // page key: a navigation section or one of its sub-pages
 	Error  string
 	Notice string
 	CSRF   string
 	User   *store.User
 	Data   any
+
+	// Filled by render.
+	Navigation []navItem
+	Section    navItem
+	Version    string
+	RepoURL    string
 }
 
 func (a *Admin) render(w http.ResponseWriter, r *http.Request, page string, status int, v view) {
 	if s, ok := currentSession(r); ok {
 		v.User, v.CSRF = &s.user, a.csrfToken(s.sessionID)
+		// The version is only disclosed to the signed-in admin.
+		v.Version = a.Version
 	}
+	v.Navigation, v.RepoURL = navigation, RepoURL
+	v.Section, _ = section(v.Nav)
 	if v.Notice == "" {
 		v.Notice = notices[r.URL.Query().Get("ok")]
 	}
@@ -212,6 +362,8 @@ var notices = map[string]string{
 	"recipe_restored": "Recette restaurée.",
 	"tag_renamed":     "Étiquette renommée.",
 	"tag_deleted":     "Étiquette supprimée.",
+	"meal_saved":      "Repas modifié.",
+	"meal_deleted":    "Repas retiré.",
 }
 
 func redirect(w http.ResponseWriter, r *http.Request, path, ok string) {

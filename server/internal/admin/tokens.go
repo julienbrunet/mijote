@@ -30,7 +30,7 @@ func (a *Admin) renderTokens(w http.ResponseWriter, r *http.Request, status int,
 		a.fail(w, r, err)
 		return
 	}
-	a.render(w, r, "tokens", status, view{Title: "Jetons API", Nav: "tokens", Error: errMsg,
+	a.render(w, r, "tokens", status, view{Title: "Jetons d'API", Nav: "tokens", Error: errMsg,
 		Data: tokensPage{Tokens: list, All: all, Days: store.APITokenDays,
 			DefaultDays: store.DefaultAPITokenDays, New: created}})
 }

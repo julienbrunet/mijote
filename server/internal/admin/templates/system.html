@@ -1,0 +1,74 @@
+{{define "content"}}{{with .Data}}
+<section class="card"><h2>Points d'attention</h2>
+<ul class="alerts">{{range .Alerts}}<li class="{{.Level}}">{{.Text}}{{with .Href}}<a href="{{.}}">Voir</a>{{end}}</li>
+{{else}}<li class="ok">Tout va bien.</li>{{end}}</ul>
+</section>
+
+<div class="tiles">
+<a class="tile" href="/admin/recipes"><b>{{.Counts.Recipes}}</b><span>Recettes</span><small>{{.Counts.ArchivedRecipes}} archivée(s) · {{.Counts.Tags}} étiquette(s)</small></a>
+<a class="tile" href="/admin/accounts"><b>{{.Counts.Users}}</b><span>Comptes</span><small>{{.Counts.Members}} membre(s) · {{.Counts.Readonly}} lecture seule{{if .Counts.Disabled}} · {{.Counts.Disabled}} désactivé(s){{end}}</small></a>
+<a class="tile" href="/admin/"><b>{{.Counts.UpcomingMeals}}</b><span>Repas à venir</span><small>{{with .Counts.LastPlannedDate}}jusqu'au {{day .}}{{else}}aucun{{end}}{{if .Counts.ManualMeals}} · {{.Counts.ManualMeals}} libre(s){{end}}</small></a>
+<a class="tile" href="/admin/?period=past"><b>{{.Counts.PastMeals}}</b><span>Repas passés</span><small>historique conservé</small></a>
+<a class="tile" href="/admin/invitations"><b>{{.Counts.PendingInvitations}}</b><span>Invitations</span><small>en attente</small></a>
+<a class="tile" href="/admin/sessions"><b>{{.Counts.AppSessions}}</b><span>Appareils connectés</span><small>{{.Counts.AdminSessions}} session(s) admin</small></a>
+<a class="tile" href="/admin/tokens"><b>{{.Counts.APITokens}}</b><span>Jetons d'API</span><small>actifs</small></a>
+</div>
+
+<div class="cols">
+<section class="card"><h2>Version</h2>
+<dl class="kv">
+<dt>Serveur</dt><dd><b>{{.Version}}</b>{{with .Current}} <span class="muted">depuis le {{date .FirstStartedAt}}</span>{{end}}</dd>
+<dt>Instance installée le</dt><dd>{{date .DB.InstalledAt}}</dd>
+<dt>Démarré le</dt><dd>{{date .Started}} <span class="muted">({{.Uptime}})</span></dd>
+<dt>API</dt><dd>{{.APIVersions}}</dd>
+<dt>Schéma de la base</dt><dd>version {{.DB.SchemaVersion}} <span class="muted">(dernière migration le {{date .DB.LastMigrationAt}})</span></dd>
+<dt>Go</dt><dd>{{.GoVersion}} · {{.Host.OS}}/{{.Host.Arch}}</dd>
+</dl>
+{{if gt (len .Versions) 1}}<h3 style="margin-top:16px">Historique des mises à jour</h3>
+<table><tr><th>Version</th><th>Premier démarrage</th><th>Dernier démarrage</th></tr>
+{{range .Versions}}<tr><td>{{.Version}}</td><td>{{date .FirstStartedAt}}</td><td>{{date .LastStartedAt}}</td></tr>{{end}}</table>{{end}}
+<p class="muted"><a href="{{$.RepoURL}}/releases" rel="noopener">Notes de version et nouvelles versions sur GitHub</a></p>
+</section>
+
+<section class="card"><h2>Serveur Mijote</h2>
+<dl class="kv">
+<dt>Mémoire (RSS)</dt><dd>{{if .Process.RSS}}{{bytes .Process.RSS}}{{if .Host.MemTotal}} <span class="muted">sur {{bytes .Host.MemTotal}}</span>{{end}}{{else}}inconnue{{end}}</dd>
+<dt>Tas Go</dt><dd>{{bytes .Process.HeapAlloc}} <span class="muted">({{bytes .Process.GoSys}} réservés · {{.Process.NumGC}} GC)</span></dd>
+<dt>Processeur</dt><dd>{{.CPURecent}} <span class="muted">sur la dernière minute · {{.CPUAverage}} en moyenne</span></dd>
+<dt>Goroutines</dt><dd>{{.Process.Goroutines}}</dd>
+<dt>Connexions à la base</dt><dd>{{.PoolTotal}} ouverte(s), {{.PoolIdle}} inactive(s) <span class="muted">(maximum {{.PoolMax}})</span></dd>
+</dl>
+<p class="muted">Processeur en pourcentage d'un cœur.</p>
+</section>
+
+<section class="card"><h2>Machine</h2>
+<dl class="kv">
+<dt>Processeurs</dt><dd>{{.Host.CPUs}} cœur(s){{if ge .Host.Load1 0.0}} <span class="muted">· charge {{dec .Host.Load1}} · {{dec .Host.Load5}} · {{dec .Host.Load15}}</span>{{end}}</dd>
+{{if .Host.MemTotal}}<dt>Mémoire</dt><dd>{{.MemUsedPct}} % utilisée <span class="muted">({{bytes .Host.MemAvailable}} disponibles sur {{bytes .Host.MemTotal}})</span><div class="meter"><i style="width:{{.MemUsedPct}}%"></i></div></dd>{{end}}
+{{if .Disk.Total}}<dt>Disque des images</dt><dd>{{.Disk.UsedPct}} % utilisé <span class="muted">({{bytes .Disk.Free}} libres sur {{bytes .Disk.Total}})</span><div class="meter"><i style="width:{{.Disk.UsedPct}}%"></i></div></dd>{{end}}
+{{with .HostUptime}}<dt>Allumée depuis</dt><dd>{{.}}</dd>{{end}}
+</dl>
+<p class="muted">Charge moyenne sur 1, 5 et 15 minutes.</p>
+</section>
+
+<section class="card"><h2>Base de données</h2>
+<dl class="kv">
+<dt>Taille</dt><dd><b>{{bytes .DB.Bytes}}</b></dd>
+<dt>PostgreSQL</dt><dd>{{.DB.Version}}</dd>
+<dt>Connexions</dt><dd>{{.DB.Connections}} sur cette base</dd>
+</dl>
+<h3 style="margin-top:16px">Tables les plus grosses</h3>
+<table>{{range .DB.Tables}}<tr><td>{{.Name}}</td><td class="num">{{bytes .Bytes}}</td></tr>{{end}}</table>
+</section>
+
+<section class="card"><h2>Dossier des images</h2>
+<dl class="kv">
+<dt>Taille</dt><dd><b>{{bytes .Images.Bytes}}</b></dd>
+<dt>Fichiers</dt><dd>{{.Images.Files}}{{if .Orphans}} <span class="muted">dont {{.Orphans}} sans recette</span>{{end}}</dd>
+<dt>Recettes sans image</dt><dd>{{.Counts.RecipesWithoutImage}}{{if .Missing}} · <span class="badge warn">{{.Missing}} image(s) manquante(s)</span>{{end}}</dd>
+<dt>Emplacement</dt><dd><code>{{.ImageDir}}</code></dd>
+</dl>
+<p class="muted">À sauvegarder avec la base de données : les images ne sont jamais stockées dans la base.</p>
+</section>
+</div>
+{{end}}{{end}}
