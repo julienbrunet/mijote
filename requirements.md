@@ -75,7 +75,7 @@ Planning a family's weekly menus is repetitive: finding recipes, avoiding repeat
 | FR-REC-12 | Tag recipes by dish type: meat / fish / vegetarian. | Must |
 | FR-REC-13 | Store prep time used to classify recipes as quick or long. | Must |
 | FR-REC-14 | Tag recipes by season(s). | Should |
-| FR-REC-15 | ~~Mark recipes as favorites.~~ Dropped: no favorites. | — |
+| FR-REC-15 | Each user marks recipes as **personal favorites** (own list, not shared with the family; read-only users too) and finds them through the recipe filters ("Mes favoris"). Favorites do not influence generation. (Reinstated 2026-11-03, replaces "dropped".) | Should |
 | FR-REC-18 | Recipes have an ordered list of steps, extracted from `recipeInstructions` (split into steps when given as one block) and editable. | Must |
 | FR-REC-19 | Recipes have free-form tags shared by the family (e.g. salad, summer, hot dish, oven), with autocompletion; recipes are searchable by title and tags. | Must |
 | FR-REC-20 | Recipes store servings, the meals they suit (lunch, dinner or both) and personal notes. | Should |
@@ -101,7 +101,7 @@ Planning a family's weekly menus is repetitive: finding recipes, avoiding repeat
 | FR-GEN-04 | Balance dish types over the period towards the target split set by the admin (e.g. 40 % vegetarian, 30 % meat, 30 % fish). | Must |
 | FR-GEN-05 | Prefer quick recipes on weekdays and allow longer ones on weekends (preference, not strict). | Must |
 | FR-GEN-06 | Prefer in-season recipes (preference, not strict). | Should |
-| FR-GEN-07 | ~~Favor favorite recipes.~~ Dropped: no favorites. | — |
+| FR-GEN-07 | ~~Favor favorite recipes.~~ Dropped: favorites are personal (FR-REC-15) and do not influence the shared generation. | — |
 | FR-GEN-08 | Generation follows the algorithm in §10. | Must |
 
 ### 4.5 Adjustments after generation (ADJ)
@@ -350,8 +350,10 @@ Aggregation (shopping list): quantities are summed only for the same ingredient 
 - `tag`: id, name (unique, case-insensitive). Free-form, shared by the family.
 - `recipe_tag`: recipe_id, tag_id.
 
+### recipe_favorite (2026-11-03)
+user_id → user, recipe_id → recipe, created_at; primary key (user_id, recipe_id). Personal favorites (FR-REC-15); deleted with the user or the recipe.
+
 ### Not stored
-- **Favorites**: dropped.
 - **Last used date**: derived from menu history (FR-GEN-03).
 
 ### user
@@ -408,7 +410,7 @@ Runs on the server. Input: a period, the family settings, the existing slots.
 
 **Chosen meals** (decided 2026-11-02): a recipe chosen by the user (from the recipe screens) and a manual meal are saved **locked**, so generating the period again keeps them; manual meals are kept by generation in any case. "Changer de recette" on such a meal releases it.
 
-**Recipes tab** (app, 2026-11-02, filters 2026-11-03): search by title or tag (server-side, `GET /api/v1/recipes?q=`), archived recipes left out; a round funnel button at the bottom right of the navigation pill (showing the number of active filters) opens a sheet with dish type, meal, duration (quick ≤ 30 min, recipes without time count as quick; long), season (recipes without season always match) and the 20 most used tags. Filters apply on the device to the search results: choices within a group add up, groups narrow each other; active filters show as pills under the search, removed with one tap. Each card opens the recipe and, for members, has a calendar corner action to plan it. A round "+" (members) at the bottom left of the navigation pill opens the editor (both round buttons: 60 dp like the pill, white with a Peach deep ring, 24 dp icon like the tabs, dark shadow; updated 2026-11-03): title, dish type, meals, prep/cook times, seasons, tags (comma separated), ingredients and steps one per line (ingredient lines parsed on the device, FR-REC-21, with a preview), notes; quantities are for one person. The recipe screen offers "Ajouter au menu" and "Modifier" to members and "Archiver" to the admin (archiving stays admin-only, see §3; restore from the web admin). The image is not editable from the app yet. "Ajouter au menu" opens a dialog choosing the day (next 21 days) and the meal (midi / soir), showing the meal it would replace.
+**Recipes tab** (app, 2026-11-02, filters 2026-11-03): search by title or tag (server-side, `GET /api/v1/recipes?q=`), archived recipes left out; a round funnel button at the bottom right of the navigation pill (showing the number of active filters) opens a sheet with "Mes favoris" (the user's own favorites), dish type, meal, duration (quick ≤ 30 min, recipes without time count as quick; long), season (recipes without season always match) and the 20 most used tags. Filters apply on the device to the search results: choices within a group add up, groups narrow each other; active filters show as pills under the search, removed with one tap. Each card opens the recipe (a small heart marks the user's favorites) and, for members, has a calendar corner action to plan it. The recipe screen has a heart button (top right of the picture) to add the recipe to the user's favorites or remove it, for every role (`PUT`/`DELETE /api/v1/recipes/{id}/favorite`; recipes carry a personal `favorite` flag, `GET /api/v1/recipes?favorite=1` lists them). A round "+" (members) at the bottom left of the navigation pill opens the editor (both round buttons: 60 dp like the pill, white with a Peach deep ring, 24 dp icon like the tabs, dark shadow; updated 2026-11-03): title, dish type, meals, prep/cook times, seasons, tags (comma separated), ingredients and steps one per line (ingredient lines parsed on the device, FR-REC-21, with a preview), notes; quantities are for one person. The recipe screen offers "Ajouter au menu" and "Modifier" to members and "Archiver" to the admin (archiving stays admin-only, see §3; restore from the web admin). The image is not editable from the app yet. "Ajouter au menu" opens a dialog choosing the day (next 21 days) and the meal (midi / soir), showing the meal it would replace.
 
 **Manual meals** (app, 2026-11-02; no "add" button on the home screen, decided 2026-11-02): a manual meal is planned by editing a meal — its pencil offers *Remplacer par un repas libre* (dialog: free text only, no suggestions) — and, on the review screen, "Ajouter le midi / le soir" asks for a random recipe or a manual meal. The pencil of a manual meal offers *Modifier l'intitulé / Remplacer par une recette au hasard / Retirer ce repas*; the pencil of a recipe also offers *Remplacer par un repas libre*.
 

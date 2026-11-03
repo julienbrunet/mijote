@@ -31,8 +31,10 @@ func (a *API) listRecipes(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	limit, _ := strconv.Atoi(q.Get("limit"))
 	offset, _ := strconv.Atoi(q.Get("offset"))
+	fav := q.Get("favorite")
 	list, err := a.Store.ListRecipes(r.Context(), store.RecipeFilter{
-		Q: q.Get("q"), Tag: q.Get("tag"), DishType: q.Get("dishType"), Limit: limit, Offset: offset})
+		Q: q.Get("q"), Tag: q.Get("tag"), DishType: q.Get("dishType"), Limit: limit, Offset: offset,
+		UserID: current(r).user.ID, FavoritesOnly: fav == "1" || fav == "true"})
 	if err != nil {
 		fail(w, r, err)
 		return
@@ -40,13 +42,35 @@ func (a *API) listRecipes(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"recipes": list})
 }
 
+// withFavorite sets the personal favorite flag of the user asking.
+func (a *API) withFavorite(r *http.Request, rec store.Recipe) (store.Recipe, error) {
+	var err error
+	rec.Favorite, err = a.Store.IsFavorite(r.Context(), current(r).user.ID, rec.ID)
+	return rec, err
+}
+
 func (a *API) getRecipe(w http.ResponseWriter, r *http.Request) {
 	rec, err := a.Store.Recipe(r.Context(), r.PathValue("id"))
+	if err == nil {
+		rec, err = a.withFavorite(r, rec)
+	}
 	if err != nil {
 		recipeError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, rec)
+}
+
+// setFavorite adds the recipe to the favorites of the user asking (PUT) or
+// removes it (DELETE). Favorites are personal, so read-only users have them too.
+func (a *API) setFavorite(on bool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if err := a.Store.SetFavorite(r.Context(), current(r).user.ID, r.PathValue("id"), on); err != nil {
+			recipeError(w, r, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}
 }
 
 func (a *API) createRecipe(w http.ResponseWriter, r *http.Request) {
@@ -69,6 +93,9 @@ func (a *API) updateRecipe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	rec, err := a.Store.UpdateRecipe(r.Context(), r.PathValue("id"), in)
+	if err == nil {
+		rec, err = a.withFavorite(r, rec)
+	}
 	if err != nil {
 		recipeError(w, r, err)
 		return

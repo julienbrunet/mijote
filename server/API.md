@@ -110,7 +110,7 @@ Full schemas, parameters and responses: [`openapi.yaml`](openapi.yaml). "Write" 
 | `POST /api/v1/invitations/redeem` | — | Create an account from an invitation code. |
 | `GET /api/v1/me` | any user | Current user, role and `preferences.people`. |
 | `PUT /api/v1/me/preferences` | any user | `{"people": 1..20}`: number of people to cook for. |
-| `GET /api/v1/recipes?q=&tag=&dishType=&limit=&offset=` | any user | Search active recipes (summaries: no ingredients or steps). |
+| `GET /api/v1/recipes?q=&tag=&dishType=&favorite=&limit=&offset=` | any user | Search active recipes (summaries: no ingredients or steps); `favorite=1` keeps the caller's favorites only. |
 | `POST /api/v1/recipes` | write | Create a recipe. |
 | `GET /api/v1/recipes/{id}` | any user | Full recipe. |
 | `PUT /api/v1/recipes/{id}` | write | Replace the whole recipe content. |
@@ -118,6 +118,7 @@ Full schemas, parameters and responses: [`openapi.yaml`](openapi.yaml). "Write" 
 | `GET /api/v1/recipes/{id}/image` | any user | JPEG thumbnail. |
 | `PUT /api/v1/recipes/{id}/image` | write | Upload the image (raw JPEG/PNG/GIF body, 10 MB max). |
 | `DELETE /api/v1/recipes/{id}/image` | write | Remove the image. |
+| `PUT·DELETE /api/v1/recipes/{id}/favorite` | any user | Add the recipe to / remove it from **the caller's own** favorites (`204`). Personal, not shared with the family; read-only users have favorites too. |
 | `GET /api/v1/tags` | any user | Tags with their recipe count. |
 | `GET /api/v1/menu?from=&to=` | any user | Planned meals and generation info. |
 | `POST /api/v1/menu/generate` | write | Generate a period. |
@@ -132,7 +133,8 @@ Full schemas, parameters and responses: [`openapi.yaml`](openapi.yaml). "Write" 
 
 Body of `POST /api/v1/recipes` and `PUT /api/v1/recipes/{id}`. The response is the
 stored recipe, with the read-only fields `id`, `image`, `createdAt`, `updatedAt`,
-`version` and `archivedAt` (ignored if sent).
+`version`, `archivedAt` and `favorite` (ignored if sent). `favorite` is personal: whether the
+recipe is in the favorites of the user (or API token owner) asking.
 
 | Field | Type | Required | Rules |
 |---|---|---|---|

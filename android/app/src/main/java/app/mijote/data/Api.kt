@@ -164,6 +164,11 @@ class Api(private val baseUrl: String, private val http: Http = UrlConnectionHtt
         call("DELETE", "/api/v1/recipes/$id", bearer = access)
     }
 
+    /** Adds the recipe to the signed-in user's own favorites, or removes it. */
+    fun setFavorite(access: String, id: String, on: Boolean) {
+        call(if (on) "PUT" else "DELETE", "/api/v1/recipes/$id/favorite", bearer = access)
+    }
+
     // ---------- Administration (admin only) ----------
 
     fun invitations(access: String): Invitations = parseInvitations(call("GET", "/api/v1/admin/invitations", bearer = access))

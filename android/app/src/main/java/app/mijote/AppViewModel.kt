@@ -516,6 +516,30 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /**
+     * Adds a recipe to the user's own favorites or removes it: the heart changes at once (detail
+     * and list) and comes back if the server refuses.
+     */
+    fun toggleFavorite(id: String) {
+        val now = _recipe.value?.recipe?.takeIf { it.id == id }?.favorite
+            ?: _recipes.value.recipes?.firstOrNull { it.id == id }?.favorite ?: return
+        fun apply(fav: Boolean) {
+            _recipe.update { r -> if (r?.recipe?.id == id) r.copy(recipe = r.recipe.copy(favorite = fav)) else r }
+            _recipes.update { s -> s.copy(recipes = s.recipes?.map { if (it.id == id) it.copy(favorite = fav) else it }) }
+        }
+        apply(!now)
+        viewModelScope.launch {
+            try {
+                session.authed { api, access -> api.setFavorite(access, id, !now) }
+            } catch (e: SessionExpiredException) {
+                toLogin("Votre session a expiré : reconnectez-vous.")
+            } catch (e: IOException) {
+                apply(now)
+                notice(errorMessage(e))
+            }
+        }
+    }
+
     /** Archives the recipe shown (admin): it leaves the list but stays in past menus and can be restored from the web admin. */
     fun archiveRecipe() {
         val r = _recipe.value ?: return

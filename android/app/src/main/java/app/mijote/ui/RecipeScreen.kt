@@ -12,6 +12,8 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -36,6 +38,7 @@ fun RecipeScreen(
     state: RecipeState, people: Int, onBack: () -> Unit,
     canWrite: Boolean = false, canArchive: Boolean = false,
     onPlan: () -> Unit = {}, onEdit: () -> Unit = {}, onArchive: () -> Unit = {},
+    onFavorite: () -> Unit = {},
 ) {
     var confirmArchive by remember { mutableStateOf(false) }
     if (confirmArchive) AlertDialog(
@@ -56,6 +59,15 @@ fun RecipeScreen(
                     .clickable(onClick = onBack),
                 contentAlignment = Alignment.Center,
             ) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Retour", tint = Sunny.Ink) }
+            // Personal favorite: every user, read-only ones included, has their own list.
+            if (r != null) Box(
+                Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(16.dp).size(44.dp)
+                    .background(Color.White.copy(alpha = 0.9f), CircleShape).clip(CircleShape).clickable(onClick = onFavorite),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(if (r.favorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+                    contentDescription = if (r.favorite) "Retirer de mes favoris" else "Ajouter à mes favoris", tint = Sunny.PeachDeep)
+            }
         }
         Column(Modifier.padding(horizontal = 22.dp).padding(top = 22.dp, bottom = 48.dp).navigationBarsPadding()) {
             Text(r?.title ?: state.title, fontSize = 28.sp, lineHeight = 32.sp, fontWeight = FontWeight.Bold, color = Sunny.InkTitle)

@@ -142,7 +142,7 @@ class ScreenshotTest {
             RecipeScreen(
                 app.mijote.RecipeState("r1", "Velouté de potimarron", app.mijote.data.RecipeDetail(
                     "r1", "Velouté de potimarron", null, "vegetarian", 15, 30, 45, null,
-                    listOf(app.mijote.data.IngredientLine(300.0, "g", "potimarron", null)), listOf("Cuire 30 minutes."))),
+                    listOf(app.mijote.data.IngredientLine(300.0, "g", "potimarron", null)), listOf("Cuire 30 minutes."), favorite = true)),
                 people = 2, onBack = {}, canWrite = true, canArchive = true)
         }
     }
@@ -161,10 +161,10 @@ class ScreenshotTest {
     fun recipesTabFiltered() = paparazzi.snapshot {
         MijoteTheme {
             RecipesTab(app.mijote.RecipesState("", listOf(
-                app.mijote.data.RecipeSummary("r1", "Gratin de pâtes aux légumes", "vegetarian", 25, null, listOf("four", "hiver")),
+                app.mijote.data.RecipeSummary("r1", "Gratin de pâtes aux légumes", "vegetarian", 25, null, listOf("four", "hiver"), favorite = true),
                 app.mijote.data.RecipeSummary("r2", "Pâtes au saumon", "fish", 20, null, emptyList()),
                 app.mijote.data.RecipeSummary("r3", "Velouté de potimarron", "vegetarian", 30, null, listOf("soupe")),
-            ), filters = app.mijote.data.RecipeFilters(dishTypes = setOf("vegetarian"), durations = setOf("quick"))),
+            ), filters = app.mijote.data.RecipeFilters(favorites = true, dishTypes = setOf("vegetarian"))),
                 canWrite = true, onQuery = {}, onOpen = {}, onPlan = {})
         }
     }

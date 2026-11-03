@@ -275,6 +275,10 @@ paths:
         - name: dishType
           in: query
           schema: { $ref: "#/components/schemas/DishType" }
+        - name: favorite
+          in: query
+          description: "`1` or `true`: only the recipes in the caller's own favorites."
+          schema: { type: string, enum: ["1", "true"] }
         - name: limit
           in: query
           schema: { type: integer, minimum: 1, maximum: 500, default: 100 }
@@ -399,6 +403,33 @@ paths:
         Restoring is done in the web admin. Archiving an archived recipe is not an error.
       responses:
         "204": { description: Archived. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/v1/recipes/{id}/favorite:
+    parameters:
+      - $ref: "#/components/parameters/RecipeId"
+    put:
+      tags: [Recipes]
+      operationId: addFavorite
+      summary: Add the recipe to the caller's favorites
+      description: |
+        Favorites are personal: each user has their own list, not shared with the family.
+        Any role may use them (read-only users too). Idempotent. Only active recipes can be
+        added.
+      responses:
+        "204": { description: In the caller's favorites. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [Recipes]
+      operationId: removeFavorite
+      summary: Remove the recipe from the caller's favorites
+      description: Idempotent; also works for an archived recipe.
+      responses:
+        "204": { description: Not in the caller's favorites. }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
@@ -1091,7 +1122,7 @@ components:
       type: object
       description: A recipe as returned by the server.
       required: [id, title, sourceUrl, image, prepMinutes, cookMinutes, totalMinutes, servings, dishType,
-        seasons, mealTypes, notes, tags, ingredients, steps, createdAt, updatedAt, version, archivedAt]
+        seasons, mealTypes, notes, tags, ingredients, steps, createdAt, updatedAt, version, archivedAt, favorite]
       properties:
         id: { type: string, format: uuid }
         title: { type: string }
@@ -1120,6 +1151,9 @@ components:
         updatedAt: { type: string, format: date-time }
         version: { type: integer, description: Incremented on every change. }
         archivedAt: { type: [string, "null"], format: date-time }
+        favorite:
+          type: boolean
+          description: Whether the recipe is in the favorites of the user asking (personal, read-only).
 
     Tag:
       type: object

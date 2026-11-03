@@ -10,6 +10,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
@@ -132,6 +133,7 @@ private fun tagsOf(recipes: List<RecipeSummary>, f: RecipeFilters): List<String>
 private fun ActiveFilters(f: RecipeFilters, onChange: (RecipeFilters) -> Unit) {
     fun label(list: List<Pair<String, String>>, code: String) = list.firstOrNull { it.first == code }?.second ?: code
     Row(Modifier.padding(top = 12.dp).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (f.favorites) RemovablePill("Mes favoris") { onChange(f.copy(favorites = false)) }
         f.dishTypes.forEach { c -> RemovablePill(label(dishLabels, c)) { onChange(f.copy(dishTypes = f.dishTypes - c)) } }
         f.meals.forEach { c -> RemovablePill(label(mealLabels, c)) { onChange(f.copy(meals = f.meals - c)) } }
         f.durations.forEach { c -> RemovablePill(if (c == "quick") "Rapide" else "Long") { onChange(f.copy(durations = f.durations - c)) } }
@@ -164,6 +166,9 @@ fun RecipeFiltersSheet(
     val n = recipes.count(f::matches)
     Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 22.dp).padding(bottom = 22.dp).navigationBarsPadding()) {
         Text("Filtres", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = Sunny.InkTitle)
+        Text("FAVORIS", fontSize = 11.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold, color = Sunny.InkSoft,
+            modifier = Modifier.padding(top = 18.dp, bottom = 8.dp))
+        Chip("♥  Mes favoris", f.favorites) { onChange(f.copy(favorites = !f.favorites)) }
         Group("TYPE DE PLAT", dishLabels, f.dishTypes) { onChange(f.copy(dishTypes = it)) }
         Group("REPAS", mealLabels, f.meals) { onChange(f.copy(meals = it)) }
         Group("DURÉE", durationLabels, f.durations) { onChange(f.copy(durations = it)) }
@@ -223,7 +228,7 @@ private fun RecipeCard(r: RecipeSummary, canWrite: Boolean, working: Boolean, on
             .shadow(4.dp, Shapes.Card, ambientColor = Color.Black, spotColor = Color.Black)
             .background(Sunny.Card, Shapes.Card).clip(Shapes.Card).clickable(onClick = onOpen),
     ) {
-        Row(Modifier.fillMaxSize().padding(start = 12.dp, end = if (canWrite) 52.dp else 16.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxSize().padding(start = 12.dp, end = if (canWrite || r.favorite) 52.dp else 16.dp), verticalAlignment = Alignment.CenterVertically) {
             RecipeThumb(r.image, dishEmoji(r.dishType), Modifier.size(70.dp).clip(RoundedCornerShape(16.dp)), emojiSize = 36.sp)
             Column(Modifier.padding(start = 12.dp)) {
                 Text(r.title, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Sunny.Ink, maxLines = 2,
@@ -236,6 +241,8 @@ private fun RecipeCard(r: RecipeSummary, canWrite: Boolean, working: Boolean, on
                 }
             }
         }
+        if (r.favorite) Icon(Icons.Filled.Favorite, contentDescription = "Dans mes favoris", tint = Sunny.PeachDeep,
+            modifier = Modifier.align(Alignment.TopEnd).padding(10.dp).size(16.dp))
         if (canWrite) {
             Box(
                 Modifier.align(Alignment.BottomEnd).size(46.dp)
