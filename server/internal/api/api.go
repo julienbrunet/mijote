@@ -41,21 +41,23 @@ func (a *API) Routes(mux Mux) {
 	mux.Handle("GET /api/v1/me", a.authenticate(http.HandlerFunc(a.me)))
 	mux.Handle("PUT /api/v1/me/preferences", a.authenticate(http.HandlerFunc(a.setPreferences)))
 	for pattern, h := range map[string]http.HandlerFunc{
-		"GET /api/v1/recipes":               a.listRecipes,
-		"POST /api/v1/recipes":              a.requireWrite(a.createRecipe),
-		"GET /api/v1/recipes/{id}":          a.getRecipe,
-		"PUT /api/v1/recipes/{id}":          a.requireWrite(a.updateRecipe),
-		"DELETE /api/v1/recipes/{id}":       a.archiveRecipe,
-		"GET /api/v1/tags":                  a.listTags,
-		"GET /api/v1/recipes/{id}/image":    a.getImage,
-		"PUT /api/v1/recipes/{id}/image":    a.requireWrite(a.putImage),
-		"DELETE /api/v1/recipes/{id}/image": a.requireWrite(a.deleteImage),
-		"GET /api/v1/menu":                  a.getMenu,
-		"POST /api/v1/menu/generate":        a.requireWrite(a.generateMenu),
-		"POST /api/v1/menu/slots":           a.requireWrite(a.addSlot),
-		"POST /api/v1/menu/slots/{id}/swap": a.requireWrite(a.swapSlot),
-		"PUT /api/v1/menu/slots/{id}":       a.requireWrite(a.updateSlot),
-		"DELETE /api/v1/menu/slots/{id}":    a.requireWrite(a.removeSlot),
+		"GET /api/v1/recipes":                  a.listRecipes,
+		"POST /api/v1/recipes":                 a.requireWrite(a.createRecipe),
+		"GET /api/v1/recipes/{id}":             a.getRecipe,
+		"PUT /api/v1/recipes/{id}":             a.requireWrite(a.updateRecipe),
+		"DELETE /api/v1/recipes/{id}":          a.archiveRecipe,
+		"GET /api/v1/tags":                     a.listTags,
+		"PUT /api/v1/recipes/{id}/favorite":    a.setFavorite(true),
+		"DELETE /api/v1/recipes/{id}/favorite": a.setFavorite(false),
+		"GET /api/v1/recipes/{id}/image":       a.getImage,
+		"PUT /api/v1/recipes/{id}/image":       a.requireWrite(a.putImage),
+		"DELETE /api/v1/recipes/{id}/image":    a.requireWrite(a.deleteImage),
+		"GET /api/v1/menu":                     a.getMenu,
+		"POST /api/v1/menu/generate":           a.requireWrite(a.generateMenu),
+		"POST /api/v1/menu/slots":              a.requireWrite(a.addSlot),
+		"POST /api/v1/menu/slots/{id}/swap":    a.requireWrite(a.swapSlot),
+		"PUT /api/v1/menu/slots/{id}":          a.requireWrite(a.updateSlot),
+		"DELETE /api/v1/menu/slots/{id}":       a.requireWrite(a.removeSlot),
 	} {
 		mux.Handle(pattern, a.authenticate(h))
 	}

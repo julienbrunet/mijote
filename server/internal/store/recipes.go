@@ -99,6 +99,9 @@ type Recipe struct {
 	// follow "last write wins" (requirements.md §11).
 	Version    int        `json:"version"`
 	ArchivedAt *time.Time `json:"archivedAt"`
+	// Favorite tells whether the recipe is in the favorites of the user asking
+	// (read-only, personal: each user has their own list).
+	Favorite bool `json:"favorite"`
 }
 
 // ComposeRawText builds the displayed line of an ingredient ("200 g farine, hachée").
@@ -306,8 +309,11 @@ type RecipeFilter struct {
 	Tag      string // exact tag, case-insensitive
 	DishType string
 	Archived string // "" = active only, "only" = archived only, "all"
-	Limit    int
-	Offset   int
+	// UserID marks the favorites of that user; with FavoritesOnly, only they are listed.
+	UserID        string
+	FavoritesOnly bool
+	Limit         int
+	Offset        int
 }
 
 func likePattern(q string) string {
@@ -334,6 +340,9 @@ func (s *Store) ListRecipes(ctx context.Context, f RecipeFilter) ([]Recipe, erro
 	if f.DishType != "" {
 		where = append(where, `r.dish_type::text = `+arg(f.DishType))
 	}
+	if f.FavoritesOnly && f.UserID != "" {
+		where = append(where, `EXISTS (SELECT 1 FROM recipe_favorite rf WHERE rf.recipe_id = r.id AND rf.user_id::text = `+arg(f.UserID)+`)`)
+	}
 	switch f.Archived {
 	case "only":
 		where = append(where, `r.archived_at IS NOT NULL`)
@@ -350,7 +359,61 @@ func (s *Store) ListRecipes(ctx context.Context, f RecipeFilter) ([]Recipe, erro
 	if list == nil {
 		list = []Recipe{}
 	}
+	if err != nil || f.UserID == "" {
+		return list, err
+	}
+	favs, err := s.FavoriteIDs(ctx, f.UserID)
+	for i := range list {
+		list[i].Favorite = favs[list[i].ID]
+	}
 	return list, err
+}
+
+// FavoriteIDs returns the recipes in a user's favorites.
+func (s *Store) FavoriteIDs(ctx context.Context, userID string) (map[string]bool, error) {
+	rows, err := s.Pool.Query(ctx, `SELECT recipe_id::text FROM recipe_favorite WHERE user_id::text = $1`, userID)
+	if err != nil {
+		return nil, err
+	}
+	ids, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	out := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		out[id] = true
+	}
+	return out, err
+}
+
+// IsFavorite tells whether a recipe is in a user's favorites.
+func (s *Store) IsFavorite(ctx context.Context, userID, recipeID string) (bool, error) {
+	var ok bool
+	err := s.Pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM recipe_favorite WHERE user_id::text = $1 AND recipe_id::text = $2)`,
+		userID, recipeID).Scan(&ok)
+	return ok, err
+}
+
+// SetFavorite adds a recipe to a user's favorites or removes it. Only active
+// recipes can be added; removing is always possible and idempotent.
+func (s *Store) SetFavorite(ctx context.Context, userID, recipeID string, on bool) error {
+	if !validUUID(recipeID) {
+		return ErrNotFound
+	}
+	if !on {
+		_, err := s.Pool.Exec(ctx, `DELETE FROM recipe_favorite WHERE user_id::text = $1 AND recipe_id = $2`, userID, recipeID)
+		return err
+	}
+	tag, err := s.Pool.Exec(ctx, `INSERT INTO recipe_favorite (user_id, recipe_id)
+		SELECT $1, id FROM recipe WHERE id = $2 AND archived_at IS NULL
+		ON CONFLICT DO NOTHING`, userID, recipeID)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		if fav, err := s.IsFavorite(ctx, userID, recipeID); err != nil || fav {
+			return err
+		}
+		return ErrNotFound
+	}
+	return nil
 }
 
 // Recipe returns one recipe, archived or not, with its ingredients and steps.

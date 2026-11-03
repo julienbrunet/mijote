@@ -23,6 +23,8 @@ data class RecipeDetail(
     val seasons: List<String> = emptyList(),
     val mealTypes: List<String> = listOf("lunch", "dinner"),
     val tags: List<String> = emptyList(),
+    /** In the favorites of the signed-in user (personal, not shared with the family). */
+    val favorite: Boolean = false,
 )
 
 private fun JSONObject.intOrNull(key: String): Int? = if (isNull(key) || !has(key)) null else optInt(key)
@@ -51,6 +53,7 @@ fun parseRecipe(o: JSONObject): RecipeDetail {
         seasons = o.optJSONArray("seasons").strings(),
         mealTypes = o.optJSONArray("mealTypes").strings().ifEmpty { listOf("lunch", "dinner") },
         tags = o.optJSONArray("tags").strings(),
+        favorite = o.optBoolean("favorite"),
     )
 }
 
@@ -60,6 +63,7 @@ private fun JSONArray?.strings(): List<String> = (0 until (this?.length() ?: 0))
 data class RecipeSummary(
     val id: String, val title: String, val dishType: String, val minutes: Int?, val image: String?, val tags: List<String>,
     val mealTypes: List<String> = listOf("lunch", "dinner"), val seasons: List<String> = emptyList(),
+    val favorite: Boolean = false,
 )
 
 /** Longest time of a "quick" recipe in the filters; recipes without a time count as quick, as in generation. */
@@ -71,17 +75,20 @@ const val QUICK_MINUTES = 30
  * season suits every season.
  */
 data class RecipeFilters(
+    /** Only the signed-in user's own favorites. */
+    val favorites: Boolean = false,
     val dishTypes: Set<String> = emptySet(),
     val meals: Set<String> = emptySet(),
     val durations: Set<String> = emptySet(), // "quick", "long"
     val seasons: Set<String> = emptySet(),
     val tags: Set<String> = emptySet(),
 ) {
-    val count get() = dishTypes.size + meals.size + durations.size + seasons.size + tags.size
+    val count get() = (if (favorites) 1 else 0) + dishTypes.size + meals.size + durations.size + seasons.size + tags.size
 
     fun matches(r: RecipeSummary): Boolean {
         val quick = (r.minutes ?: 0) <= QUICK_MINUTES
-        return (dishTypes.isEmpty() || r.dishType in dishTypes) &&
+        return (!favorites || r.favorite) &&
+            (dishTypes.isEmpty() || r.dishType in dishTypes) &&
             (meals.isEmpty() || r.mealTypes.any { it in meals }) &&
             (durations.isEmpty() || (if (quick) "quick" else "long") in durations) &&
             (seasons.isEmpty() || r.seasons.isEmpty() || r.seasons.any { it in seasons }) &&
@@ -95,7 +102,8 @@ fun parseRecipeList(o: JSONObject): List<RecipeSummary> {
         val r = a.getJSONObject(it)
         RecipeSummary(r.getString("id"), r.getString("title"), r.optString("dishType"),
             r.intOrNull("totalMinutes") ?: r.intOrNull("prepMinutes"), r.stringOrNull("image"), r.optJSONArray("tags").strings(),
-            r.optJSONArray("mealTypes").strings().ifEmpty { listOf("lunch", "dinner") }, r.optJSONArray("seasons").strings())
+            r.optJSONArray("mealTypes").strings().ifEmpty { listOf("lunch", "dinner") }, r.optJSONArray("seasons").strings(),
+            r.optBoolean("favorite"))
     }
 }
 

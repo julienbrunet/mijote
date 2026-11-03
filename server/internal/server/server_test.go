@@ -1122,3 +1122,72 @@ func TestAdminMealList(t *testing.T) {
 	res, _ = newClient(t, srv.URL).do("GET", "/admin/meals", "", "")
 	expect(t, res, http.StatusSeeOther, "meal list needs a session")
 }
+
+// TestFavorites checks that favorites are personal and filter the recipe list.
+func TestFavorites(t *testing.T) {
+	pool := testDB(t)
+	ctx := context.Background()
+	h, err := New(ctx, pool, nil, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(h)
+	defer srv.Close()
+	st := store.New(pool)
+
+	web := newClient(t, srv.URL)
+	web.form("/admin/setup", url.Values{"username": {"julien"}, "password": {"secret-pass"}, "confirm": {"secret-pass"}})
+	app := newClient(t, srv.URL)
+	_, tok := app.json("/api/v1/auth/login", map[string]string{"username": "julien", "password": "secret-pass"})
+	admin := tok["accessToken"].(string)
+	code, err := st.CreateInvitation(ctx, mustAdmin(t, st).ID, "readonly", time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, ro := app.json("/api/v1/invitations/redeem", map[string]string{"code": code, "username": "enfant", "password": "enfant-password"})
+	child := ro["accessToken"].(string)
+
+	var ids []string
+	for _, title := range []string{"Soupe", "Gratin", "Quiche"} {
+		_, rec := app.api("POST", "/api/v1/recipes", admin, map[string]any{"title": title, "dishType": "vegetarian"})
+		ids = append(ids, rec["id"].(string))
+	}
+	res, _ := app.api("PUT", "/api/v1/recipes/"+ids[0]+"/favorite", admin, nil)
+	expect(t, res, http.StatusNoContent, "add favorite")
+	res, _ = app.api("PUT", "/api/v1/recipes/"+ids[0]+"/favorite", admin, nil)
+	expect(t, res, http.StatusNoContent, "add favorite again")
+	res, _ = app.api("PUT", "/api/v1/recipes/"+ids[1]+"/favorite", child, nil)
+	expect(t, res, http.StatusNoContent, "read-only user adds a favorite")
+	res, _ = app.api("PUT", "/api/v1/recipes/00000000-0000-0000-0000-000000000000/favorite", admin, nil)
+	expect(t, res, http.StatusNotFound, "unknown recipe")
+
+	favs := func(token, query string) []string {
+		_, out := app.api("GET", "/api/v1/recipes"+query, token, nil)
+		var titles []string
+		for _, r := range out["recipes"].([]any) {
+			if m := r.(map[string]any); query != "" || m["favorite"] == true {
+				titles = append(titles, m["title"].(string))
+			}
+		}
+		return titles
+	}
+	if got := favs(admin, ""); len(got) != 1 || got[0] != "Soupe" {
+		t.Fatalf("admin favorites flag %v", got)
+	}
+	if got := favs(child, "?favorite=1"); len(got) != 1 || got[0] != "Gratin" {
+		t.Fatalf("child favorites filter %v", got)
+	}
+	_, rec := app.api("GET", "/api/v1/recipes/"+ids[0], admin, nil)
+	if rec["favorite"] != true {
+		t.Fatalf("recipe not marked favorite %v", rec["favorite"])
+	}
+	_, rec = app.api("GET", "/api/v1/recipes/"+ids[0], child, nil)
+	if rec["favorite"] != false {
+		t.Fatal("favorites leak between users")
+	}
+	res, _ = app.api("DELETE", "/api/v1/recipes/"+ids[0]+"/favorite", admin, nil)
+	expect(t, res, http.StatusNoContent, "remove favorite")
+	if got := favs(admin, "?favorite=1"); len(got) != 0 {
+		t.Fatalf("favorite not removed %v", got)
+	}
+}

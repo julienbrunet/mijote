@@ -79,5 +79,9 @@ class RecipeTest {
         assertEquals(listOf("1", "2"), ids(RecipeFilters(seasons = setOf("winter")))) // no season = all year
         assertEquals(listOf("1"), ids(RecipeFilters(tags = setOf("hiver"))))
         assertEquals(3, RecipeFilters(dishTypes = setOf("fish"), meals = setOf("lunch"), tags = setOf("four")).count)
+        val favs = listOf(veg.copy(favorite = true), fish, meat.copy(favorite = true))
+        assertEquals(listOf("1", "3"), favs.filter(RecipeFilters(favorites = true)::matches).map { it.id })
+        assertEquals(listOf("1"), favs.filter(RecipeFilters(favorites = true, durations = setOf("quick"), seasons = setOf("winter"))::matches).map { it.id })
+        assertEquals(1, RecipeFilters(favorites = true).count)
     }
 }

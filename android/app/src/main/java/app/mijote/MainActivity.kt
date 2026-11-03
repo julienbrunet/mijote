@@ -129,7 +129,8 @@ class MainActivity : ComponentActivity() {
                             RecipeScreen(shown, s.user.people, onBack = vm::closeRecipe,
                                 canWrite = s.user.canWrite, canArchive = s.user.isAdmin,
                                 onPlan = { planning = shown.id to (shown.recipe?.title ?: shown.title) },
-                                onEdit = { vm.editRecipe(new = false) }, onArchive = vm::archiveRecipe)
+                                onEdit = { vm.editRecipe(new = false) }, onArchive = vm::archiveRecipe,
+                                onFavorite = { vm.toggleFavorite(shown.id) })
                         } else if (review != null && m != null) {
                             ReviewScreen(
                                 period = periodLabel(review.from, review.to),
