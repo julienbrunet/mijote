@@ -42,7 +42,7 @@ type staticFile struct {
 }
 
 var staticFiles = func() map[string]staticFile {
-	types := map[string]string{".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml"}
+	types := map[string]string{".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".svg": "image/svg+xml", ".jpg": "image/jpeg"}
 	out := map[string]staticFile{}
 	entries, _ := staticFS.ReadDir("static")
 	for _, e := range entries {
