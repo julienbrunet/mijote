@@ -89,6 +89,7 @@ fun HomeScreen(
     onRefresh: () -> Unit = {},
     onNotifications: (() -> Unit)? = null,
     unreadNotifications: Int = 0,
+    hasNotifications: Boolean = unreadNotifications > 0,
     recipes: @Composable () -> Unit = {},
     generate: @Composable () -> Unit = {},
 ) {
@@ -109,7 +110,8 @@ fun HomeScreen(
     // Pull down to fetch what other members changed (no real-time, FR-SHR-02).
     PullToRefreshBox(refreshing, onRefresh, Modifier.fillMaxSize().background(Sunny.Butter)) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-            HomeHeader(tab.label.takeIf { tab != Tab.MENUS }, period.takeIf { tab == Tab.MENUS }, onPreferences)
+            HomeHeader(tab.label.takeIf { tab != Tab.MENUS }, period.takeIf { tab == Tab.MENUS }, onPreferences,
+                onNotifications = onNotifications.takeIf { canEdit && hasNotifications }, unreadNotifications = unreadNotifications)
             if (tab == Tab.MENUS && days.isNotEmpty()) {
                 Column(Modifier.padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 120.dp)) {
                     ErrorText(error)
@@ -130,8 +132,7 @@ fun HomeScreen(
                 )
             }
         }
-        BottomBar(tab, availableTabs, Modifier.align(Alignment.BottomEnd), onTab,
-            onNotifications = onNotifications.takeIf { canEdit }, unreadNotifications = unreadNotifications)
+        BottomBar(tab, availableTabs, Modifier.align(Alignment.BottomEnd), onTab)
     }
 }
 
@@ -143,23 +144,38 @@ fun HomeScreen(
 @Composable
 fun HomeHeader(
     title: String?, subtitle: String?, onPreferences: () -> Unit,
+    onNotifications: (() -> Unit)? = null,
+    unreadNotifications: Int = 0,
     extra: @Composable ColumnScope.() -> Unit = {},
 ) {
     Box(
         Modifier.fillMaxWidth().zIndexShadow()
             .background(Sunny.Card, RoundedCornerShape(bottomStart = 40.dp, bottomEnd = 40.dp)),
     ) {
-        // Profile button: a plain Butter circle on the white header.
-        Box(
-            Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(top = 20.dp, end = 20.dp).size(48.dp)
-                .background(Sunny.Butter, CircleShape).clip(CircleShape),
-            contentAlignment = Alignment.Center,
-        ) { UserButton(onPreferences) }
+        Row(Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(top = 20.dp, end = 20.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            if (onNotifications != null) Box(Modifier.size(48.dp)) {
+                IconButton(onClick = onNotifications, modifier = Modifier.fillMaxSize()) {
+                    Icon(Icons.Filled.Notifications, contentDescription = "Notifications : $unreadNotifications non lues", tint = Sunny.PeachDeep)
+                }
+                if (unreadNotifications > 0) Box(Modifier.align(Alignment.TopEnd).heightIn(min = 20.dp).widthIn(min = 20.dp)
+                    .background(Sunny.PeachDeep, CircleShape).border(2.dp, Sunny.Card, CircleShape).padding(horizontal = 4.dp),
+                    contentAlignment = Alignment.Center) {
+                    Text(if (unreadNotifications > 99) "99+" else "$unreadNotifications", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                }
+            }
+            Box(Modifier.size(48.dp).background(Sunny.Butter, CircleShape).clip(CircleShape), contentAlignment = Alignment.Center) {
+                UserButton(onPreferences)
+            }
+        }
         Column(Modifier.statusBarsPadding().padding(start = 22.dp, end = 22.dp, top = 22.dp, bottom = 26.dp)) {
-            Column(Modifier.padding(end = 80.dp)) {
+            Column(Modifier.padding(end = if (onNotifications != null) 136.dp else 80.dp)) {
                 if (title != null) ScreenTitle(title, subtitle, size = 32)
                 else {
-                    BrandTitle(logoSize = 48.dp, textSize = 44)
+                    BoxWithConstraints {
+                        val scale = if (onNotifications != null) (maxWidth.value / 220f).coerceAtMost(1f) else 1f
+                        BrandTitle(logoSize = 48.dp * scale, textSize = (44 * scale).toInt())
+                    }
                     subtitle?.let { Text(it, fontSize = 15.sp, color = Sunny.InkTitle, modifier = Modifier.padding(start = 2.dp, top = 12.dp)) }
                 }
             }
@@ -360,8 +376,6 @@ internal fun BottomBar(
     onAdd: (() -> Unit)? = null,
     onFilter: (() -> Unit)? = null,
     filterCount: Int = 0,
-    onNotifications: (() -> Unit)? = null,
-    unreadNotifications: Int = 0,
 ) {
     val icons = mapOf(Tab.MENUS to Icons.Filled.Home, Tab.RECIPES to Icons.Filled.Search,
         Tab.GENERATE to ImageVector.vectorResource(app.mijote.R.drawable.ic_meal_idea))
@@ -398,15 +412,6 @@ internal fun BottomBar(
         }
         // Round buttons on each side of the bar, as high as it, with icons the size of the tab icons:
         // "+" on the left, the filters (with the number of active ones) on the right.
-        if (onNotifications != null) Box(Modifier.align(Alignment.CenterStart).padding(start = 20.dp)) {
-            RoundBarButton("Notifications : $unreadNotifications non lues", Modifier, onNotifications) {
-                Icon(Icons.Filled.Notifications, contentDescription = "Notifications : $unreadNotifications non lues", tint = Sunny.PeachDeep, modifier = Modifier.size(24.dp))
-            }
-            if (unreadNotifications > 0) Box(Modifier.align(Alignment.TopEnd).heightIn(min = 22.dp).widthIn(min = 22.dp)
-                .background(Sunny.PeachDeep, CircleShape).border(2.dp, Sunny.Card, CircleShape).padding(horizontal = 4.dp), contentAlignment = Alignment.Center) {
-                Text(if (unreadNotifications > 99) "99+" else "$unreadNotifications", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
-            }
-        }
         if (onAdd != null) RoundBarButton("Nouvelle recette", Modifier.align(Alignment.CenterStart).padding(start = 20.dp), onAdd) {
             Icon(Icons.Filled.Add, contentDescription = "Nouvelle recette", tint = Sunny.PeachDeep, modifier = Modifier.size(24.dp))
         }

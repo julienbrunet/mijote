@@ -175,7 +175,7 @@ class MainActivity : ComponentActivity() {
                                 onAddRecipe = { vm.editRecipe(new = true) },
                                 onFilterRecipes = { filterSheet = true }, filterCount = recipes.filters.count,
                                 refreshing = menu.refreshing, onRefresh = { vm.loadMenu(manual = true) },
-                                onNotifications = if (s.user.canWrite) vm::openNotifications else null, unreadNotifications = notifications.unreadCount,
+                                onNotifications = if (s.user.canWrite) vm::openNotifications else null, unreadNotifications = notifications.unreadCount, hasNotifications = notifications.items.isNotEmpty() || notifications.unreadCount > 0,
                                 recipes = {
                                     RecipesTab(recipes, canWrite = s.user.canWrite,
                                         onQuery = { vm.searchRecipes(it, debounce = true) },

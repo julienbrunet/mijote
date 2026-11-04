@@ -100,6 +100,12 @@ class ScreenshotTest {
     }
 
     @Test
+    fun homeWithReadNotifications() = paparazzi.snapshot {
+        MijoteTheme { HomeScreen(User("u1", "parent", "Parent", "member"), onLogout = {}, days = sampleDays,
+            unreadNotifications = 0, hasNotifications = true, onNotifications = {}) }
+    }
+
+    @Test
     fun recipeReadonlyWish() = paparazzi.snapshot {
         MijoteTheme {
             RecipeScreen(app.mijote.RecipeState("r1", "Gratin de pâtes aux légumes",
