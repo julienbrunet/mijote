@@ -17,6 +17,7 @@ data class MenuSlot(
     val id: String, val date: LocalDate, val meal: String, val recipe: MenuRecipe?, val locked: Boolean, val title: String? = null,
     /** Covers of the meal, shared by the family; null for older meals (use the user's preference). */
     val people: Int? = null,
+    val version: Int = 0,
 ) {
     val manual get() = title != null
 }
@@ -49,6 +50,7 @@ fun parseSlot(o: JSONObject): MenuSlot {
         locked = o.optBoolean("locked"),
         title = if (o.isNull("title")) null else o.optString("title").ifEmpty { null },
         people = if (!o.has("people") || o.isNull("people")) null else o.optInt("people"),
+        version = o.optInt("version"),
     )
 }
 

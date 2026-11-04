@@ -16,6 +16,7 @@ import android.graphics.BitmapFactory
 import android.util.LruCache
 import app.mijote.data.Menu
 import app.mijote.data.MenuSlot
+import app.mijote.data.moveProposal
 import app.mijote.data.MenuProposal
 import app.mijote.data.RecipeDetail
 import app.mijote.data.PrefsSessionStore
@@ -89,6 +90,7 @@ data class MenuState(
     val working: String? = null,
     /** A pull-to-refresh is running. */
     val refreshing: Boolean = false,
+    val undoMove: MenuProposal? = null,
 )
 
 /** Recipe detail screen: [recipe] is null while loading. */
@@ -310,6 +312,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Reloads the planned meals; failures keep what is shown (offline reading). */
     fun loadMenu(manual: Boolean = false) {
+        if (_menu.value.working != null) return
+        val before = _menu.value.menu
         loadNotifications()
         if (manual) {
             if (_menu.value.refreshing) return
@@ -318,7 +322,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             try {
                 val m = session.authed { api, access -> api.menu(access) }
-                _menu.update { it.copy(menu = m, refreshing = false) }
+                _menu.update { if (it.menu === before && it.working == null) it.copy(menu = m, refreshing = false)
+                    else it.copy(refreshing = false) }
             } catch (e: SessionExpiredException) {
                 _menu.update { it.copy(refreshing = false) }
                 toLogin("Votre session a expiré : reconnectez-vous.")
@@ -486,7 +491,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** Runs a change of the planned meals, then reloads the menu; [done] is told on success. */
     private fun change(key: String, done: String? = null, action: (Api, String) -> Unit) {
         if (_menu.value.working != null) return
-        _menu.update { it.copy(working = key, error = null) }
+        _menu.update { it.copy(working = key, error = null, undoMove = null) }
         viewModelScope.launch {
             try {
                 session.authed { api, access -> action(api, access) }
@@ -502,7 +507,50 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun moveMeal(slotId: String, targetId: String) = editProposal { it.move(slotId, targetId) }
+    fun moveMeal(slotId: String, targetId: String) {
+        if (_menu.value.proposal != null) {
+            editProposal { it.move(slotId, targetId) }
+            return
+        }
+        if ((_state.value.screen as? Screen.Home)?.user?.canWrite != true || _menu.value.refreshing) return
+        val proposal = _menu.value.menu?.moveProposal(slotId, targetId) ?: return
+        saveHomeMove(proposal, rememberUndo = true)
+    }
+
+    fun undoMealMove() {
+        val proposal = _menu.value.undoMove ?: return
+        if ((_state.value.screen as? Screen.Home)?.user?.canWrite != true) return
+        saveHomeMove(proposal, rememberUndo = false)
+    }
+
+    private fun saveHomeMove(proposal: MenuProposal, rememberUndo: Boolean) {
+        if (_menu.value.working != null || _menu.value.refreshing) return
+        val before = _menu.value.menu ?: return
+        _menu.update { it.copy(working = "move", error = null, undoMove = null) }
+        viewModelScope.launch {
+            try {
+                val saved = session.authed { api, access -> api.confirmMenu(access, proposal) }
+                val undo = if (rememberUndo) MenuProposal(proposal.from, proposal.to,
+                    before.slots.filter { it.date >= proposal.from && it.date <= proposal.to },
+                    saved.map { app.mijote.data.SlotVersion(it.id, it.version) }) else null
+                _menu.update { state -> state.copy(menu = state.menu?.copy(slots =
+                    (state.menu.slots.filter { it.date < proposal.from || it.date > proposal.to } + saved)
+                        .sortedWith(compareBy<MenuSlot> { it.date }.thenBy { it.meal != "lunch" })),
+                    working = null, undoMove = undo) }
+                if (undo != null) {
+                    kotlinx.coroutines.delay(8000)
+                    _menu.update { if (it.undoMove === undo) it.copy(undoMove = null) else it }
+                }
+            } catch (e: SessionExpiredException) {
+                _menu.update { it.copy(working = null) }; toLogin("Votre session a expiré : reconnectez-vous.")
+            } catch (e: IOException) {
+                val conflict = e is ApiException && e.code == "menu_changed"
+                _menu.update { it.copy(working = null, error = if (conflict)
+                    "Le menu a changé sur un autre appareil. Le déplacement n’a pas été enregistré ; actualisez le menu."
+                    else errorMessage(e)) }
+            }
+        }
+    }
 
     fun swapMeal(slotId: String) {
         val proposal = _menu.value.proposal

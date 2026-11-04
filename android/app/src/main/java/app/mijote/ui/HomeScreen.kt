@@ -25,6 +25,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.vectorResource
@@ -52,6 +55,7 @@ data class MealUi(
     val manual: Boolean = false,
     /** Covers of the meal (its own number, or the user's preference for older meals). */
     val people: Int? = null,
+    val emptyDestination: Boolean = false,
 )
 
 /** One day of the menu. [missing] lists the meals ("lunch", "dinner") that can still be added (review screen). */
@@ -78,6 +82,9 @@ fun HomeScreen(
     onSwapMeal: (MealUi) -> Unit = {},
     onRemoveMeal: (MealUi) -> Unit = {},
     onRenameMeal: (MealUi, String) -> Unit = { _, _ -> },
+    onMoveMeal: (MealUi, MealUi) -> Unit = { _, _ -> },
+    canUndoMove: Boolean = false,
+    onUndoMove: () -> Unit = {},
     tab: Tab = Tab.MENUS,
     onTab: (Tab) -> Unit = {},
     refreshing: Boolean = false,
@@ -95,6 +102,34 @@ fun HomeScreen(
 ) {
     var editing by remember { mutableStateOf<MealUi?>(null) }
     val canEdit = user.role != "readonly"
+    val scroll = rememberScrollState()
+    val destinationDays = homeMoveDestinations(days)
+    val meals = destinationDays.flatMap { it.meals }
+    val dragEnabled = canEdit && working == null && !refreshing
+    val drag = rememberHomeMealDrag(scroll, meals, dragEnabled)
+    val footerHeight = with(LocalDensity.current) { 100.dp.toPx() }
+    val displayedDays = if (drag.source != null) destinationDays else days
+    var moving by remember { mutableStateOf<MealUi?>(null) }
+    moving?.let { source ->
+        AlertDialog(onDismissRequest = { moving = null }, containerColor = Sunny.Card,
+            title = { Text("Déplacer ce repas", color = Sunny.Ink, fontWeight = FontWeight.Bold) },
+            text = {
+                Column(Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState())) {
+                    destinationDays.forEach { day -> day.meals.filter { it.id != source.id }.forEach { destination ->
+                        Column(Modifier.fillMaxWidth().clickable(enabled = dragEnabled) {
+                            moving = null; onMoveMeal(source, destination)
+                        }.padding(vertical = 12.dp)) {
+                            Text("${day.label} · ${day.date} · ${destination.slot}", color = Sunny.Ink, fontWeight = FontWeight.SemiBold)
+                            Text(destination.title, color = Sunny.InkTitle, fontSize = 13.sp)
+                        }
+                    } }
+                }
+            }, confirmButton = { TextButton(onClick = { moving = null }) { Text("Annuler") } })
+    }
+    val dragHandle: @Composable (MealUi) -> Unit = { meal ->
+        if (canEdit && meals.size > 1) HomeMealDragHandle(drag, meal, meals, dragEnabled,
+            onChoose = { moving = it }, onMove = onMoveMeal)
+    }
     val availableTabs = if (user.role == "readonly") listOf(Tab.MENUS, Tab.RECIPES) else Tab.entries
     MealActionsDialog(editing, onDismiss = { editing = null }, onOpen = onOpenMeal, onSwap = onSwapMeal, onRemove = onRemoveMeal,
         onRename = onRenameMeal, canEdit = canEdit)
@@ -108,19 +143,26 @@ fun HomeScreen(
         return
     }
     // Pull down to fetch what other members changed (no real-time, FR-SHR-02).
-    PullToRefreshBox(refreshing, onRefresh, Modifier.fillMaxSize().background(Sunny.Butter)) {
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+    PullToRefreshBox(refreshing, { if (drag.source == null && working == null) onRefresh() }, Modifier.fillMaxSize().background(Sunny.Butter)) {
+        Column(Modifier.fillMaxSize().onGloballyPositioned {
+            val rect = it.boundsInRoot()
+            drag.viewport = androidx.compose.ui.geometry.Rect(rect.left, rect.top, rect.right, rect.bottom - footerHeight)
+        }.verticalScroll(scroll)) {
             HomeHeader(tab.label.takeIf { tab != Tab.MENUS }, period.takeIf { tab == Tab.MENUS }, onPreferences,
                 onNotifications = onNotifications.takeIf { canEdit && hasNotifications }, unreadNotifications = unreadNotifications)
             if (tab == Tab.MENUS && days.isNotEmpty()) {
                 Column(Modifier.padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 120.dp)) {
                     ErrorText(error)
-                    days.filter { it.isToday }.forEachIndexed { i, day ->
-                        DaySection(day, first = i == 0, working = working, onOpen = onOpenMeal, onEdit = { editing = it }, canEdit = canEdit)
+                    displayedDays.filter { it.isToday }.forEachIndexed { i, day ->
+                        DaySection(day, first = i == 0, working = working, onOpen = onOpenMeal, onEdit = { editing = it }, canEdit = canEdit,
+                            mealWrapper = { meal, content -> HomeMealDragItem(drag, meal) {
+                                if (meal.emptyDestination) HomeEmptyMealTarget(meal.slot) else content()
+                            } }, dragHandle = dragHandle.takeIf { canEdit && meals.size > 1 })
                     }
-                    val otherDays = days.filterNot { it.isToday }
+                    val otherDays = displayedDays.filterNot { it.isToday }
                     if (otherDays.any { it.meals.isNotEmpty() }) {
-                        CompactMealList(otherDays, working = working, onOpen = onOpenMeal, onEdit = { editing = it }, canEdit = canEdit)
+                        CompactMealList(otherDays, working = working, onOpen = onOpenMeal, onEdit = { editing = it }, canEdit = canEdit,
+                            mealDrag = drag, dragHandle = dragHandle)
                     }
                 }
             } else {
@@ -132,6 +174,12 @@ fun HomeScreen(
                 )
             }
         }
+        HomeMealDragOverlay(drag)
+        if (canUndoMove) Snackbar(
+            modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding().padding(start = 20.dp, end = 20.dp, bottom = 100.dp),
+            containerColor = Sunny.Ink, actionContentColor = Sunny.Butter,
+            action = { TextButton(onClick = onUndoMove, enabled = working == null) { Text("Annuler", color = Sunny.Butter) } },
+        ) { Text("Repas déplacé") }
         BottomBar(tab, availableTabs, Modifier.align(Alignment.BottomEnd), onTab)
     }
 }
@@ -192,6 +240,8 @@ private fun Modifier.zIndexShadow() =
 fun DaySection(
     day: DayUi, first: Boolean = false, working: String? = null,
     onOpen: (MealUi) -> Unit, onEdit: (MealUi) -> Unit, canEdit: Boolean = true, onPeople: ((MealUi) -> Unit)? = null, extra: @Composable () -> Unit = {},
+    mealWrapper: @Composable (MealUi, @Composable () -> Unit) -> Unit = { _, content -> content() },
+    dragHandle: (@Composable (MealUi) -> Unit)? = null,
 ) {
     Column {
         Row(Modifier.fillMaxWidth().padding(top = if (first) 18.dp else 34.dp, bottom = 14.dp, start = 4.dp, end = 4.dp),
@@ -202,8 +252,12 @@ fun DaySection(
         }
         Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
             day.meals.forEach { m ->
-                MealCard(m, Sunny.Peach, busy = working == m.id, onOpen = { onOpen(m) }, onEdit = { onEdit(m) }, canEdit = canEdit,
-                    onPeople = onPeople?.let { { it(m) } })
+                key(m.id) {
+                    mealWrapper(m) {
+                        MealCard(m, Sunny.Peach, busy = working == m.id, onOpen = { onOpen(m) }, onEdit = { onEdit(m) }, canEdit = canEdit,
+                            onPeople = onPeople?.let { { it(m) } }, dragHandle = dragHandle?.let { handle -> { handle(m) } })
+                    }
+                }
             }
             extra()
         }
@@ -215,48 +269,56 @@ fun DaySection(
 private fun CompactMealList(
     days: List<DayUi>, working: String?,
     onOpen: (MealUi) -> Unit, onEdit: (MealUi) -> Unit, canEdit: Boolean,
+    mealDrag: HomeMealDrag, dragHandle: @Composable (MealUi) -> Unit,
 ) {
     Column(Modifier.padding(top = 18.dp).fillMaxWidth()
         .shadow(2.dp, Shapes.Card).background(Sunny.Card, Shapes.Card).clip(Shapes.Card)) {
         days.flatMap { day -> day.meals.map { day to it } }.forEachIndexed { index, (day, meal) ->
-            if (index > 0) HorizontalDivider(Modifier.padding(horizontal = 16.dp), color = Sunny.Butter, thickness = 1.dp)
-            Row(
-                Modifier.fillMaxWidth().heightIn(min = 64.dp)
-                    .clickable(enabled = meal.recipeId != null || (meal.manual && canEdit),
-                        onClick = { if (meal.manual) onEdit(meal) else onOpen(meal) })
-                    .padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                val dateParts = day.day?.let {
-                    it.dayOfMonth.toString() to it.format(java.time.format.DateTimeFormatter.ofPattern("MMM", java.util.Locale.FRENCH)).trimEnd('.')
-                } ?: (day.date.substringBefore(' ') to day.date.substringAfter(' ').trimEnd('.'))
-                Column(
-                    Modifier.padding(end = 12.dp).width(46.dp).heightIn(min = 48.dp)
-                        .background(Sunny.ButterLight, RoundedCornerShape(12.dp)).padding(vertical = 6.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center,
-                ) {
-                    Text(dateParts.first, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Sunny.Ink, lineHeight = 22.sp)
-                    Text(dateParts.second, fontSize = 11.sp, fontWeight = FontWeight.Medium, color = Sunny.Ink.copy(alpha = 0.65f))
-                }
-                Column(Modifier.weight(1f).padding(end = 4.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("${day.label} · ${meal.slot}", fontSize = 12.sp, fontWeight = FontWeight.Medium,
-                            color = Sunny.Ink.copy(alpha = 0.65f), maxLines = 1, overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f, fill = false))
-                        if (meal.locked && !meal.manual) Icon(Icons.Filled.Lock,
-                            contentDescription = "Conservé si le menu est généré à nouveau", tint = Sunny.InkSoft,
-                            modifier = Modifier.padding(start = 5.dp).size(11.dp))
-                    }
-                    Text(meal.title, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = Sunny.Ink,
-                        maxLines = 3, overflow = TextOverflow.Ellipsis, lineHeight = 20.sp,
-                        modifier = Modifier.padding(top = 4.dp))
-                }
-                if (canEdit) IconButton(onClick = { onEdit(meal) }, modifier = Modifier.size(48.dp)) {
-                    Box(Modifier.size(32.dp).background(Sunny.Peach, RoundedCornerShape(10.dp)), contentAlignment = Alignment.Center) {
-                        if (working == meal.id) CircularProgressIndicator(Modifier.size(18.dp), color = Color.White, strokeWidth = 2.dp)
-                        else Icon(Icons.Filled.Edit, contentDescription = "Modifier : ${meal.title}", tint = Color.White,
-                            modifier = Modifier.size(17.dp))
+            key(meal.id) {
+                if (index > 0) HorizontalDivider(Modifier.padding(horizontal = 16.dp), color = Sunny.Butter, thickness = 1.dp)
+                HomeMealDragItem(mealDrag, meal) {
+                    Row(
+                        Modifier.fillMaxWidth().heightIn(min = 64.dp)
+                            .clickable(enabled = meal.recipeId != null || (meal.manual && canEdit),
+                                onClick = { if (meal.manual) onEdit(meal) else onOpen(meal) })
+                            .padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        val dateParts = day.day?.let {
+                            it.dayOfMonth.toString() to it.format(java.time.format.DateTimeFormatter.ofPattern("MMM", java.util.Locale.FRENCH)).trimEnd('.')
+                        } ?: (day.date.substringBefore(' ') to day.date.substringAfter(' ').trimEnd('.'))
+                        Column(
+                            Modifier.padding(end = 12.dp).width(46.dp).heightIn(min = 48.dp)
+                                .background(Sunny.ButterLight, RoundedCornerShape(12.dp)).padding(vertical = 6.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center,
+                        ) {
+                            Text(dateParts.first, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Sunny.Ink, lineHeight = 22.sp)
+                            Text(dateParts.second, fontSize = 11.sp, fontWeight = FontWeight.Medium, color = Sunny.Ink.copy(alpha = 0.65f))
+                        }
+                        Column(Modifier.weight(1f).padding(end = 4.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("${day.label} · ${meal.slot}", fontSize = 12.sp, fontWeight = FontWeight.Medium,
+                                    color = Sunny.Ink.copy(alpha = 0.65f), maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f, fill = false))
+                                if (meal.locked && !meal.manual) Icon(Icons.Filled.Lock,
+                                    contentDescription = "Conservé si le menu est généré à nouveau", tint = Sunny.InkSoft,
+                                    modifier = Modifier.padding(start = 5.dp).size(11.dp))
+                            }
+                            Text(meal.title, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = Sunny.Ink,
+                                maxLines = 3, overflow = TextOverflow.Ellipsis, lineHeight = 20.sp,
+                                modifier = Modifier.padding(top = 4.dp))
+                        }
+                        if (canEdit && !meal.emptyDestination) Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            dragHandle(meal)
+                            IconButton(onClick = { onEdit(meal) }, enabled = working == null, modifier = Modifier.width(48.dp).height(40.dp)) {
+                                Box(Modifier.size(32.dp).background(Sunny.Peach, RoundedCornerShape(10.dp)), contentAlignment = Alignment.Center) {
+                                    if (working == meal.id || working == "move") CircularProgressIndicator(Modifier.size(18.dp), color = Color.White, strokeWidth = 2.dp)
+                                    else Icon(Icons.Filled.Edit, contentDescription = "Modifier : ${meal.title}", tint = Color.White,
+                                        modifier = Modifier.size(17.dp))
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -269,6 +331,7 @@ private fun CompactMealList(
 fun MealCard(
     meal: MealUi, accent: Color, busy: Boolean, onOpen: () -> Unit, onEdit: () -> Unit, canEdit: Boolean = true,
     onPeople: (() -> Unit)? = null,
+    dragHandle: (@Composable () -> Unit)? = null,
 ) {
     Box(
         Modifier.fillMaxWidth().height(104.dp)
@@ -317,8 +380,9 @@ fun MealCard(
                 else Icon(Icons.Filled.Edit, contentDescription = "Modifier", tint = Color.White, modifier = Modifier.size(20.dp))
             }
         }
+        Box(Modifier.align(Alignment.TopEnd)) { dragHandle?.invoke() }
         if (meal.locked && !meal.manual) Icon(Icons.Filled.Lock, contentDescription = "Conservé si le menu est généré à nouveau", tint = Sunny.InkSoft,
-            modifier = Modifier.align(Alignment.TopEnd).padding(10.dp).size(14.dp))
+            modifier = Modifier.align(Alignment.TopEnd).padding(top = 10.dp, end = if (dragHandle != null) 48.dp else 10.dp).size(14.dp))
     }
 }
 
@@ -481,4 +545,22 @@ private fun RoundBarButton(label: String, modifier: Modifier, onClick: () -> Uni
             .clip(CircleShape).clickable(onClickLabel = label, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) { icon() }
+}
+
+/** Both daily slots remain valid destinations, even when only dinner is currently planned. */
+internal fun homeMoveDestinations(days: List<DayUi>): List<DayUi> {
+    val dated = days.mapNotNull { it.day }
+    if (dated.isEmpty()) return days
+    val first = dated.min()
+    val last = dated.max()
+    val byDate = days.associateBy { it.day }
+    val today = days.firstOrNull { it.isToday }?.day
+        ?: days.firstOrNull { it.label == "Demain" }?.day?.minusDays(1) ?: first.minusDays(2)
+    return days.filter { it.day == null } + generateSequence(first) { it.plusDays(1) }.takeWhile { it <= last }.map { date ->
+        val day = byDate[date] ?: DayUi(dayLabel(date, today), shortDate(date), emptyList(), day = date)
+        day.copy(meals = listOf("Midi", "Soir").map { label ->
+            day.meals.find { it.slot == label } ?: MealUi(label, "Déposer ici", null, null, "", false,
+                id = "$date|${if (label == "Midi") "lunch" else "dinner"}", emptyDestination = true)
+        })
+    }.toList()
 }
