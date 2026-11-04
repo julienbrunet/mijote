@@ -277,7 +277,13 @@ fun MealCard(
             .clickable(enabled = meal.recipeId != null || (meal.manual && canEdit), onClick = if (meal.manual) onEdit else onOpen),
     ) {
         Row(Modifier.fillMaxSize().padding(start = 12.dp, end = if (canEdit) 52.dp else 16.dp), verticalAlignment = Alignment.CenterVertically) {
-            RecipeThumb(meal.image, meal.picture, Modifier.size(76.dp).clip(RoundedCornerShape(16.dp)), emojiSize = 40.sp)
+            if (meal.manual) {
+                androidx.compose.foundation.Image(
+                    painter = androidx.compose.ui.res.painterResource(app.mijote.R.drawable.manual_meal),
+                    contentDescription = null, contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                    modifier = Modifier.size(76.dp).clip(RoundedCornerShape(16.dp)),
+                )
+            } else RecipeThumb(meal.image, meal.picture, Modifier.size(76.dp).clip(RoundedCornerShape(16.dp)), emojiSize = 40.sp)
             Column(Modifier.padding(start = 12.dp)) {
                 Text(meal.slot.uppercase(), fontSize = 10.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold, color = Sunny.InkSoft)
                 Text(meal.title, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Sunny.Ink, maxLines = 2,
