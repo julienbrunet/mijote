@@ -4,15 +4,16 @@ name: Server (API + web admin)
 on:
   push:
     branches: [main, "claude/**"]
-    paths: ["server/**", ".github/workflows/server.yml"]
+    paths: ["server/**", ".github/workflows/server.yml", ".github/scripts/**"]
     tags: ["server-v*"]
   pull_request:
-    paths: ["server/**", ".github/workflows/server.yml"]
+    paths: ["server/**", ".github/workflows/server.yml", ".github/scripts/**"]
   workflow_dispatch:
 
 concurrency:
   group: server-${{ github.ref }}
-  cancel-in-progress: true
+  # Release runs must finish before the next run selects its version.
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 permissions:
   contents: write
@@ -36,6 +37,11 @@ jobs:
           --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Test release versioning
+        run: python3 ../.github/scripts/test_next_version.py
 
       - uses: actions/setup-go@v5
         with:
@@ -56,7 +62,7 @@ jobs:
             version="${GITHUB_REF#refs/tags/server-v}"
           elif [[ "$GITHUB_EVENT_NAME" == push && "$GITHUB_REF" == refs/heads/main ]]; then
             # Every server change merged into main is released automatically.
-            version="0.1.$GITHUB_RUN_NUMBER"
+            version=$(bash ../.github/scripts/next-version.sh server)
           else
             version="0.0.0-dev+${GITHUB_SHA::7}"
           fi

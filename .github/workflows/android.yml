@@ -1,19 +1,20 @@
 name: Android app
 
 # Builds only when the app changes. Every push to main publishes a signed release
-# `android-v0.1.<run number>`; an `android-vX.Y.Z` tag still publishes that version.
+# with the next patch version; an `android-vX.Y.Z` tag still publishes that version.
 on:
   push:
     branches: [main, "claude/**"]
-    paths: ["android/**", ".github/workflows/android.yml"]
+    paths: ["android/**", ".github/workflows/android.yml", ".github/scripts/**"]
     tags: ["android-v*"]
   pull_request:
-    paths: ["android/**", ".github/workflows/android.yml"]
+    paths: ["android/**", ".github/workflows/android.yml", ".github/scripts/**"]
   workflow_dispatch:
 
 concurrency:
   group: android-${{ github.ref }}
-  cancel-in-progress: true
+  # Release runs must finish before the next run selects its version.
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 permissions:
   contents: write
@@ -28,6 +29,11 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Test release versioning
+        run: python3 ../.github/scripts/test_next_version.py
 
       - uses: actions/setup-java@v4
         with:
@@ -47,7 +53,7 @@ jobs:
             name="${GITHUB_REF#refs/tags/android-v}"
             release=true
           elif [[ "$GITHUB_EVENT_NAME" == push && "$GITHUB_REF" == refs/heads/main ]]; then
-            name="0.1.$GITHUB_RUN_NUMBER"
+            name=$(bash ../.github/scripts/next-version.sh android)
             release=true
           else
             name="0.0.0-dev+${GITHUB_SHA::7}"

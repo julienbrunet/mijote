@@ -49,9 +49,9 @@ Mijote is a self-hosted family weekly menu planner (native Android app in Kotlin
 - Theme changes in `requirements.md` §8 must also be applied to `site/style.css`.
 
 ## CI/CD and releases
-- GitHub Actions: `.github/workflows/android.yml` (`android/`) and `server.yml` (`server/`, API + web admin) and `pages.yml` (`site/`, presentation page). Each runs only when its directory changes; in-progress runs are cancelled; caches enabled.
-- Android: every push to `main` touching `android/` publishes a signed release `android-v0.1.<run number>` (APK + SHA-256); an `android-vX.Y.Z` tag still works. After merging, tell the user the published app version.
-- Server: every push to `main` touching `server/` publishes release `server-v0.1.<run number>` automatically (a `server-vX.Y.Z` tag still works). After merging, tell the user the published server version.
+- GitHub Actions: `.github/workflows/android.yml` (`android/`) and `server.yml` (`server/`, API + web admin) and `pages.yml` (`site/`, presentation page). Each runs only when its directory changes; in-progress validation runs are cancelled; main release runs finish before the next starts; caches enabled.
+- Android: every push to `main` touching `android/` publishes a signed release `android-vX.Y.Z` (highest stable Android tag + one patch) (APK + SHA-256); an `android-vX.Y.Z` tag still works. After merging, tell the user the published app version.
+- Server: every push to `main` touching `server/` publishes release `server-vX.Y.Z` (highest stable server tag + one patch) automatically (a `server-vX.Y.Z` tag still works). After merging, tell the user the published server version.
 - Android: Gradle reads `-PversionName` / `-PversionCode` (`MAJOR*10000+MINOR*100+PATCH`); release signing from env `MIJOTE_KEYSTORE`, `MIJOTE_KEYSTORE_PASSWORD`, `MIJOTE_KEY_ALIAS`, `MIJOTE_KEY_PASSWORD` (repo secrets `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`).
 - Server: static binaries for linux amd64, arm64, armv7; `main` declares `var version = "dev"` (set via `-X main.version`). Docker image not built yet.
 
