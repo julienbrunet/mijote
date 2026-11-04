@@ -98,3 +98,5 @@ footer{border-top:1px solid #eadfce}
 a:focus-visible,button:focus-visible{outline:3px solid #9c4b34;outline-offset:3px}
 @media(max-width:700px){.wrap{padding:0 18px}.top-nav{display:none}.lang{margin-left:auto}.hero{grid-template-columns:1fr;padding:45px 26px;gap:30px}.hero-art{order:-1}.art-circle{width:140px}.hero h1{font-size:42px}.hero p.lead{font-size:15px}section{padding:40px 0}}
 .feature-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.feature-image{width:100%;height:auto;display:block;margin-bottom:22px;border-radius:16px}.feature p{font-size:15px}.project-status{font-size:13px;color:#716a63;margin-top:22px}.android-download{color:white!important}.dl [data-files]{list-style:none;padding:0}.dl [data-files] li{list-style:none} @media(max-width:700px){.feature-grid{grid-template-columns:1fr}.feature-image{max-height:190px;object-fit:contain}.feature{padding:20px}}
+@font-face{font-family:Grandstander;font-weight:800;src:url(fonts/grandstander-800.ttf) format("truetype");font-display:swap}
+.brand{font-family:Grandstander,Inter,sans-serif;font-weight:800;letter-spacing:0}
