@@ -38,9 +38,6 @@ Mijote is a self-hosted family weekly menu planner (native Android app in Kotlin
 - Verified toolchain for Android prototypes: AGP 8.7.3, Kotlin 2.0.21, Compose BOM 2024.12.01, Paparazzi 1.3.5, compileSdk/targetSdk 35, minSdk 26.
 - Fonts: Google Fonts GitHub raw URLs are blocked; static TTFs are available from `cdn.jsdelivr.net/fontsource/fonts/<family>@latest/latin-<weight>-normal.ttf`.
 
-## Prototypes
-- `prototypes/theme-playground/`: throwaway Compose app used to tune the theme.
-
 ## Presentation site (GitHub Pages)
 - `site/`: static page (plain HTML/CSS/JS, no build step) describing the app, with download links and install docs; same "Sunny Kit" theme as the app and the same Inter fonts. Published at `https://julienbrunet.github.io/mijote/` by `.github/workflows/pages.yml` (deploys from `main` only; GitHub Pages source must be "GitHub Actions").
 - **Every feature change or addition (app or server) must be reflected in `site/index.html`** (features list, project status note, install guide, environment variables table), in the same commit.
