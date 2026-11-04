@@ -30,8 +30,13 @@
     }
     version.textContent = release.name || release.tag_name;
     release.assets.forEach(function (a) {
+      if (cardId === "dl-android" && !/\.apk$/i.test(a.name)) return;
       var li = el("li");
       var link = el("a", a.name);
+      if (cardId === "dl-android") {
+        link.className = "btn android-download";
+        link.innerHTML = '<span data-l="en">Download Android app</span><span data-l="fr">Télécharger l’application Android</span>';
+      }
       link.href = a.browser_download_url;
       li.appendChild(link);
       list.appendChild(li);

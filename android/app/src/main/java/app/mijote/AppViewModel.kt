@@ -1043,6 +1043,7 @@ internal fun errorMessage(e: IOException): String = when {
     e !is ApiException -> "Serveur injoignable : vérifiez la connexion et l'adresse."
     e.code == "invalid_invitation" -> "Cette invitation est invalide, déjà utilisée ou expirée : demandez-en une nouvelle."
     e.code == "wish_limit_reached" || e.code == "no_menu_creators" -> e.message ?: "Demande indisponible pour le moment."
+    e.code == "invalid_response" -> e.message ?: "La réponse du serveur est illisible."
     e.code == "validation_error" -> e.message ?: "Données refusées par le serveur."
     e.code == "menu_changed" -> "Le menu enregistré a changé. Cette validation n’a pas appliqué la proposition. Revenez aux idées de repas pour en générer une nouvelle."
     e.code == "not_found" -> "Introuvable : cet élément a peut-être été supprimé entre-temps."

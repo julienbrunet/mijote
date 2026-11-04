@@ -25,7 +25,8 @@
 <body>
 <div class="wrap">
   <header class="top">
-    <a class="brand" href="#"><img src="favicon.svg" alt="">Mijote</a>
+    <a class="brand" href="#"><img src="favicon.svg" alt="">Mijote<span class="brand-dot">.</span></a>
+    <nav class="top-nav" aria-label="Navigation"><a href="#features"><span data-l="en">Features</span><span data-l="fr">Fonctionnalités</span></a><a href="#install"><span data-l="en">Install</span><span data-l="fr">Installation</span></a><a href="https://github.com/julienbrunet/mijote">GitHub</a></nav>
     <div class="lang" role="group" aria-label="Language / Langue">
       <button type="button" data-set-lang="en">EN</button>
       <button type="button" data-set-lang="fr">FR</button>
@@ -34,54 +35,25 @@
 
   <main>
   <div class="hero">
-    <h1>Ça mijote</h1>
+    <div class="hero-content">
+    <p class="eyebrow" data-l="en">A little more time around the table</p><p class="eyebrow" data-l="fr">Plus de temps autour de la table</p>
+    <h1 data-l="en">Good meals,
+less planning.</h1><h1 data-l="fr">Bien manger,
+sans se compliquer.</h1>
     <p class="lead" data-l="en">The weekly menu planner. Import recipes from the web, generate balanced menus, adjust them with a swipe — on your own server.</p>
     <p class="lead" data-l="fr">Le planificateur de menus de la semaine. Importez des recettes du web, générez des menus équilibrés, ajustez-les d'un geste — sur votre propre serveur.</p>
     <div class="btns">
       <a class="btn" href="#download"><span data-l="en">Download</span><span data-l="fr">Télécharger</span></a>
       <a class="btn alt" href="#install"><span data-l="en">Install guide</span><span data-l="fr">Guide d'installation</span></a>
     </div>
+    </div>
+    <div class="hero-art" aria-hidden="true"><div class="art-circle"><img src="cocotte.svg" alt=""></div><span class="art-dot dot-one"></span><span class="art-dot dot-two"></span></div>
   </div>
 
   <section id="features">
-    <h2><span data-l="en">Features</span><span data-l="fr">Fonctionnalités</span></h2>
-    <div class="grid">
-      <div class="card">
-        <h3 data-l="en">Recipe import</h3><h3 data-l="fr">Import de recettes</h3>
-        <p data-l="en">Paste a link or use the Android share sheet. The app reads the recipe (schema.org) on your phone — the server never scrapes web pages.</p>
-        <p data-l="fr">Collez un lien ou utilisez le partage Android. L'application lit la recette (schema.org) sur votre téléphone — le serveur n'explore jamais les pages web.</p>
-      </div>
-      <div class="card">
-        <h3 data-l="en">Shared recipe base</h3><h3 data-l="fr">Base de recettes partagée</h3>
-        <p data-l="en">One shared collection, organised with tags. The <em>Recipes</em> tab of the app searches it by title or tag, filters it (your own favorites, dish type, meal, duration, season, tags), shows each recipe, and lets members add or edit recipes by hand; the administrator archives the ones no longer wanted (they stay in past menus).</p>
-        <p data-l="fr">Une collection partagée, organisée avec des tags. L'onglet <em>Recettes</em> de l'application la recherche par titre ou par tag, la filtre (vos favoris personnels, type de plat, repas, durée, saison, tags), affiche chaque recette et permet aux membres d'ajouter ou de modifier des recettes à la main ; l'administrateur archive celles dont on ne veut plus (elles restent dans les menus passés).</p>
-        <p style="margin-top:10px"><span class="tag meat" data-l="en">Meat</span><span class="tag meat" data-l="fr">Viande</span><span class="tag fish" data-l="en">Fish</span><span class="tag fish" data-l="fr">Poisson</span><span class="tag veg" data-l="en">Vegetarian</span><span class="tag veg" data-l="fr">Végétarien</span></p>
-      </div>
-      <div class="card">
-        <h3 data-l="en">Menu generation</h3><h3 data-l="fr">Génération de menus</h3>
-        <p data-l="en">A single scrolling form keeps all settings and the summary accessible, with no fixed panel covering the screen. Pick the number of days with the − / + control, the first day and the meals (lunch, dinner or both), for the number of people set in your preferences (each planned meal can then have its own number of people); the server proposes a varied menu that favors in-season recipes not served recently and fits your preparation time. A second screen, <em>Menu proposal</em>, lets you open recipes, change or add meals, and reorder them with always-visible drag handles or a destination list. The proposal stays a draft, including all edits and reordering: the shared menu changes only when you validate it. Leaving this screen keeps the previous menu. The floating navigation stays visible, with a separate validation button above it.</p>
-        <p data-l="fr">Un formulaire unique défile avec son récapitulatif, sans panneau fixe qui masque l’écran. Choisissez le nombre de jours avec le sélecteur − / +, le premier jour et les repas (midi, soir ou les deux), pour le nombre de personnes défini dans vos préférences (chaque repas planifié peut ensuite avoir son propre nombre de personnes) ; le serveur propose un menu varié qui privilégie les recettes de saison et pas servies récemment, adapté à votre temps de préparation. Un second écran, <em>Proposition de menu</em>, permet d’ouvrir les recettes, de changer ou d’ajouter des repas et de les réorganiser avec les poignées toujours visibles, par glisser-déposer ou choix d’une destination. La proposition reste un brouillon, modifications et réorganisation comprises : le menu partagé ne change qu’au clic sur « Valider ce menu ». Quitter cet écran conserve le menu précédent. La navigation flottante reste visible, avec le bouton de validation au-dessus.</p>
-      </div>
-      <div class="card">
-        <h3 data-l="en">Easy adjustments</h3><h3 data-l="fr">Ajustements faciles</h3>
-        <p data-l="en">Today’s meals keep their full cards; the other meals share a compact list with date tiles, yellow separators and a pencil for each meal. Writers can hold a drag handle to move a meal across days or between lunch and dinner, with empty destinations shown only during the drag and an Undo action after saving. The handle sits above the pencil to preserve title width. Swap a dish with one tap, see its recipe with photo, ingredients and steps, plan any recipe on the day you choose straight from the recipe list or its page, and add free-text meals such as “Order a pizza” or “Dinner at friends'” — shown with a recipe notebook illustration and kept when the menu is generated again.</p>
-        <p data-l="fr">Les repas du jour conservent leurs grandes cartes ; les autres sont regroupés dans une liste compacte, avec un bloc date, des séparateurs jaunes et un crayon pour chaque repas. Les membres en écriture peuvent maintenir une poignée pour déplacer un repas entre les jours, du midi au soir ou inversement ; les créneaux vides apparaissent pendant le déplacement, et une action permet d’annuler après l’enregistrement. La poignée se place au-dessus du crayon pour préserver la largeur du titre. Échangez un plat d'une touche, consultez sa recette avec photo, ingrédients et étapes, planifiez n'importe quelle recette le jour de votre choix directement depuis la liste ou sa fiche, et ajoutez des repas libres comme « Commander une pizza » ou « Repas chez des amis » — illustrés par un carnet de recettes et conservés quand le menu est généré à nouveau.</p>
-      </div>
-      <div class="card">
-        <h3 data-l="en">Shared and offline</h3><h3 data-l="fr">Partagé et hors ligne</h3>
-        <p data-l="en">Every member sees the same menu: the app picks up the others' changes when you come back to it, or when you pull the list down. Read-only members can request a recipe they feel like eating. Menu creators receive in-app notifications to read or clear, with a bell beside the profile button when the inbox is not empty and an unread counter. The shared limit defaults to 5 requests per reader per week and is adjustable by writers in preferences. Recipes and current menus stay readable offline.</p>
-        <p data-l="fr">Chaque membre voit le même menu : l'application récupère les modifications des autres quand vous y revenez, ou quand vous tirez la liste vers le bas. Les membres en lecture seule peuvent demander une recette qui leur fait envie. Les créateurs des menus reçoivent des notifications dans l’application, à lire ou effacer, avec une cloche à gauche du profil lorsque la boîte contient des notifications et un compteur de non-lues. La limite commune est de 5 demandes par lecteur et par semaine par défaut, réglable par les membres en écriture dans les préférences. Les recettes et les menus en cours restent lisibles hors ligne.</p>
-      </div>
-      <div class="card">
-        <h3 data-l="en">Self-hosted and light</h3><h3 data-l="fr">Auto-hébergé et léger</h3>
-        <p data-l="en">A single Go binary plus PostgreSQL, with a very small memory footprint. All your data, recipe images included, stays on your server. Web admin with the app's look, in five menus: <em>Home</em> (upcoming meals as a compact plan, to change or remove), <em>Recipes</em> (recipes, tags, usage statistics), <em>Users</em> (accounts, invitations, sessions, login journal), <em>System</em> (counts, server version and install date, memory and CPU of the server, database and image folder sizes, points of attention) and <em>Admin profile</em> (password, 2FA, API tokens). Create family accounts (members or read-only) with invitation links or QR codes in a few guided steps, and manage security (optional 2FA). The administrator also finds invitations (create, share, revoke) and accounts in the app's settings.</p>
-        <p data-l="fr">Un binaire Go et PostgreSQL, avec une très faible empreinte mémoire. Toutes vos données, images de recettes comprises, restent sur votre serveur. Interface web d'administration aux couleurs de l'application, en cinq menus : <em>Accueil</em> (les prochains repas en planning compact, à modifier ou retirer), <em>Recettes</em> (recettes, étiquettes, statistiques d'utilisation), <em>Utilisateurs</em> (comptes, invitations, sessions, journal des connexions), <em>Système</em> (chiffres clés, version du serveur et date d'installation, mémoire et processeur du serveur, taille de la base et du dossier des images, points d'attention) et <em>Profil admin</em> (mot de passe, 2FA, jetons d'API). Créez les comptes de la famille (membres ou lecture seule) par lien ou QR code d'invitation en quelques étapes guidées, et gérer la sécurité (2FA optionnelle). L'administrateur retrouve aussi les invitations (création, partage, révocation) et les comptes dans les préférences de l'application.</p>
-      </div>
-    </div>
-    <div class="note">
-      <span data-l="en"><strong>Project status:</strong> early development. The server (authentication, recipe and shared menu generation API, read-only roles, web admin with an editable meal plan, recipes and their statistics, tags, accounts, invitations, API tokens and a system page) and the app skeleton (server setup, sign-in, joining with an invitation, new colorful design, compact home menu with date tiles, menu generation, recipes tab with search, editing and archiving, planning a recipe or a free-text meal on a chosen day, administration of invitations and accounts, preferences screen, recipe wishes and notifications with a shared weekly limit, in-app updates) are available; the features above are being built.</span>
-      <span data-l="fr"><strong>État du projet :</strong> développement en cours. Le serveur (authentification, API des recettes et de génération de menus partagés, rôles en lecture seule, interface d'administration avec planning des repas modifiable, recettes et leurs statistiques, étiquettes, comptes, invitations, jetons d'API et page système) et la base de l'application (connexion au serveur, identification, inscription par invitation, nouveau design coloré, accueil compact avec blocs date, génération de menus, onglet Recettes avec recherche, édition et archivage, planification d'une recette ou d'un repas libre le jour choisi, administration des invitations et des comptes, écran de préférences, envies de recettes et notifications avec limite hebdomadaire commune, mises à jour intégrées) sont disponibles ; les fonctionnalités ci-dessus sont en construction.</span>
-    </div>
+    <p class="eyebrow" data-l="en">Made for everyday life</p><p class="eyebrow" data-l="fr">Pensé pour le quotidien</p>
+    <h2><span data-l="en">Everything on the menu.</span><span data-l="fr">Tout est au menu.</span></h2>
+    <div class="grid feature-grid"><article class="card feature"><img class="feature-image" src="recipes.svg" alt="" loading="lazy"><h3 data-l="en">Your recipes, together</h3><h3 data-l="fr">Vos recettes, au même endroit</h3><p data-l="en">Import a link, save your favourites, find your next meal.</p><p data-l="fr">Importez un lien, gardez vos favoris et retrouvez vos idées de repas.</p></article><article class="card feature"><img class="feature-image" src="menu.svg" alt="" loading="lazy"><h3 data-l="en">A week planned in minutes</h3><h3 data-l="fr">La semaine organisée en quelques minutes</h3><p data-l="en">Generate a varied menu, then reorder meals from Home with a long press — across days or between lunch and dinner. Share it with your household.</p><p data-l="fr">Générez un menu varié, puis réorganisez les repas depuis l’accueil par appui long, entre les jours ou du midi au soir. Partagez-le avec votre foyer.</p></article><article class="card feature"><img class="feature-image" src="home.svg" alt="" loading="lazy"><h3 data-l="en">Your household, your server</h3><h3 data-l="fr">Votre foyer, votre serveur</h3><p data-l="en">A shared menu and recipes, hosted at home.</p><p data-l="fr">Des menus et des recettes partagés, hébergés chez vous.</p></article></div><p class="project-status" data-l="en">Mijote is under active development.</p><p class="project-status" data-l="fr">Mijote est en cours de développement.</p>
   </section>
 
   <section id="download">
@@ -90,7 +62,7 @@
       <div class="card dl" id="dl-android">
         <h3>Android</h3>
         <div class="version" data-version><span data-l="en">Loading…</span><span data-l="fr">Chargement…</span></div>
-        <ul data-files></ul>
+        <div data-files></div>
         <p style="margin-top:12px"><a href="https://github.com/julienbrunet/mijote/releases" data-fallback><span data-l="en">All releases</span><span data-l="fr">Toutes les versions</span></a></p>
       </div>
       <div class="card dl" id="dl-server">
@@ -138,8 +110,8 @@ MIJOTE_IMAGE_DIR=/var/lib/mijote/images \
 
     <h3 style="margin-top:28px" data-l="en">2. Android app</h3><h3 style="margin-top:28px" data-l="fr">2. Application Android</h3>
     <ol class="steps">
-      <li data-l="en">Download the <code>.apk</code> on your phone (Android 8.0 or later).</li>
-      <li data-l="fr">Téléchargez le fichier <code>.apk</code> sur votre téléphone (Android 8.0 ou plus).</li>
+      <li data-l="en">Download the <code>.apk</code> on your phone (Android 8.0 or later). On Android 8.0/8.1, use the latest version to open recipes and send recipe wishes.</li>
+      <li data-l="fr">Téléchargez le fichier <code>.apk</code> sur votre téléphone (Android 8.0 ou plus). Sur Android 8.0/8.1, utilisez la dernière version pour ouvrir les recettes et envoyer vos envies.</li>
       <li data-l="en">Open it and allow installing from this source when Android asks.</li>
       <li data-l="fr">Ouvrez-le et autorisez l'installation depuis cette source quand Android le demande.</li>
       <li data-l="en">Launch Mijote, enter your server address (<code>https://…</code>), then sign in. New member? Open the invitation link you received (or scan its QR code with your phone's camera): the page explains how to install the app, then its <em>Open in Mijote</em> button lets you choose your username and password. You can also tap <em>I have an invitation</em> in the app and type the server address and the code.</li>
