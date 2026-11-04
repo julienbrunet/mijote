@@ -924,7 +924,7 @@ func TestReadonlyRoleAndSharedMenus(t *testing.T) {
 		t.Fatal("readonly should see recipes")
 	}
 
-	res, menuOut := app.api("GET", "/api/v1/menu", roAccess, nil)
+	res, menuOut := app.api("GET", "/api/v1/menu?from=2026-11-02&to=2026-11-03", roAccess, nil)
 	expect(t, res, http.StatusOK, "readonly can view shared menu")
 	if len(menuOut["slots"].([]any)) == 0 {
 		t.Fatal("readonly should see the shared menu slots")
