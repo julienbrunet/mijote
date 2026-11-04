@@ -171,6 +171,8 @@ class MainActivity : ComponentActivity() {
                                 onSwapMeal = { vm.swapMeal(it.id) },
                                 onRemoveMeal = { vm.removeMeal(it.id) },
                                 onRenameMeal = { meal, title -> vm.renameMeal(meal.id, title) },
+                                onMoveMeal = { source, target -> vm.moveMeal(source.id, target.id) },
+                                canUndoMove = menu.undoMove != null, onUndoMove = vm::undoMealMove,
                                 tab = tab, onTab = vm::selectTab,
                                 onAddRecipe = { vm.editRecipe(new = true) },
                                 onFilterRecipes = { filterSheet = true }, filterCount = recipes.filters.count,

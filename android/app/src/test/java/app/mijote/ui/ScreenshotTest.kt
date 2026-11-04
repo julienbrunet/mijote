@@ -68,6 +68,15 @@ class ScreenshotTest {
     }
 
     @Test
+    fun homeNarrowLongRecipeTitle() {
+        paparazzi.unsafeUpdateConfig(deviceConfig = DeviceConfig.PIXEL_6.copy(
+            screenWidth = 320, screenHeight = 800, xdpi = 160, ydpi = 160,
+            density = com.android.resources.Density.MEDIUM,
+        ))
+        homeLongRecipeTitle()
+    }
+
+    @Test
     fun homeWithMenuReadonly() = paparazzi.snapshot {
         MijoteTheme { HomeScreen(User("u2", "enfant", "Enfant", "readonly"), onLogout = {}, period = "2 → 8 novembre · 11 repas", days = sampleDays) }
     }
@@ -344,7 +353,7 @@ class ScreenshotTest {
         DayUi("Aujourd'hui", "lun. 2 nov.", listOf(
             MealUi("Midi", "Poulet au pesto et tomates rôties", DishType.MEAT, 25, "🍗", locked = true),
             MealUi("Soir", "Velouté de potimarron", DishType.VEGETARIAN, 35, "🥣", locked = false),
-        ), isToday = true),
+        ), day = LocalDate.of(2026, 11, 2), isToday = true),
         DayUi("Demain", "mar. 3 nov.", listOf(
             MealUi("Soir", "Saumon, riz et brocolis", DishType.FISH, 20, "🐟", locked = false),
         ), day = LocalDate.of(2026, 11, 3)),
@@ -352,5 +361,7 @@ class ScreenshotTest {
             MealUi("Midi", "Gratin de pâtes aux légumes", DishType.VEGETARIAN, 40, "🧀", locked = false),
             MealUi("Soir", "Commander une pizza", null, null, "📝", locked = true, manual = true),
         ), day = LocalDate.of(2026, 11, 4)),
-    )
+    ).mapIndexed { dayIndex, day -> day.copy(meals = day.meals.mapIndexed { mealIndex, meal ->
+        meal.copy(id = "sample-$dayIndex-$mealIndex")
+    }) }
 }
