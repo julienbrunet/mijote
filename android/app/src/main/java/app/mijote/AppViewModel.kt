@@ -81,6 +81,7 @@ data class ReviewPeriod(val from: LocalDate, val to: LocalDate)
 
 data class MenuState(
     val menu: Menu? = null,
+    val loading: Boolean = true,
     val generating: Boolean = false,
     val error: String? = null,
     val generated: Int = 0,
@@ -209,7 +210,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 } catch (e: SessionExpiredException) {
                     toLogin("Votre session a expiré : reconnectez-vous.")
                 } catch (_: IOException) {
-                    // Offline or server unreachable: stay signed in (read-only use).
+                    loadMenu()
                 }
             }
         }
@@ -312,24 +313,21 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Reloads the planned meals; failures keep what is shown (offline reading). */
     fun loadMenu(manual: Boolean = false) {
-        if (_menu.value.working != null) return
+        if (_menu.value.working != null || _menu.value.refreshing) return
         val before = _menu.value.menu
         loadNotifications()
-        if (manual) {
-            if (_menu.value.refreshing) return
-            _menu.update { it.copy(refreshing = true, error = null) }
-        }
+        _menu.update { it.copy(loading = it.menu == null, refreshing = true, error = null) }
         viewModelScope.launch {
             try {
                 val m = session.authed { api, access -> api.menu(access) }
-                _menu.update { if (it.menu === before && it.working == null) it.copy(menu = m, refreshing = false)
-                    else it.copy(refreshing = false) }
+                _menu.update { if (it.menu === before && it.working == null) it.copy(menu = m, loading = false, refreshing = false, error = null)
+                    else it.copy(loading = false, refreshing = false) }
             } catch (e: SessionExpiredException) {
-                _menu.update { it.copy(refreshing = false) }
+                _menu.update { it.copy(loading = false, refreshing = false) }
                 toLogin("Votre session a expiré : reconnectez-vous.")
             } catch (e: IOException) {
-                // Automatic refreshes stay silent offline; a pull-to-refresh tells why nothing changed.
-                _menu.update { it.copy(refreshing = false, error = if (manual) errorMessage(e) else it.error) }
+                // Keep an existing menu available offline and report failed requests.
+                _menu.update { it.copy(loading = false, refreshing = false, error = errorMessage(e)) }
             }
         }
     }

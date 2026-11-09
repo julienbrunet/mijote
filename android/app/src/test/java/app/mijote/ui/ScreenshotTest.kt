@@ -48,6 +48,16 @@ class ScreenshotTest {
     }
 
     @Test
+    fun homeLoading() = paparazzi.snapshot {
+        MijoteTheme { HomeScreen(User("u1", "julien", "Julien", "admin"), onLogout = {}, loading = true, menuLoaded = false) }
+    }
+
+    @Test
+    fun homeConnectionError() = paparazzi.snapshot {
+        MijoteTheme { HomeScreen(User("u1", "julien", "Julien", "admin"), onLogout = {}, error = "Connection error", menuLoaded = false) }
+    }
+
+    @Test
     fun homeWithMenu() = paparazzi.snapshot {
         MijoteTheme { HomeScreen(User("u1", "julien", "Julien", "admin"), onLogout = {}, period = "2 → 8 novembre · 11 repas", days = sampleDays) }
     }

@@ -166,6 +166,7 @@ class MainActivity : ComponentActivity() {
                                 s.user, onLogout = vm::logout,
                                 period = m?.let(::menuPeriod), days = m?.let { menuDays(it, s.user.people) }.orEmpty(),
                                 generatedCount = 0, onNewWeek = vm::loadMenu, onPreferences = vm::openPreferences,
+                                loading = menu.loading, menuLoaded = m != null,
                                 working = menu.working, error = menu.error,
                                 onOpenMeal = open,
                                 onSwapMeal = { vm.swapMeal(it.id) },

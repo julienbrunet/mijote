@@ -78,6 +78,8 @@ fun HomeScreen(
     onPreferences: () -> Unit = {},
     working: String? = null,
     error: String? = null,
+    loading: Boolean = false,
+    menuLoaded: Boolean = true,
     onOpenMeal: (MealUi) -> Unit = {},
     onSwapMeal: (MealUi) -> Unit = {},
     onRemoveMeal: (MealUi) -> Unit = {},
@@ -150,7 +152,23 @@ fun HomeScreen(
         }.verticalScroll(scroll)) {
             HomeHeader(tab.label.takeIf { tab != Tab.MENUS }, period.takeIf { tab == Tab.MENUS }, onPreferences,
                 onNotifications = onNotifications.takeIf { canEdit && hasNotifications }, unreadNotifications = unreadNotifications)
-            if (tab == Tab.MENUS && days.isNotEmpty()) {
+            if (loading && !menuLoaded) {
+                Column(Modifier.fillMaxWidth().padding(top = 120.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    CircularProgressIndicator(color = Sunny.PeachDeep)
+                    Text("Chargement des repas…", color = Sunny.InkTitle, modifier = Modifier.padding(top = 16.dp))
+                }
+            } else if (error != null && !menuLoaded) {
+                Column(Modifier.fillMaxWidth().padding(top = 100.dp, start = 24.dp, end = 24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("Impossible de charger les repas. Vérifiez votre connexion au serveur.",
+                        color = Sunny.InkTitle, textAlign = TextAlign.Center)
+                    TextButton(onClick = onRefresh, modifier = Modifier.padding(top = 12.dp)) {
+                        Icon(Icons.Filled.Refresh, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Réessayer")
+                    }
+                }
+            } else if (tab == Tab.MENUS && days.isNotEmpty()) {
                 Column(Modifier.padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 120.dp)) {
                     ErrorText(error)
                     displayedDays.filter { it.isToday }.forEachIndexed { i, day ->
@@ -165,13 +183,19 @@ fun HomeScreen(
                             mealDrag = drag, dragHandle = dragHandle)
                     }
                 }
-            } else {
+            } else if (menuLoaded) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                if (error != null) {
+                    ErrorText(error)
+                    TextButton(onClick = onRefresh) { Text("Réessayer") }
+                }
                 Text(
                     if (canEdit) "Aucun repas prévu : ouvrez « Idées de repas » pour créer le menu, ou planifiez une recette depuis « Recettes »."
                     else "Aucun repas prévu pour le moment.",
                     color = Sunny.InkTitle, textAlign = TextAlign.Center,
                     modifier = Modifier.fillMaxWidth().padding(top = 120.dp, start = 24.dp, end = 24.dp),
                 )
+                }
             }
         }
         HomeMealDragOverlay(drag)
