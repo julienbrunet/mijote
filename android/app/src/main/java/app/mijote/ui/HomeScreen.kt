@@ -171,6 +171,7 @@ fun HomeScreen(
             } else if (tab == Tab.MENUS && days.isNotEmpty()) {
                 Column(Modifier.padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 120.dp)) {
                     ErrorText(error)
+                    if (error != null) TextButton(onClick = onRefresh) { Text("Réessayer") }
                     displayedDays.filter { it.isToday }.forEachIndexed { i, day ->
                         DaySection(day, first = i == 0, working = working, onOpen = onOpenMeal, onEdit = { editing = it }, canEdit = canEdit,
                             mealWrapper = { meal, content -> HomeMealDragItem(drag, meal) {
