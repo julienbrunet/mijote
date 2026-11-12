@@ -132,7 +132,7 @@ Planning a family's weekly menus is repetitive: finding recipes, avoiding repeat
 | FR-ONB-03 | Member scans/opens the invitation and sets a password. | Must |
 | FR-ONB-04 | Invitations expire and can be revoked. | Should |
 | FR-ONB-05 | On first launch, the app asks for the server URL (typed or scanned); one store app serves any instance. | Must |
-| FR-ONB-06 | Login by username + password (no email); no OAuth. | Must |
+| FR-ONB-06 | Login by username + password (no email); no OAuth. The password is hidden by default and can be shown or hidden using an eye button. | Must |
 
 ### 4.8 Web admin (ADM)
 | ID | Requirement | Priority |
@@ -432,7 +432,7 @@ Runs on the server. Input: a period, the family settings, the existing slots.
 
 **Recipe wishes** (2026-11-03): a read-only member sees "J’ai envie de cette recette" on an active recipe, with remaining weekly quota. A successful request shows "Envie envoyée". The default quota is 5 requests per reader per Monday–Sunday week in the family timezone; the shared setting is editable by every writer/admin from app preferences, range 1–100. A pending duplicate is idempotent and costs no extra quota; once all active recipients clear it, the recipe can be requested again within the quota. A wish creates one notification per active writer/admin, without planning a meal. Each recipient owns its read/delete state. The menu tab header has a bell immediately left of the profile button, shown only while the inbox contains notifications (read or unread). Its badge counts unread notifications only; there is no bell in the bottom navigation. The inbox is also linked from preferences. The inbox can open the recipe, mark read, clear and paginate. It refreshes on app open/foreground/menu refresh and explicit inbox refresh, with no push or background polling. Archived recipes cannot be newly requested; existing notifications keep the requester/title snapshot and can still be read/cleared. New migration `0011_recipe_wishes.sql` adds the instance setting, durable request history (quota survives notification deletion), and per-recipient notifications. No new service or dependency.
 
-**Preferences screen** (app, opened from the user button of the home header): account (name, username, role); administration (admin only, see above); number of people with a +/− stepper on the right (writers/admins only; hidden for read-only accounts); server address with "Changer de serveur" (signs out, then asks for the new address); app version with "Rechercher des mises à jour" (manual check, also in debug builds; a newer release opens the update dialog); sign out. The "Nouvelle semaine" button of the home screen opens the generation screen; after generation the review screen opens.
+**Preferences screen** (app, opened from the user button of the home header): account (name, username, role); administration (admin only, see above); number of people with a +/− stepper on the right (writers/admins only; hidden for read-only accounts); server address with "Changer de serveur" (signs out, then asks for the new address); app version with "Rechercher des mises à jour" (manual check, also in debug builds; a newer release opens the update dialog); sign out with a confirmation dialog. The "Nouvelle semaine" button of the home screen opens the generation screen; after generation the review screen opens.
 
 **Swap** (FR-ADJ-01) runs steps 2–5 for one slot, excluding its current recipe.
 **Regenerate** re-fills every non-locked slot of the period.

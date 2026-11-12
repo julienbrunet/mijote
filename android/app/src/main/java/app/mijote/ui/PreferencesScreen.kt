@@ -11,10 +11,16 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import app.mijote.WishSettingsState
 import app.mijote.R
@@ -52,6 +58,15 @@ fun PreferencesScreen(
     onWishLimit: (Int) -> Unit = {},
     onReloadWishSettings: () -> Unit = {},
 ) {
+    var confirmLogout by rememberSaveable { mutableStateOf(false) }
+    if (confirmLogout) AlertDialog(
+        onDismissRequest = { confirmLogout = false },
+        containerColor = Sunny.Card,
+        title = { Text("Se déconnecter ?", color = Sunny.Ink, fontWeight = FontWeight.Bold) },
+        text = { Text("Voulez-vous vraiment vous déconnecter ?", color = Sunny.InkTitle) },
+        confirmButton = { TextButton(onClick = { confirmLogout = false; onLogout() }) { Text("Se déconnecter") } },
+        dismissButton = { TextButton(onClick = { confirmLogout = false }) { Text("Annuler") } },
+    )
     Column(Modifier.fillMaxSize().background(Sunny.Cream).verticalScroll(rememberScrollState())) {
         Box(
             Modifier.fillMaxWidth()
@@ -131,7 +146,7 @@ fun PreferencesScreen(
                 Spacer(Modifier.height(14.dp))
                 PrimaryButton(if (checkingUpdate) "Recherche…" else "Rechercher des mises à jour", checkingUpdate, onCheckUpdate)
             }
-            SecondaryAction("Se déconnecter", enabled = true, onClick = onLogout)
+            SecondaryAction("Se déconnecter", enabled = true, onClick = { confirmLogout = true })
             Spacer(Modifier.height(24.dp))
         }
     }
