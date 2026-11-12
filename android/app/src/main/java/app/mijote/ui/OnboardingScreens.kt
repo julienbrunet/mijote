@@ -5,10 +5,13 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
+import app.mijote.R
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
@@ -42,13 +45,21 @@ fun LoginScreen(
 ) {
     var username by rememberSaveable { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
+    var passwordVisible by remember { mutableStateOf(false) }
     OnboardingScaffold("Bon\nretour", serverUrl.removePrefix("https://")) {
         SunnyCard {
             SunnyField(username, { username = it }, "Identifiant", enabled = !busy)
             Spacer(Modifier.height(4.dp))
             SunnyField(password, { password = it }, "Mot de passe", KeyboardType.Password, ImeAction.Go,
                 onDone = { onLogin(username, password) },
-                visualTransformation = PasswordVisualTransformation(), enabled = !busy)
+                visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(), enabled = !busy,
+                trailingIcon = {
+                    IconButton(onClick = { passwordVisible = !passwordVisible }, enabled = !busy) {
+                        Icon(painterResource(if (passwordVisible) R.drawable.ic_visibility_off else R.drawable.ic_visibility),
+                            contentDescription = if (passwordVisible) "Masquer le mot de passe" else "Afficher le mot de passe",
+                            tint = Sunny.InkSoft)
+                    }
+                })
             ErrorText(error)
             PrimaryButton("Se connecter", busy) { onLogin(username, password) }
         }

@@ -114,12 +114,14 @@ fun SunnyField(
     onDone: () -> Unit = {},
     visualTransformation: VisualTransformation = VisualTransformation.None,
     enabled: Boolean = true,
+    trailingIcon: @Composable (() -> Unit)? = null,
 ) {
     TextField(
         value = value,
         onValueChange = onValueChange,
         label = { Text(label) },
         singleLine = true,
+        trailingIcon = trailingIcon,
         enabled = enabled,
         visualTransformation = visualTransformation,
         keyboardOptions = KeyboardOptions(keyboardType = keyboardType, imeAction = imeAction, autoCorrectEnabled = false),
