@@ -60,3 +60,16 @@ Mijote is a self-hosted family weekly menu planner (native Android app in Kotlin
 - `server/`: Go module (Go 1.24, pgx v5), `main` package at its root. Schema changes = new file in `server/internal/migrate/migrations/` (see `requirements.md` §12).
 - API documentation: `server/API.md` (guide for tools and LLM assistants) and `server/openapi.yaml` (OpenAPI 3.1). **Every API change (route, field, rule, error) updates both in the same commit**; `TestOpenAPIMatchesRoutes` fails when routes and spec differ.
 - PostgreSQL 16 binaries are in `/usr/lib/postgresql/16/bin`; run them as the `postgres` user with a data dir outside the scratchpad (e.g. `/var/tmp`), then set `MIJOTE_TEST_DATABASE_URL`.
+
+## Shared code graph
+
+- Follow the [code navigation instructions](AGENTS.md#code-navigation) to use the versioned graph from any sandbox. Queries require Python 3 and Git. Go and JavaScript use SCIP symbol resolution. Kotlin uses syntax-based definitions and same-name references. HTML, SQL and configuration are handled by text search.
+- When changing Go, Kotlin or JavaScript sources covered by the graph, or the server Go module files, regenerate `tools/codegraph/graph.jsonl` in the same change. The Code graph workflow regenerates it in CI and checks that the result matches the checked-in file.
+- Install the generator dependencies once in a development environment with Go from `server/go.mod`, Node.js 24 and Python 3.12. Ensure `scip-go` is on `PATH`.
+
+  ```sh
+  go install github.com/sourcegraph/scip-go/cmd/scip-go@v0.1.26
+  npm ci --prefix tools/codegraph
+  python3 -m pip install -r tools/codegraph/requirements.txt
+  python3 tools/codegraph/build.py
+  ```
