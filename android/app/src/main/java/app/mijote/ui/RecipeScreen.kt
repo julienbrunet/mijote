@@ -54,63 +54,77 @@ fun RecipeScreen(
         dismissButton = { TextButton(onClick = { confirmArchive = false }) { Text("Annuler", color = Sunny.Slate) } },
     )
     val r = state.recipe
-    Column(Modifier.fillMaxSize().background(Sunny.Butter).verticalScroll(rememberScrollState())) {
-        Box(Modifier.fillMaxWidth().height(260.dp).clip(RoundedCornerShape(bottomStart = 40.dp, bottomEnd = 40.dp))) {
-            RecipeThumb(r?.image, dishEmoji(r?.dishType), Modifier.fillMaxSize(), emojiSize = 90.sp)
-            Box(
-                Modifier.statusBarsPadding().padding(16.dp).size(44.dp).background(Color.White.copy(alpha = 0.9f), CircleShape)
-                    .clickable(onClick = onBack),
-                contentAlignment = Alignment.Center,
-            ) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Retour", tint = Sunny.Ink) }
-            // Personal favorite: every user, read-only ones included, has their own list.
-            if (r != null) Box(
-                Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(16.dp).size(44.dp)
-                    .background(Color.White.copy(alpha = 0.9f), CircleShape).clip(CircleShape).clickable(onClick = onFavorite),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(if (r.favorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
-                    contentDescription = if (r.favorite) "Retirer de mes favoris" else "Ajouter à mes favoris", tint = Sunny.PeachDeep)
-            }
-        }
-        Column(Modifier.padding(horizontal = 22.dp).padding(top = 22.dp, bottom = 48.dp).navigationBarsPadding()) {
-            Text(r?.title ?: state.title, fontSize = 28.sp, lineHeight = 32.sp, fontWeight = FontWeight.Bold, color = Sunny.InkTitle)
-            if (r != null && !r.archived && onWish != null) {
-                val wish = state.wish
-                Button(onClick = onWish, enabled = !state.wishing && wish?.requested != true && wish?.remaining != 0,
-                    shape = Shapes.Control,
-                    colors = ButtonDefaults.buttonColors(containerColor = Sunny.PeachDeep, contentColor = Color.White),
-                    modifier = Modifier.fillMaxWidth().padding(top = 16.dp).height(52.dp)) {
-                    Text(if (state.wishing) "Envoi…" else if (wish?.requested == true) "Envie envoyée" else "J’ai envie de cette recette",
-                        fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                }
-                Text(if (wish?.requested == true) "Les personnes qui créent les menus ont été informées."
-                    else if (wish != null) "${wish.remaining} demande${if (wish.remaining > 1) "s" else ""} restante${if (wish.remaining > 1) "s" else ""} cette semaine · maximum ${wish.weeklyLimit}."
-                    else "Partagez votre envie avec les personnes qui créent les menus.",
-                    fontSize = 13.sp, color = Sunny.InkTitle, modifier = Modifier.padding(top = 8.dp))
-                ErrorText(state.wishError)
-            }
+    Scaffold(
+        containerColor = Sunny.Butter,
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
+        bottomBar = {
             if (r != null && canWrite) {
-                Button(
-                    onClick = onPlan, enabled = !state.busy, shape = Shapes.Control,
-                    colors = ButtonDefaults.buttonColors(containerColor = Sunny.PeachDeep, contentColor = Color.White),
-                    modifier = Modifier.fillMaxWidth().padding(top = 16.dp).height(52.dp),
+                Row(
+                    Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 22.dp, vertical = 10.dp),
+                    horizontalArrangement = Arrangement.End,
                 ) {
-                    Icon(Icons.Filled.DateRange, contentDescription = null, modifier = Modifier.size(20.dp))
-                    Text("Ajouter au menu", fontWeight = FontWeight.Bold, fontSize = 15.sp, modifier = Modifier.padding(start = 8.dp))
-                }
-                Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    SmallAction("Modifier", Icons.Filled.Edit, Sunny.Ink, Modifier.weight(1f), enabled = !state.busy, onClick = onEdit)
-                    if (canArchive) SmallAction("Archiver", Icons.Filled.Delete, Sunny.Error, Modifier.weight(1f), enabled = !state.busy) {
-                        confirmArchive = true
+                    Button(
+                        onClick = onPlan, enabled = !state.busy, shape = Shapes.Control,
+                        colors = ButtonDefaults.buttonColors(containerColor = Sunny.Peach, contentColor = Sunny.Ink),
+                        modifier = Modifier.heightIn(min = 48.dp),
+                    ) {
+                        Icon(Icons.Filled.DateRange, contentDescription = null, modifier = Modifier.size(20.dp))
+                        Text("Ajouter au menu", fontWeight = FontWeight.Bold, fontSize = 15.sp, modifier = Modifier.padding(start = 8.dp))
                     }
                 }
-                if (state.error != null) ErrorText(state.error)
             }
-            when {
-                r != null -> Content(r, state.slotPeople ?: people, onMealPeople)
-                state.error != null -> ErrorText(state.error)
-                else -> Box(Modifier.fillMaxWidth().padding(top = 48.dp), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = Sunny.PeachDeep)
+        },
+    ) { padding ->
+        Column(Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding).verticalScroll(rememberScrollState())) {
+            Box(Modifier.fillMaxWidth().height(260.dp).clip(RoundedCornerShape(bottomStart = 40.dp, bottomEnd = 40.dp))) {
+                RecipeThumb(r?.image, dishEmoji(r?.dishType), Modifier.fillMaxSize(), emojiSize = 90.sp)
+                Box(
+                    Modifier.statusBarsPadding().padding(16.dp).size(44.dp).background(Color.White.copy(alpha = 0.9f), CircleShape)
+                        .clickable(onClick = onBack),
+                    contentAlignment = Alignment.Center,
+                ) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Retour", tint = Sunny.Ink) }
+                // Personal favorite: every user, read-only ones included, has their own list.
+                if (r != null) Box(
+                    Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(16.dp).size(44.dp)
+                        .background(Color.White.copy(alpha = 0.9f), CircleShape).clip(CircleShape).clickable(onClick = onFavorite),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(if (r.favorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+                        contentDescription = if (r.favorite) "Retirer de mes favoris" else "Ajouter à mes favoris", tint = Sunny.PeachDeep)
+                }
+            }
+            Column(Modifier.padding(horizontal = 22.dp).padding(top = 22.dp, bottom = 48.dp).navigationBarsPadding()) {
+                Text(r?.title ?: state.title, fontSize = 28.sp, lineHeight = 32.sp, fontWeight = FontWeight.Bold, color = Sunny.InkTitle)
+                if (r != null && !r.archived && onWish != null) {
+                    val wish = state.wish
+                    Button(onClick = onWish, enabled = !state.wishing && wish?.requested != true && wish?.remaining != 0,
+                        shape = Shapes.Control,
+                        colors = ButtonDefaults.buttonColors(containerColor = Sunny.PeachDeep, contentColor = Color.White),
+                        modifier = Modifier.fillMaxWidth().padding(top = 16.dp).height(52.dp)) {
+                        Text(if (state.wishing) "Envoi…" else if (wish?.requested == true) "Envie envoyée" else "J’ai envie de cette recette",
+                            fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                    }
+                    Text(if (wish?.requested == true) "Les personnes qui créent les menus ont été informées."
+                        else if (wish != null) "${wish.remaining} demande${if (wish.remaining > 1) "s" else ""} restante${if (wish.remaining > 1) "s" else ""} cette semaine · maximum ${wish.weeklyLimit}."
+                        else "Partagez votre envie avec les personnes qui créent les menus.",
+                        fontSize = 13.sp, color = Sunny.InkTitle, modifier = Modifier.padding(top = 8.dp))
+                    ErrorText(state.wishError)
+                }
+                if (r != null && canWrite) {
+                    Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        SmallAction("Modifier", Icons.Filled.Edit, Sunny.Ink, Modifier.weight(1f), enabled = !state.busy, onClick = onEdit)
+                        if (canArchive) SmallAction("Archiver", Icons.Filled.Delete, Sunny.Error, Modifier.weight(1f), enabled = !state.busy) {
+                            confirmArchive = true
+                        }
+                    }
+                    if (state.error != null) ErrorText(state.error)
+                }
+                when {
+                    r != null -> Content(r, state.slotPeople ?: people, onMealPeople)
+                    state.error != null -> ErrorText(state.error)
+                    else -> Box(Modifier.fillMaxWidth().padding(top = 48.dp), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(color = Sunny.PeachDeep)
+                    }
                 }
             }
         }

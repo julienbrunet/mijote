@@ -32,75 +32,91 @@ private val seasons = listOf("spring" to "Printemps", "summer" to "Été", "autu
 @Composable
 fun RecipeEditorScreen(state: EditorState, onChange: (RecipeDraft) -> Unit, onSave: () -> Unit, onBack: () -> Unit) {
     val d = state.draft
-    Column(Modifier.fillMaxSize().background(Sunny.Butter).imePadding().verticalScroll(rememberScrollState())) {
-        Box(
-            Modifier.fillMaxWidth().background(Sunny.Card, RoundedCornerShape(bottomStart = 40.dp, bottomEnd = 40.dp)),
-        ) {
-            Column(Modifier.statusBarsPadding().padding(start = 12.dp, end = 22.dp, top = 8.dp, bottom = 22.dp)) {
-                IconButton(onClick = onBack) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Retour", tint = Sunny.Ink)
-                }
-                Box(Modifier.padding(start = 10.dp, top = 8.dp)) {
-                    ScreenTitle(if (state.id == null) "Nouvelle recette" else "Modifier la recette",
-                        "Quantités pour une personne", size = 30)
+    Column(Modifier.fillMaxSize().background(Sunny.Butter).imePadding()) {
+        Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
+            Box(
+                Modifier.fillMaxWidth().background(Sunny.Card, RoundedCornerShape(bottomStart = 40.dp, bottomEnd = 40.dp)),
+            ) {
+                Column(Modifier.statusBarsPadding().padding(start = 12.dp, end = 22.dp, top = 8.dp, bottom = 22.dp)) {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Retour", tint = Sunny.Ink)
+                    }
+                    Box(Modifier.padding(start = 10.dp, top = 8.dp)) {
+                        ScreenTitle(if (state.id == null) "Nouvelle recette" else "Modifier la recette",
+                            "Quantités pour une personne", size = 30)
+                    }
                 }
             }
-        }
-        Column(Modifier.padding(horizontal = 20.dp).padding(top = 16.dp, bottom = 32.dp).navigationBarsPadding(),
-            verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            SunnyCard {
-                Field(d.title, { onChange(d.copy(title = it)) }, "Titre", singleLine = true)
-                Label("TYPE DE PLAT")
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    DishType.entries.forEach { t ->
-                        val code = when (t) { DishType.MEAT -> "meat"; DishType.FISH -> "fish"; DishType.VEGETARIAN -> "vegetarian" }
-                        Chip(t.label, d.dishType == code, Modifier.weight(1f)) { onChange(d.copy(dishType = code)) }
-                    }
-                }
-                Label("REPAS")
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf("lunch" to "Midi", "dinner" to "Soir").forEach { (code, label) ->
-                        Chip(label, code in d.mealTypes, Modifier.weight(1f)) {
-                            onChange(d.copy(mealTypes = if (code in d.mealTypes) d.mealTypes - code else d.mealTypes + code))
+            Column(Modifier.padding(horizontal = 20.dp).padding(top = 16.dp, bottom = 18.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                SunnyCard {
+                    Field(d.title, { onChange(d.copy(title = it)) }, "Titre", singleLine = true)
+                    Label("TYPE DE PLAT")
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        DishType.entries.forEach { t ->
+                            val code = when (t) { DishType.MEAT -> "meat"; DishType.FISH -> "fish"; DishType.VEGETARIAN -> "vegetarian" }
+                            Chip(t.label, d.dishType == code, Modifier.weight(1f)) { onChange(d.copy(dishType = code)) }
                         }
                     }
-                }
-                Label("TEMPS (MINUTES)")
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Box(Modifier.weight(1f)) { Field(d.prepMinutes, { onChange(d.copy(prepMinutes = it.filter(Char::isDigit).take(5))) }, "Préparation", singleLine = true, number = true) }
-                    Box(Modifier.weight(1f)) { Field(d.cookMinutes, { onChange(d.copy(cookMinutes = it.filter(Char::isDigit).take(5))) }, "Cuisson", singleLine = true, number = true) }
-                }
-                Label("SAISONS (AUCUNE = TOUTE L'ANNÉE)")
-                seasons.chunked(2).forEach { pair ->
-                    Row(Modifier.padding(bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        pair.forEach { (code, label) ->
-                            Chip(label, code in d.seasons, Modifier.weight(1f)) {
-                                onChange(d.copy(seasons = if (code in d.seasons) d.seasons - code else d.seasons + code))
+                    Label("REPAS")
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf("lunch" to "Midi", "dinner" to "Soir").forEach { (code, label) ->
+                            Chip(label, code in d.mealTypes, Modifier.weight(1f)) {
+                                onChange(d.copy(mealTypes = if (code in d.mealTypes) d.mealTypes - code else d.mealTypes + code))
                             }
                         }
                     }
+                    Label("TEMPS (MINUTES)")
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Box(Modifier.weight(1f)) { Field(d.prepMinutes, { onChange(d.copy(prepMinutes = it.filter(Char::isDigit).take(5))) }, "Préparation", singleLine = true, number = true) }
+                        Box(Modifier.weight(1f)) { Field(d.cookMinutes, { onChange(d.copy(cookMinutes = it.filter(Char::isDigit).take(5))) }, "Cuisson", singleLine = true, number = true) }
+                    }
+                    Label("SAISONS (AUCUNE = TOUTE L'ANNÉE)")
+                    seasons.chunked(2).forEach { pair ->
+                        Row(Modifier.padding(bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            pair.forEach { (code, label) ->
+                                Chip(label, code in d.seasons, Modifier.weight(1f)) {
+                                    onChange(d.copy(seasons = if (code in d.seasons) d.seasons - code else d.seasons + code))
+                                }
+                            }
+                        }
+                    }
+                    Field(d.tags, { onChange(d.copy(tags = it)) }, "Tags, séparés par des virgules", singleLine = true)
                 }
-                Field(d.tags, { onChange(d.copy(tags = it)) }, "Tags, séparés par des virgules", singleLine = true)
-            }
-            SunnyCard {
-                Label("INGRÉDIENTS, UN PAR LIGNE")
-                Field(d.ingredients, { onChange(d.copy(ingredients = it)) }, "Par ex. 200 g de farine")
-                val parsed = d.ingredients.lines().map { it.trim() }.filter { it.isNotEmpty() }.map(::parseIngredient)
-                if (parsed.isNotEmpty()) {
-                    Text("Compris comme :", fontSize = 12.sp, color = Sunny.InkSoft, modifier = Modifier.padding(top = 10.dp))
-                    parsed.forEach { Text("•  ${it.text(1)}", fontSize = 13.sp, color = Sunny.InkTitle) }
+                SunnyCard {
+                    Label("INGRÉDIENTS, UN PAR LIGNE")
+                    Field(d.ingredients, { onChange(d.copy(ingredients = it)) }, "Par ex. 200 g de farine")
+                    val parsed = d.ingredients.lines().map { it.trim() }.filter { it.isNotEmpty() }.map(::parseIngredient)
+                    if (parsed.isNotEmpty()) {
+                        Text("Compris comme :", fontSize = 12.sp, color = Sunny.InkSoft, modifier = Modifier.padding(top = 10.dp))
+                        parsed.forEach { Text("•  ${it.text(1)}", fontSize = 13.sp, color = Sunny.InkTitle) }
+                    }
+                }
+                SunnyCard {
+                    Label("ÉTAPES, UNE PAR LIGNE")
+                    Field(d.steps, { onChange(d.copy(steps = it)) }, "Par ex. Préchauffer le four à 180 °C")
+                }
+                SunnyCard {
+                    Label("NOTES")
+                    Field(d.notes, { onChange(d.copy(notes = it)) }, "Moins de sel, cuisson plus longue…")
                 }
             }
-            SunnyCard {
-                Label("ÉTAPES, UNE PAR LIGNE")
-                Field(d.steps, { onChange(d.copy(steps = it)) }, "Par ex. Préchauffer le four à 180 °C")
-            }
-            SunnyCard {
-                Label("NOTES")
-                Field(d.notes, { onChange(d.copy(notes = it)) }, "Moins de sel, cuisson plus longue…")
-            }
+        }
+        Column(Modifier.fillMaxWidth().background(Sunny.Cream).navigationBarsPadding().padding(horizontal = 14.dp, vertical = 6.dp)) {
             ErrorText(state.error)
-            PrimaryButton(if (state.id == null) "Ajouter la recette" else "Enregistrer", state.saving, onSave)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                Button(
+                    onClick = onSave, enabled = !state.saving, shape = Shapes.Control,
+                    modifier = Modifier.heightIn(min = 48.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Sunny.Butter, contentColor = Sunny.Ink),
+                ) {
+                    Text(when {
+                        state.saving -> "Enregistrement…"
+                        state.id == null -> "Ajouter la recette"
+                        else -> "Enregistrer"
+                    })
+                }
+            }
         }
     }
 }

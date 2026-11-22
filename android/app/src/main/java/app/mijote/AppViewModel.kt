@@ -16,6 +16,10 @@ import android.graphics.BitmapFactory
 import android.util.LruCache
 import app.mijote.data.Menu
 import app.mijote.data.MenuSlot
+import app.mijote.data.MenuRecipe
+import app.mijote.data.SlotVersion
+import app.mijote.data.WeekCopy
+import app.mijote.data.weekStart
 import app.mijote.data.moveProposal
 import app.mijote.data.MenuProposal
 import app.mijote.data.RecipeDetail
@@ -37,7 +41,10 @@ import app.mijote.data.normalizeServerUrl
 import app.mijote.data.parseInvitationLink
 import java.io.IOException
 import java.time.LocalDate
+import java.util.UUID
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -92,6 +99,14 @@ data class MenuState(
     /** A pull-to-refresh is running. */
     val refreshing: Boolean = false,
     val undoMove: MenuProposal? = null,
+    val proposalConflict: Boolean = false,
+)
+
+data class PlannerWeekState(val start: LocalDate? = null, val menu: Menu? = null, val loading: Boolean = false, val error: String? = null)
+data class PlacementRecipe(val id: String, val title: String)
+data class WeekCopyState(
+    val preview: WeekCopy? = null, val from: LocalDate? = null, val to: LocalDate? = null,
+    val replaceOccupied: Boolean = false, val loading: Boolean = false, val error: String? = null,
 )
 
 /** Recipe detail screen: [recipe] is null while loading. */
@@ -100,6 +115,7 @@ data class RecipeState(
     /** The planned meal the recipe was opened from: its number of people is shown and saved. */
     val slotId: String? = null,
     val slotPeople: Int? = null,
+    val slotReadOnly: Boolean = false,
     val wish: WishStatus? = null, val wishing: Boolean = false, val wishError: String? = null, val wishRevision: Int = 0,
 )
 
@@ -152,6 +168,23 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     private val _menu = MutableStateFlow(MenuState())
     val menu: StateFlow<MenuState> = _menu.asStateFlow()
+
+    private val _plannerWeek = MutableStateFlow(PlannerWeekState())
+    val plannerWeek: StateFlow<PlannerWeekState> = _plannerWeek.asStateFlow()
+    private val _placement = MutableStateFlow<PlacementRecipe?>(null)
+    val placement: StateFlow<PlacementRecipe?> = _placement.asStateFlow()
+    private val _plannerRecipes = MutableStateFlow(RecipesState())
+    val plannerRecipes: StateFlow<RecipesState> = _plannerRecipes.asStateFlow()
+    private val _weekCopy = MutableStateFlow(WeekCopyState())
+    val weekCopy: StateFlow<WeekCopyState> = _weekCopy.asStateFlow()
+    private val cachedWeeks = LinkedHashMap<LocalDate, Menu>()
+    private var weekJob: Job? = null
+    private var copyJob: Job? = null
+    private var pickerJob: Job? = null
+    private var preferenceJob: Job? = null
+    private var preferenceRevision = 0
+    private data class GenerationRequest(val start: LocalDate, val meals: Int, val plan: MealPlan)
+    private var generationRequest: GenerationRequest? = null
 
     private val _notifications = MutableStateFlow(NotificationsState())
     val notifications: StateFlow<NotificationsState> = _notifications.asStateFlow()
@@ -223,10 +256,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private fun toLogin(error: String? = null) {
-        _recipe.value = null
-        _notifications.value = NotificationsState()
-        _wishSettings.value = WishSettingsState()
-        notificationsFromPreferences = false
+        resetData()
         val url = session.serverUrl
         _state.value = UiState(if (url == null) Screen.Server else Screen.Login(url), error = error)
     }
@@ -314,20 +344,152 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** Reloads the planned meals; failures keep what is shown (offline reading). */
     fun loadMenu(manual: Boolean = false) {
         if (_menu.value.working != null || _menu.value.refreshing) return
+        val actor = signedInUser()?.id ?: return
         val before = _menu.value.menu
         loadNotifications()
         _menu.update { it.copy(loading = it.menu == null, refreshing = true, error = null) }
         viewModelScope.launch {
             try {
                 val m = session.authed { api, access -> api.menu(access) }
+                if (signedInUser()?.id != actor) return@launch
                 _menu.update { if (it.menu === before && it.working == null) it.copy(menu = m, loading = false, refreshing = false, error = null)
                     else it.copy(loading = false, refreshing = false) }
+                if (_menu.value.working == null) showPlannerWeek(_plannerWeek.value.start ?: m.today.weekStart())
             } catch (e: SessionExpiredException) {
+                if (signedInUser()?.id != actor) return@launch
                 _menu.update { it.copy(loading = false, refreshing = false) }
                 toLogin("Votre session a expiré : reconnectez-vous.")
             } catch (e: IOException) {
+                if (signedInUser()?.id != actor) return@launch
                 // Keep an existing menu available offline and report failed requests.
                 _menu.update { it.copy(loading = false, refreshing = false, error = errorMessage(e)) }
+            }
+        }
+    }
+
+    /** Fetch a whole calendar week, including days before the server's current date. */
+    fun showPlannerWeek(date: LocalDate) {
+        if (signedInUser() == null) return
+        val start = date.weekStart()
+        weekJob?.cancel()
+        _plannerWeek.value = PlannerWeekState(start, cachedWeeks[start], loading = true)
+        weekJob = viewModelScope.launch {
+            try {
+                val week = session.authed { api, access -> api.menu(access, start, start.plusDays(6)) }
+                cachedWeeks.remove(start)
+                cachedWeeks[start] = week
+                if (cachedWeeks.size > 12) cachedWeeks.remove(cachedWeeks.keys.first())
+                _plannerWeek.value = PlannerWeekState(start, week)
+            } catch (e: SessionExpiredException) {
+                toLogin("Votre session a expiré : reconnectez-vous.")
+            } catch (e: IOException) {
+                _plannerWeek.update { it.copy(loading = false, error = errorMessage(e)) }
+            }
+        }
+    }
+
+    fun refreshPlannerWeek() {
+        val start = _plannerWeek.value.start
+        if (start == null || _menu.value.menu == null) loadMenu(manual = true)
+        else if (_menu.value.working == null) {
+            loadNotifications()
+            showPlannerWeek(start)
+        }
+    }
+
+    fun choosePlacement(id: String, title: String) {
+        if (signedInUser()?.canWrite != true || _menu.value.working != null) return
+        _placement.value = PlacementRecipe(id, title)
+        val today = _menu.value.menu?.today ?: return
+        val week = _plannerWeek.value.start
+        val draft = _menu.value.proposal
+        if (week == null || (draft != null && (week > draft.to || week.plusDays(6) < draft.from))) {
+            showPlannerWeek(draft?.from ?: today)
+        } else if (draft == null && (week.plusDays(6) < today || week > today.plusDays(20))) {
+            showPlannerWeek(today)
+        }
+    }
+
+    fun cancelPlacement() {
+        if (_menu.value.working != null) return
+        _placement.value = null
+    }
+
+    fun searchPlannerRecipes(query: String) {
+        if (signedInUser()?.canWrite != true) return
+        pickerJob?.cancel()
+        _plannerRecipes.update { it.copy(query = query, loading = true, error = null) }
+        pickerJob = viewModelScope.launch {
+            delay(220)
+            try {
+                val recipes = session.authed { api, access -> api.recipes(access, query) }
+                _plannerRecipes.value = RecipesState(query, recipes)
+            } catch (e: SessionExpiredException) {
+                toLogin("Votre session a expiré : reconnectez-vous.")
+            } catch (e: IOException) {
+                _plannerRecipes.update { it.copy(loading = false, error = errorMessage(e)) }
+            }
+        }
+    }
+
+    fun previewWeekCopy(source: LocalDate, destination: LocalDate) {
+        if (signedInUser()?.canWrite != true || _menu.value.proposal != null || _menu.value.working != null) return
+        copyJob?.cancel()
+        val from = source.weekStart()
+        val to = destination.weekStart()
+        if (from == to) {
+            _weekCopy.value = WeekCopyState(from = from, to = to, error = "Choisissez une autre semaine à copier.")
+            return
+        }
+        _weekCopy.value = WeekCopyState(from = from, to = to, loading = true)
+        copyJob = viewModelScope.launch {
+            try {
+                val preview = session.authed { api, access ->
+                    val week = api.menu(access, from, from.plusDays(6))
+                    api.weekCopy(access, week, from, to)
+                }
+                _weekCopy.update { it.copy(preview = preview, loading = false) }
+            } catch (e: SessionExpiredException) {
+                toLogin("Votre session a expiré : reconnectez-vous.")
+            } catch (e: IOException) {
+                _weekCopy.update { it.copy(loading = false, error = errorMessage(e)) }
+            }
+        }
+    }
+
+    fun setCopyReplace(replace: Boolean) {
+        if (!_weekCopy.value.loading) _weekCopy.update { it.copy(replaceOccupied = replace) }
+    }
+
+    fun closeWeekCopy() {
+        if (_menu.value.working == "week-copy") return
+        copyJob?.cancel()
+        _weekCopy.value = WeekCopyState()
+    }
+
+    fun applyWeekCopy() {
+        val state = _weekCopy.value
+        val preview = state.preview ?: return
+        val to = state.to ?: return
+        val proposal = preview.plan(state.replaceOccupied).proposal ?: return
+        if (state.loading || _menu.value.working != null || signedInUser()?.canWrite != true) return
+        _menu.update { it.copy(working = "week-copy", error = null, undoMove = null) }
+        _weekCopy.update { it.copy(loading = true, error = null) }
+        copyJob = viewModelScope.launch {
+            try {
+                val saved = session.authed { api, access -> api.confirmMenu(access, proposal) }
+                updateSharedPeriod(proposal, saved)
+                _weekCopy.value = WeekCopyState()
+                _menu.update { it.copy(working = null) }
+                showPlannerWeek(to)
+                notice("Repas copiés sur la semaine choisie.")
+            } catch (e: SessionExpiredException) {
+                toLogin("Votre session a expiré : reconnectez-vous.")
+            } catch (e: IOException) {
+                _menu.update { it.copy(working = null) }
+                val conflict = e is ApiException && e.code == "menu_changed"
+                _weekCopy.update { it.copy(preview = if (conflict) null else it.preview, loading = false,
+                    error = if (conflict) "La semaine a changé. Recalculez la copie avant de valider." else errorMessage(e)) }
             }
         }
     }
@@ -370,6 +532,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Looks for a newer published version, also in debug builds; a found release opens the update dialog. */
     fun checkForUpdate() {
+        if (getApplication<Application>().packageName == "app.mijote.uxpreview") {
+            _check.value = UpdateCheck(message = "Cette version d’essai est mise à jour par un nouvel APK.")
+            return
+        }
         if (_check.value.checking) return
         _check.value = UpdateCheck(checking = true)
         viewModelScope.launch {
@@ -388,7 +554,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** Saves the number of people; the screen shows the new value at once and rolls back on failure. */
-    /** From the preferences or the "Idées de repas" screen. */
+    /** From the preferences or the planner's composition controls. */
     fun setPeople(people: Int) {
         val screen = _state.value.screen
         val before = when (screen) {
@@ -396,33 +562,44 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             is Screen.Home -> screen.user
             else -> return
         }
+        if (!before.canWrite || people !in 1..20 || before.people == people) return
         fun withUser(s: Screen, u: User) = when (s) {
             is Screen.Preferences -> Screen.Preferences(u)
             is Screen.Home -> Screen.Home(u)
             else -> s
         }
         _state.update { it.copy(screen = withUser(it.screen, before.copy(people = people))) }
-        viewModelScope.launch {
+        val previous = preferenceJob
+        val revision = ++preferenceRevision
+        preferenceJob = viewModelScope.launch {
+            previous?.join()
             try {
                 val u = session.authed { api, access -> api.setPeople(access, people) }
                 session.updateUser(u)
             } catch (e: SessionExpiredException) {
                 toLogin("Votre session a expiré : reconnectez-vous.")
             } catch (e: IOException) {
-                _state.update { it.copy(screen = withUser(it.screen, before), error = errorMessage(e)) }
-                _menu.update { it.copy(error = errorMessage(e)) }
+                if (revision == preferenceRevision) {
+                    val saved = session.user ?: before
+                    _state.update { it.copy(screen = withUser(it.screen, saved), error = errorMessage(e)) }
+                    _menu.update { it.copy(error = errorMessage(e)) }
+                }
             }
         }
     }
 
     fun generateMenu(start: LocalDate, meals: Int, plan: MealPlan) {
-        if (_menu.value.generating) return
+        if (_menu.value.generating || _menu.value.working != null || signedInUser()?.canWrite != true) return
+        generationRequest = GenerationRequest(start, meals, plan)
         _menu.update { it.copy(generating = true, error = null) }
         viewModelScope.launch {
+            preferenceJob?.join()
             try {
                 val proposal = session.authed { api, access -> api.previewMenu(access, start, meals, plan) }
-                _menu.update { it.copy(generating = false, proposal = proposal, review = ReviewPeriod(proposal.from, proposal.to)) }
+                _menu.update { it.copy(generating = false, proposal = proposal, review = ReviewPeriod(proposal.from, proposal.to),
+                    proposalConflict = false, undoMove = null) }
                 _tab.value = Tab.MENUS
+                showPlannerWeek(proposal.from)
             } catch (e: SessionExpiredException) {
                 _menu.update { it.copy(generating = false) }
                 toLogin("Votre session a expiré : reconnectez-vous.")
@@ -434,33 +611,39 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Leaving the review discards its local draft, without touching planned meals. */
     fun closeReview() {
-        if (_menu.value.working != null) return
-        _menu.update { it.copy(review = null, proposal = null, error = null) }
+        if (_menu.value.working != null || _menu.value.generating) return
+        _placement.value = null
+        _menu.update { it.copy(review = null, proposal = null, error = null, proposalConflict = false) }
+    }
+
+    fun rebaseReview() {
+        if (!_menu.value.proposalConflict) return
+        generationRequest?.let { generateMenu(it.start, it.meals, it.plan) }
     }
 
     fun validateReview() {
         val proposal = _menu.value.proposal ?: return
-        if (_menu.value.working != null) return
+        if (_menu.value.working != null || _menu.value.generating || _menu.value.proposalConflict || signedInUser()?.canWrite != true) return
         _menu.update { it.copy(working = "confirm", error = null) }
         viewModelScope.launch {
             try {
                 val saved = session.authed { api, access -> api.confirmMenu(access, proposal) }
+                updateSharedPeriod(proposal, saved)
                 _menu.update { state ->
-                    state.copy(menu = state.menu?.let { menu -> menu.copy(slots =
-                        (menu.slots.filter { it.date < proposal.from || it.date > proposal.to } + saved)
-                            .sortedWith(compareBy<MenuSlot> { it.date }.thenBy { it.meal != "lunch" })) },
-                        proposal = null, review = null, working = null, generated = state.generated + 1)
+                    state.copy(proposal = null, review = null, working = null, proposalConflict = false, generated = state.generated + 1)
                 }
+                refreshPlannerWeek()
+                notice("Menu publié.")
             } catch (e: SessionExpiredException) {
                 _menu.update { it.copy(working = null) }; toLogin("Votre session a expiré : reconnectez-vous.")
             } catch (e: IOException) {
-                _menu.update { it.copy(working = null, error = errorMessage(e)) }
+                _menu.update { it.copy(working = null, error = errorMessage(e), proposalConflict = e is ApiException && e.code == "menu_changed") }
             }
         }
     }
 
     private fun editProposal(edit: (MenuProposal) -> MenuProposal) {
-        if (_menu.value.working != null) return
+        if (_menu.value.working != null || _menu.value.proposalConflict || signedInUser()?.canWrite != true) return
         _menu.update { state -> state.copy(proposal = state.proposal?.let(edit), error = null) }
     }
 
@@ -470,7 +653,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun draftRecipe(date: LocalDate, meal: String, existing: MenuSlot? = null) {
         val proposal = _menu.value.proposal ?: return
-        if (_menu.value.working != null) return
+        if (_menu.value.working != null || _menu.value.proposalConflict || signedInUser()?.canWrite != true) return
         _menu.update { it.copy(working = existing?.id ?: "$date|$meal", error = null) }
         viewModelScope.launch {
             try {
@@ -486,33 +669,84 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** Update the displayed snapshots immediately from the server's confirmed period. */
+    private fun updateSharedPeriod(proposal: MenuProposal, saved: List<MenuSlot>) {
+        fun Menu.updated(replacements: List<MenuSlot>) = copy(slots =
+            (slots.filter { it.date < proposal.from || it.date > proposal.to } + replacements)
+                .sortedWith(compareBy<MenuSlot> { it.date }.thenBy { it.meal != "lunch" }))
+        _menu.update { state -> state.copy(menu = state.menu?.let { menu ->
+            menu.updated(saved.filter { it.date >= menu.today })
+        }) }
+        for ((first, week) in cachedWeeks.toMap()) {
+            val last = first.plusDays(6)
+            if (last < proposal.from || first > proposal.to) continue
+            cachedWeeks[first] = week.updated(saved.filter { it.date in first..last })
+        }
+        _plannerWeek.update { it.copy(menu = it.start?.let(cachedWeeks::get) ?: it.menu) }
+    }
+
     /** Runs a change of the planned meals, then reloads the menu; [done] is told on success. */
-    private fun change(key: String, done: String? = null, action: (Api, String) -> Unit) {
-        if (_menu.value.working != null) return
+    private fun change(key: String, done: String? = null, onSaved: () -> Unit = {}, action: (Api, String) -> Unit) {
+        if (_menu.value.working != null || signedInUser()?.canWrite != true) return
         _menu.update { it.copy(working = key, error = null, undoMove = null) }
         viewModelScope.launch {
+            preferenceJob?.join()
             try {
                 session.authed { api, access -> action(api, access) }
+                onSaved()
+                done?.let { notice(it) }
                 val m = session.authed { api, access -> api.menu(access) }
                 _menu.update { it.copy(menu = m, working = null) }
-                done?.let { notice(it) }
+                refreshPlannerWeek()
             } catch (e: SessionExpiredException) {
                 _menu.update { it.copy(working = null) }
                 toLogin("Votre session a expiré : reconnectez-vous.")
             } catch (e: IOException) {
                 _menu.update { it.copy(working = null, error = errorMessage(e)) }
+                refreshPlannerWeek()
             }
         }
     }
 
-    fun moveMeal(slotId: String, targetId: String) {
-        if (_menu.value.proposal != null) {
-            editProposal { it.move(slotId, targetId) }
+    fun movePlannerMeal(source: MenuSlot, date: LocalDate, meal: String, snapshot: Menu?) {
+        val draft = _menu.value.proposal
+        if (draft != null) {
+            val target = draft.slots.find { it.date == date && it.meal == meal } ?: return
+            editProposal { it.move(source.id, target.id) }
             return
         }
-        if ((_state.value.screen as? Screen.Home)?.user?.canWrite != true || _menu.value.refreshing) return
-        val proposal = _menu.value.menu?.moveProposal(slotId, targetId) ?: return
-        saveHomeMove(proposal, rememberUndo = true)
+        if (signedInUser()?.canWrite != true || _menu.value.refreshing || _menu.value.working != null || snapshot == null) return
+        val today = _menu.value.menu?.today ?: snapshot.today
+        val from = minOf(date, source.date)
+        val to = maxOf(date, source.date)
+        if (from < today || to >= from.plusDays(60)) return
+        val target = snapshot.slots.find { it.date == date && it.meal == meal }
+        val targetId = target?.id ?: "$date|$meal"
+        if (from.weekStart() == to.weekStart()) {
+            if (snapshot.slots.none { it.id == source.id && it.version == source.version }) return
+            val proposal = snapshot.moveProposal(source.id, targetId) ?: return
+            saveHomeMove(proposal, rememberUndo = true, before = snapshot)
+            return
+        }
+        _menu.update { it.copy(working = "move", error = null) }
+        viewModelScope.launch {
+            try {
+                val range = session.authed { api, access -> api.menu(access, from, to) }
+                val now = range.slots.find { it.date == date && it.meal == meal }
+                val matchingSource = range.slots.any { it.id == source.id && it.version == source.version }
+                _menu.update { it.copy(working = null) }
+                if (!matchingSource || now?.id != target?.id || now?.version != target?.version || from < range.today) {
+                    _menu.update { it.copy(error = "Des repas ont changé sur cette période. Choisissez à nouveau les créneaux.") }
+                    refreshPlannerWeek()
+                } else {
+                    range.moveProposal(source.id, targetId)?.let { saveHomeMove(it, rememberUndo = true, before = range) }
+                }
+            } catch (e: SessionExpiredException) {
+                toLogin("Votre session a expiré : reconnectez-vous.")
+            } catch (e: IOException) {
+                _menu.update { it.copy(working = null, error = errorMessage(e)) }
+            }
+        }
     }
 
     fun undoMealMove() {
@@ -521,20 +755,19 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         saveHomeMove(proposal, rememberUndo = false)
     }
 
-    private fun saveHomeMove(proposal: MenuProposal, rememberUndo: Boolean) {
+    private fun saveHomeMove(proposal: MenuProposal, rememberUndo: Boolean, before: Menu? = null) {
         if (_menu.value.working != null || _menu.value.refreshing) return
-        val before = _menu.value.menu ?: return
+        if (rememberUndo && before == null) return
         _menu.update { it.copy(working = "move", error = null, undoMove = null) }
         viewModelScope.launch {
             try {
                 val saved = session.authed { api, access -> api.confirmMenu(access, proposal) }
-                val undo = if (rememberUndo) MenuProposal(proposal.from, proposal.to,
+                val undo = if (rememberUndo && before != null) MenuProposal(proposal.from, proposal.to,
                     before.slots.filter { it.date >= proposal.from && it.date <= proposal.to },
-                    saved.map { app.mijote.data.SlotVersion(it.id, it.version) }) else null
-                _menu.update { state -> state.copy(menu = state.menu?.copy(slots =
-                    (state.menu.slots.filter { it.date < proposal.from || it.date > proposal.to } + saved)
-                        .sortedWith(compareBy<MenuSlot> { it.date }.thenBy { it.meal != "lunch" })),
-                    working = null, undoMove = undo) }
+                    saved.map { SlotVersion(it.id, it.version) }) else null
+                updateSharedPeriod(proposal, saved)
+                _menu.update { it.copy(working = null, undoMove = undo) }
+                refreshPlannerWeek()
                 if (undo != null) {
                     kotlinx.coroutines.delay(8000)
                     _menu.update { if (it.undoMove === undo) it.copy(undoMove = null) else it }
@@ -590,6 +823,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             kotlinx.coroutines.delay(600)
             try {
                 session.authed { api, access -> api.setSlotPeople(access, slotId, people) }
+                refreshPlannerWeek()
             } catch (e: SessionExpiredException) {
                 toLogin("Votre session a expiré : reconnectez-vous.")
             } catch (e: IOException) {
@@ -599,35 +833,69 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /**
-     * Plans a recipe ([recipeId]) or a manual meal ([title]) on a day, from the recipe screens or the
-     * menus; [replace] overwrites the meal already planned at that time (the dialog warned about it).
-     */
-    fun planMeal(date: LocalDate, meal: String, recipeId: String?, title: String?, replace: Boolean) {
-        val proposal = _menu.value.proposal
-        if (proposal == null) {
-            change("$date|$meal", "Ajouté au menu : ${app.mijote.ui.mealMoment(date, meal)}") { api, access ->
-                api.planSlot(access, date, meal, recipeId, title?.trim(), replace)
+    fun addManualMeal(date: LocalDate, meal: String, title: String) {
+        val proposal = _menu.value.proposal ?: return
+        if (!validDraftTitle(title) || date !in proposal.from..proposal.to) return
+        val existing = proposal.slots.find { it.date == date && it.meal == meal }
+        editProposal { it.withSlot(MenuSlot(existing?.id ?: UUID.randomUUID().toString(), date, meal, null, true,
+            title = title.trim(), people = existing?.people ?: signedInUser()?.people ?: 1)) }
+    }
+
+    fun placeRecipe(date: LocalDate, meal: String, replace: Boolean, snapshot: Menu?) {
+        val selected = _placement.value ?: return
+        val user = signedInUser()?.takeIf { it.canWrite } ?: return
+        val today = _menu.value.menu?.today ?: snapshot?.today ?: return
+        if (date < today || (meal != "lunch" && meal != "dinner") || _menu.value.working != null) return
+        val draft = _menu.value.proposal
+        val done = "Ajouté au menu : ${app.mijote.ui.mealMoment(date, meal)}"
+        val completed = {
+            if (_placement.value == selected) {
+                _placement.value = null
+                _recipe.value = null
+                _tab.value = Tab.MENUS
+            }
+        }
+        if (draft != null) {
+            if (date !in draft.from..draft.to || _menu.value.proposalConflict) return
+            _menu.update { it.copy(working = "plan-recipe", error = null) }
+            viewModelScope.launch {
+                try {
+                    val detail = session.authed { api, access -> api.recipe(access, selected.id) }
+                    if (detail.archived) {
+                        _menu.update { it.copy(working = null, error = "Cette recette est archivée.") }
+                        return@launch
+                    }
+                    val existing = draft.slots.find { it.date == date && it.meal == meal }
+                    val recipe = MenuRecipe(detail.id, detail.title, detail.dishType, detail.totalMinutes ?: detail.prepMinutes, detail.image)
+                    val slot = MenuSlot(existing?.id ?: UUID.randomUUID().toString(), date, meal, recipe, true,
+                        people = existing?.people ?: user.people)
+                    _menu.update { it.copy(proposal = draft.withSlot(slot), working = null) }
+                    completed()
+                } catch (e: SessionExpiredException) {
+                    toLogin("Votre session a expiré : reconnectez-vous.")
+                } catch (e: IOException) {
+                    _menu.update { it.copy(working = null, error = errorMessage(e)) }
+                }
             }
             return
         }
-        if (date < proposal.from || date > proposal.to) {
-            _menu.update { it.copy(error = "Choisissez une date dans la période de la proposition.") }; return
-        }
-        if (title != null) {
-            if (!validDraftTitle(title)) return
-            val existing = proposal.slots.find { it.date == date && it.meal == meal }
-            editProposal { it.withSlot(MenuSlot(existing?.id ?: java.util.UUID.randomUUID().toString(), date, meal, null, true,
-                title = title.trim(), people = existing?.people ?: (_state.value.screen as? Screen.Home)?.user?.people ?: 1)) }
-        } else if (recipeId != null) {
-            val detail = _recipe.value?.recipe
-            if (detail != null && _recipe.value?.id == recipeId) {
-                val existing = proposal.slots.find { it.date == date && it.meal == meal }
-                val recipe = app.mijote.data.MenuRecipe(recipeId, detail.title, detail.dishType, detail.totalMinutes ?: detail.prepMinutes, detail.image)
-                editProposal { it.withSlot(MenuSlot(existing?.id ?: java.util.UUID.randomUUID().toString(), date, meal, recipe, true,
-                    people = existing?.people ?: (_state.value.screen as? Screen.Home)?.user?.people ?: 1)) }
+        if (date > today.plusDays(20) || snapshot == null) return
+        if (!replace) {
+            change("$date|$meal", done, completed) { api, access ->
+                api.planSlot(access, date, meal, selected.id, null, replace = false)
             }
-        } else draftRecipe(date, meal)
+            return
+        }
+        // A version conflict must not overwrite a meal different from the one shown at confirmation.
+        val known = snapshot.slots.filter { it.date == date }
+        val existing = known.find { it.meal == meal } ?: return
+        val recipe = MenuRecipe(selected.id, selected.title, "", null)
+        val patched = existing.copy(recipe = recipe, title = null, locked = true, people = user.people)
+        val proposal = MenuProposal(date, date, known.map { if (it.id == existing.id) patched else it },
+            known.map { SlotVersion(it.id, it.version) })
+        change("$date|$meal", done, completed) { api, access ->
+            api.confirmMenu(access, proposal)
+        }
     }
 
     private fun validDraftTitle(title: String): Boolean {
@@ -831,8 +1099,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** Opens a recipe; [keep] reloads the one shown without clearing it first. */
-    fun openRecipe(id: String, title: String, keep: Boolean = false, slotId: String? = null, slotPeople: Int? = null) {
-        if (!keep || _recipe.value?.id != id) _recipe.value = RecipeState(id, title, slotId = slotId, slotPeople = slotPeople)
+    fun openRecipe(id: String, title: String, keep: Boolean = false, slotId: String? = null, slotPeople: Int? = null, slotReadOnly: Boolean = false) {
+        if (!keep || _recipe.value?.id != id) _recipe.value = RecipeState(id, title, slotId = slotId, slotPeople = slotPeople, slotReadOnly = slotReadOnly)
         viewModelScope.launch {
             try {
                 val r = session.authed { api, access -> api.recipe(access, id) }
@@ -998,8 +1266,24 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         _recipe.value = null
     }
 
+    private fun resetPlanner() {
+        weekJob?.cancel()
+        copyJob?.cancel()
+        pickerJob?.cancel()
+        preferenceJob?.cancel()
+        searchJob?.cancel()
+        peopleJob?.cancel()
+        cachedWeeks.clear()
+        _plannerWeek.value = PlannerWeekState()
+        _plannerRecipes.value = RecipesState()
+        _placement.value = null
+        _weekCopy.value = WeekCopyState()
+        generationRequest = null
+    }
+
     /** Forgets what the signed-out account had loaded. */
     private fun resetData() {
+        resetPlanner()
         _notifications.value = NotificationsState()
         _wishSettings.value = WishSettingsState()
         notificationsFromPreferences = false
@@ -1014,7 +1298,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun logout() {
         viewModelScope.launch {
             session.logout()
-            resetData()
             toLogin()
         }
     }
@@ -1043,7 +1326,7 @@ internal fun errorMessage(e: IOException): String = when {
     e.code == "wish_limit_reached" || e.code == "no_menu_creators" -> e.message ?: "Demande indisponible pour le moment."
     e.code == "invalid_response" -> e.message ?: "La réponse du serveur est illisible."
     e.code == "validation_error" -> e.message ?: "Données refusées par le serveur."
-    e.code == "menu_changed" -> "Le menu enregistré a changé. Cette validation n’a pas appliqué la proposition. Revenez aux idées de repas pour en générer une nouvelle."
+    e.code == "menu_changed" -> "Le menu enregistré a changé. Cette validation n’a pas appliqué la proposition. Actualisez le menu ou recalculez la proposition."
     e.code == "not_found" -> "Introuvable : cet élément a peut-être été supprimé entre-temps."
     e.code == "not_mijote" || e.status == 404 -> "Cette adresse ne répond pas comme un serveur Mijote."
     e.code == "invalid_credentials" -> "Identifiant ou mot de passe incorrect."

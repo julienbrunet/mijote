@@ -4,14 +4,15 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Clear
-import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -31,20 +32,13 @@ import app.mijote.RecipesState
 import app.mijote.data.QUICK_MINUTES
 import app.mijote.data.RecipeFilters
 import app.mijote.data.RecipeSummary
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.ui.res.painterResource
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 
 /**
- * "Recettes" tab: search by title or tag, a filter sheet (opened from the funnel next to the navigation), the active filters as removable pills and the active recipes (archived ones are left
- * out). Each card can plan its recipe on a day; the "+" to add a recipe sits next to the navigation.
+ * "Recettes" tab: search by title or tag, a filter sheet, removable active filters and the active
+ * recipes. Each card can open and plan its recipe. The caller owns the tab's navigation and toolbar.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -58,9 +52,10 @@ fun RecipesTab(
     onRefresh: () -> Unit = {},
     onPreferences: () -> Unit = {},
     onFilters: (RecipeFilters) -> Unit = {},
-    /** The filter sheet is opened from the funnel next to the navigation (HomeScreen). */
+    /** Whether the caller has opened the filter sheet. */
     sheetOpen: Boolean = false,
     onSheet: (Boolean) -> Unit = {},
+    listState: LazyListState = rememberLazyListState(),
 ) {
     val list = state.shown
     val filters = state.filters
@@ -72,9 +67,9 @@ fun RecipesTab(
     }
     Box(Modifier.fillMaxSize()) {
         PullToRefreshBox(state.refreshing, onRefresh, Modifier.fillMaxSize().background(Sunny.Butter)) {
-            LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 120.dp)) {
+            LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(bottom = 20.dp)) {
                 item {
-                    // Same header as the other tabs, with the search, the filter button and the active filters.
+                    // Search and active filters travel with the results.
                     HomeHeader("Recettes", list?.let { subtitle(it.size, state.query.isNotBlank(), filters.count) }, onPreferences) {
                         Box(Modifier.fillMaxWidth().padding(top = 18.dp)) { SearchField(state.query, onQuery) }
                         if (filters.count > 0) ActiveFilters(filters, onFilters)
@@ -92,7 +87,7 @@ fun RecipesTab(
                             when {
                                 filters.count > 0 -> "Aucune recette ne correspond à ces filtres."
                                 state.query.isNotBlank() -> "Aucune recette ne correspond à « ${state.query.trim()} »."
-                                canWrite -> "Aucune recette pour le moment : ajoutez la première avec le bouton +."
+                                canWrite -> "Aucune recette pour le moment. Touchez « Ajouter une recette » pour créer la première."
                                 else -> "Aucune recette pour le moment."
                             },
                             color = Sunny.InkTitle, textAlign = TextAlign.Center,
@@ -219,37 +214,42 @@ private fun SearchField(query: String, onQuery: (String) -> Unit) {
     )
 }
 
-/** A recipe of the list: tap to open it, the corner calendar to plan it on a day. */
+/** A recipe of the list: tap the card to open it or the calendar beside its title to plan it. */
 @Composable
 private fun RecipeCard(r: RecipeSummary, canWrite: Boolean, working: Boolean, onOpen: () -> Unit, onPlan: () -> Unit) {
     val dish = dishTypeOf(r.dishType)
-    Box(
-        Modifier.fillMaxWidth().height(96.dp)
+    Row(
+        Modifier.fillMaxWidth().heightIn(min = 96.dp)
             .shadow(4.dp, Shapes.Card, ambientColor = Color.Black, spotColor = Color.Black)
-            .background(Sunny.Card, Shapes.Card).clip(Shapes.Card).clickable(onClick = onOpen),
+            .background(Sunny.Card, Shapes.Card).clip(Shapes.Card).clickable(onClick = onOpen)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(Modifier.fillMaxSize().padding(start = 12.dp, end = if (canWrite || r.favorite) 52.dp else 16.dp), verticalAlignment = Alignment.CenterVertically) {
-            RecipeThumb(r.image, dishEmoji(r.dishType), Modifier.size(70.dp).clip(RoundedCornerShape(16.dp)), emojiSize = 36.sp)
-            Column(Modifier.padding(start = 12.dp)) {
+        RecipeThumb(r.image, dishEmoji(r.dishType), Modifier.size(70.dp).clip(RoundedCornerShape(16.dp)), emojiSize = 36.sp)
+        Column(Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(r.title, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Sunny.Ink, maxLines = 2,
-                    overflow = TextOverflow.Ellipsis, lineHeight = 19.sp)
-                Row(Modifier.padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                    dish?.let { DishTag(it.label, it.colors) }
-                    r.minutes?.let { Text("$it min", fontSize = 12.sp, color = Sunny.InkSoft, modifier = Modifier.padding(start = 8.dp)) }
-                    if (r.tags.isNotEmpty()) Text(r.tags.joinToString(" · "), fontSize = 12.sp, color = Sunny.InkSoft, maxLines = 1,
-                        overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(start = 8.dp))
+                    overflow = TextOverflow.Ellipsis, lineHeight = 19.sp, modifier = Modifier.weight(1f))
+                if (canWrite) {
+                    Box(
+                        Modifier.size(48.dp).clip(Shapes.Control).background(if (working) Sunny.Track else Sunny.Peach)
+                            .clickable(enabled = !working, onClick = onPlan),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(Icons.Filled.DateRange, contentDescription = "Planifier ${r.title}", tint = Sunny.Ink,
+                            modifier = Modifier.size(20.dp))
+                    }
                 }
             }
-        }
-        if (r.favorite) Icon(Icons.Filled.Favorite, contentDescription = "Dans mes favoris", tint = Sunny.PeachDeep,
-            modifier = Modifier.align(Alignment.TopEnd).padding(10.dp).size(16.dp))
-        if (canWrite) {
-            Box(
-                Modifier.align(Alignment.BottomEnd).size(46.dp)
-                    .background(Sunny.Peach, RoundedCornerShape(topStart = 16.dp, bottomEnd = 22.dp))
-                    .clickable(enabled = !working, onClickLabel = "Planifier", onClick = onPlan),
-                contentAlignment = Alignment.Center,
-            ) { Icon(Icons.Filled.DateRange, contentDescription = "Planifier", tint = Color.White, modifier = Modifier.size(20.dp)) }
+            Row(Modifier.padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (r.favorite) Icon(Icons.Filled.Favorite, contentDescription = "Dans mes favoris", tint = Sunny.PeachDeep,
+                    modifier = Modifier.size(16.dp))
+                dish?.let { DishTag(it.label, it.colors) }
+                r.minutes?.let { Text("$it min", fontSize = 12.sp, color = Sunny.InkSoft, maxLines = 1) }
+                if (r.tags.isNotEmpty()) Text(r.tags.joinToString(" · "), fontSize = 12.sp, color = Sunny.InkSoft, maxLines = 1,
+                    overflow = TextOverflow.Ellipsis)
+            }
         }
     }
 }
