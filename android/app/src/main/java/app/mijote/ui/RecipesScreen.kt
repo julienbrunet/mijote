@@ -1,18 +1,26 @@
 package app.mijote.ui
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -20,11 +28,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -32,9 +40,8 @@ import app.mijote.RecipesState
 import app.mijote.data.QUICK_MINUTES
 import app.mijote.data.RecipeFilters
 import app.mijote.data.RecipeSummary
-import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+
+private val recipeControlShape = RoundedCornerShape(12.dp)
 
 /**
  * "Recettes" tab: search by title or tag, a filter sheet, removable active filters and the active
@@ -50,7 +57,7 @@ fun RecipesTab(
     onPlan: (RecipeSummary) -> Unit,
     working: Boolean = false,
     onRefresh: () -> Unit = {},
-    onPreferences: () -> Unit = {},
+    onPreferences: (() -> Unit)? = null,
     onFilters: (RecipeFilters) -> Unit = {},
     /** Whether the caller has opened the filter sheet. */
     sheetOpen: Boolean = false,
@@ -60,42 +67,53 @@ fun RecipesTab(
     val list = state.shown
     val filters = state.filters
     if (sheetOpen) {
-        ModalBottomSheet(onDismissRequest = { onSheet(false) }, containerColor = Sunny.Card) {
+        ModalBottomSheet(onDismissRequest = { onSheet(false) }, containerColor = Sunny.Cream) {
             RecipeFiltersSheet(filters, tagsOf(state.recipes.orEmpty(), filters), state.recipes.orEmpty(),
                 onChange = onFilters, onDone = { onSheet(false) })
         }
     }
-    Box(Modifier.fillMaxSize()) {
-        PullToRefreshBox(state.refreshing, onRefresh, Modifier.fillMaxSize().background(Sunny.Butter)) {
+    Box(Modifier.fillMaxSize().background(Sunny.Cream).statusBarsPadding()) {
+        PullToRefreshBox(state.refreshing, onRefresh, Modifier.fillMaxSize()) {
             LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(bottom = 20.dp)) {
                 item {
-                    // Search and active filters travel with the results.
-                    HomeHeader("Recettes", list?.let { subtitle(it.size, state.query.isNotBlank(), filters.count) }, onPreferences) {
-                        Box(Modifier.fillMaxWidth().padding(top = 18.dp)) { SearchField(state.query, onQuery) }
+                    AgendaHeader("Recettes", list?.let { resultsLabel(it.size, state.query.isNotBlank(), filters.count) }) {
+                        if (onPreferences != null) IconButton(onClick = onPreferences, modifier = Modifier.size(48.dp)) {
+                            Icon(Icons.Filled.Person, contentDescription = "Compte", tint = Sunny.Ink)
+                        }
+                    }
+                    Column(Modifier.padding(horizontal = 12.dp).padding(top = 6.dp)) {
+                        SearchField(state.query, onQuery)
                         if (filters.count > 0) ActiveFilters(filters, onFilters)
                     }
                 }
-                item { Box(Modifier.padding(horizontal = 20.dp)) { ErrorText(state.error) } }
+                item { Box(Modifier.padding(horizontal = 12.dp)) { ErrorText(state.error) } }
                 when {
                     list == null -> item {
-                        Box(Modifier.fillMaxWidth().padding(top = 60.dp), contentAlignment = Alignment.Center) {
-                            if (state.loading) CircularProgressIndicator(color = Sunny.PeachDeep)
+                        if (state.loading) Row(
+                            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 12.dp).heightIn(min = 48.dp),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            CircularProgressIndicator(Modifier.size(22.dp), color = Sunny.PeachDeep, strokeWidth = 3.dp)
+                            Text("Chargement des recettes…", fontSize = 12.sp, color = Sunny.InkTitle)
                         }
                     }
                     list.isEmpty() -> item {
-                        Text(
-                            when {
+                        Surface(
+                            modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = 8.dp),
+                            color = Sunny.Card, shape = Shapes.Control,
+                            border = BorderStroke(1.dp, Sunny.Track),
+                        ) {
+                            Text(when {
                                 filters.count > 0 -> "Aucune recette ne correspond à ces filtres."
                                 state.query.isNotBlank() -> "Aucune recette ne correspond à « ${state.query.trim()} »."
                                 canWrite -> "Aucune recette pour le moment. Touchez « Ajouter une recette » pour créer la première."
                                 else -> "Aucune recette pour le moment."
-                            },
-                            color = Sunny.InkTitle, textAlign = TextAlign.Center,
-                            modifier = Modifier.fillMaxWidth().padding(top = 60.dp, start = 24.dp, end = 24.dp),
-                        )
+                            }, Modifier.padding(12.dp), fontSize = 13.sp, lineHeight = 17.sp, color = Sunny.InkTitle)
+                        }
                     }
                     else -> items(list, key = { it.id }) { r ->
-                        Box(Modifier.padding(start = 20.dp, end = 20.dp, top = 14.dp)) {
+                        Box(Modifier.padding(start = 12.dp, end = 12.dp, top = 8.dp)) {
                             RecipeCard(r, canWrite, working, onOpen = { onOpen(r) }, onPlan = { onPlan(r) })
                         }
                     }
@@ -105,7 +123,7 @@ fun RecipesTab(
     }
 }
 
-private fun subtitle(n: Int, searching: Boolean, filters: Int): String {
+private fun resultsLabel(n: Int, searching: Boolean, filters: Int): String {
     val what = if (searching || filters > 0) "résultat" else "recette"
     val base = "$n $what${if (n > 1) "s" else ""}"
     return if (filters > 0) "$base · $filters filtre${if (filters > 1) "s" else ""}" else base
@@ -127,7 +145,7 @@ private fun tagsOf(recipes: List<RecipeSummary>, f: RecipeFilters): List<String>
 @Composable
 private fun ActiveFilters(f: RecipeFilters, onChange: (RecipeFilters) -> Unit) {
     fun label(list: List<Pair<String, String>>, code: String) = list.firstOrNull { it.first == code }?.second ?: code
-    Row(Modifier.padding(top = 12.dp).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    Row(Modifier.padding(top = 6.dp).horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         if (f.favorites) RemovablePill("Mes favoris") { onChange(f.copy(favorites = false)) }
         f.dishTypes.forEach { c -> RemovablePill(label(dishLabels, c)) { onChange(f.copy(dishTypes = f.dishTypes - c)) } }
         f.meals.forEach { c -> RemovablePill(label(mealLabels, c)) { onChange(f.copy(meals = f.meals - c)) } }
@@ -140,12 +158,13 @@ private fun ActiveFilters(f: RecipeFilters, onChange: (RecipeFilters) -> Unit) {
 @Composable
 private fun RemovablePill(text: String, onRemove: () -> Unit) {
     Row(
-        Modifier.clip(RoundedCornerShape(20.dp)).background(Sunny.PeachDeep).clickable(onClickLabel = "Retirer le filtre $text", onClick = onRemove)
-            .padding(start = 14.dp, end = 10.dp, top = 8.dp, bottom = 8.dp),
+        Modifier.heightIn(min = 48.dp).clip(recipeControlShape).background(Sunny.ButterLight)
+            .clickable(onClickLabel = "Retirer le filtre $text", role = Role.Button, onClick = onRemove)
+            .padding(horizontal = 10.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
-        Icon(Icons.Filled.Clear, contentDescription = null, tint = Color.White, modifier = Modifier.padding(start = 4.dp).size(16.dp))
+        Text(text, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Sunny.Ink)
+        Icon(Icons.Filled.Clear, contentDescription = null, tint = Sunny.Ink, modifier = Modifier.padding(start = 4.dp).size(16.dp))
     }
 }
 
@@ -159,56 +178,91 @@ fun RecipeFiltersSheet(
     onChange: (RecipeFilters) -> Unit, onDone: () -> Unit,
 ) {
     val n = recipes.count(f::matches)
-    Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 22.dp).padding(bottom = 22.dp).navigationBarsPadding()) {
-        Text("Filtres", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = Sunny.InkTitle)
-        Text("FAVORIS", fontSize = 11.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold, color = Sunny.InkSoft,
-            modifier = Modifier.padding(top = 18.dp, bottom = 8.dp))
-        Chip("♥  Mes favoris", f.favorites) { onChange(f.copy(favorites = !f.favorites)) }
-        Group("TYPE DE PLAT", dishLabels, f.dishTypes) { onChange(f.copy(dishTypes = it)) }
-        Group("REPAS", mealLabels, f.meals) { onChange(f.copy(meals = it)) }
-        Group("DURÉE", durationLabels, f.durations) { onChange(f.copy(durations = it)) }
-        Group("SAISON", seasonLabels, f.seasons) { onChange(f.copy(seasons = it)) }
-        if (tags.isNotEmpty()) Group("TAGS", tags.map { it to it }, f.tags.map { it.lowercase() }.toSet()) { onChange(f.copy(tags = it)) }
-        Row(Modifier.padding(top = 24.dp), verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClick = { onChange(RecipeFilters()) }, enabled = f.count > 0, modifier = Modifier.weight(1f)) {
-                Text("Tout effacer", color = Sunny.Slate, fontWeight = FontWeight.SemiBold)
+    Column(
+        Modifier.fillMaxWidth().background(Sunny.Cream).navigationBarsPadding()
+            .padding(start = 12.dp, end = 12.dp, bottom = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text("Filtres", Modifier.semantics { heading() }, fontSize = 26.sp, lineHeight = 29.sp,
+            fontWeight = FontWeight.Bold, color = Sunny.Ink)
+        Column(
+            Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            val favorite = if (f.favorites) setOf("favorites") else emptySet()
+            FilterGroup("Favoris", listOf("favorites" to "Mes favoris"), favorite) {
+                onChange(f.copy(favorites = "favorites" in it))
             }
-            Button(
-                onClick = onDone, shape = Shapes.Control,
-                colors = ButtonDefaults.buttonColors(containerColor = Sunny.PeachDeep, contentColor = Color.White),
-                modifier = Modifier.height(52.dp),
-            ) { Text(if (n == 1) "Voir 1 recette" else "Voir $n recettes", fontWeight = FontWeight.Bold) }
+            FilterGroup("Type de plat", dishLabels, f.dishTypes) { onChange(f.copy(dishTypes = it)) }
+            FilterGroup("Repas", mealLabels, f.meals) { onChange(f.copy(meals = it)) }
+            FilterGroup("Durée", durationLabels, f.durations) { onChange(f.copy(durations = it)) }
+            FilterGroup("Saison", seasonLabels, f.seasons) { onChange(f.copy(seasons = it)) }
+            if (tags.isNotEmpty()) {
+                FilterGroup("Tags", tags.map { it to it }, f.tags.map { it.lowercase() }.toSet()) {
+                    onChange(f.copy(tags = it))
+                }
+            }
+        }
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            AgendaAction("Tout effacer", { onChange(RecipeFilters()) }, enabled = f.count > 0)
+            AgendaAction(if (n == 1) "Voir 1 recette" else "Voir $n recettes", onDone, primary = true)
         }
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun Group(label: String, options: List<Pair<String, String>>, selected: Set<String>, onChange: (Set<String>) -> Unit) {
-    Text(label, fontSize = 11.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold, color = Sunny.InkSoft,
-        modifier = Modifier.padding(top = 18.dp, bottom = 8.dp))
-    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        options.forEach { (code, text) ->
-            Chip(text, code in selected) { onChange(if (code in selected) selected - code else selected + code) }
+private fun FilterGroup(label: String, options: List<Pair<String, String>>, selected: Set<String>, onChange: (Set<String>) -> Unit) {
+    Column(
+        Modifier.fillMaxWidth().clip(Shapes.Control).background(Sunny.Card)
+            .border(1.dp, Sunny.Track, Shapes.Control).padding(10.dp),
+        verticalArrangement = Arrangement.spacedBy(5.dp),
+    ) {
+        Text(label, Modifier.semantics { heading() }, fontSize = 15.sp, lineHeight = 18.sp,
+            fontWeight = FontWeight.Bold, color = Sunny.Ink)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            options.forEach { (code, text) ->
+                val active = code in selected
+                Row(
+                    Modifier.heightIn(min = 48.dp).clip(recipeControlShape)
+                        .background(if (active) Sunny.Butter else Sunny.Card)
+                        .border(1.dp, if (active) Sunny.Butter else Sunny.Track, recipeControlShape)
+                        .selectable(active, role = Role.Checkbox) {
+                            onChange(if (active) selected - code else selected + code)
+                        }.padding(horizontal = 10.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(5.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (active) Icon(Icons.Filled.Check, contentDescription = null, tint = Sunny.Ink, modifier = Modifier.size(16.dp))
+                    Text(text, fontSize = 12.sp, lineHeight = 16.sp, fontWeight = FontWeight.SemiBold, color = Sunny.Ink)
+                }
+            }
         }
     }
 }
 
 @Composable
 private fun SearchField(query: String, onQuery: (String) -> Unit) {
-    TextField(
+    OutlinedTextField(
         value = query, onValueChange = onQuery, singleLine = true,
-        placeholder = { Text("Rechercher un titre, un tag…", maxLines = 1) },
-        leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null, tint = Sunny.InkSoft) },
+        label = { Text("Rechercher un titre, un tag…", maxLines = 1, overflow = TextOverflow.Ellipsis) },
+        leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null, tint = Sunny.InkTitle) },
         trailingIcon = {
-            if (query.isNotEmpty()) IconButton(onClick = { onQuery("") }) {
-                Icon(Icons.Filled.Clear, contentDescription = "Effacer la recherche", tint = Sunny.InkSoft)
+            if (query.isNotEmpty()) IconButton(onClick = { onQuery("") }, modifier = Modifier.size(48.dp)) {
+                Icon(Icons.Filled.Clear, contentDescription = "Effacer la recherche", tint = Sunny.InkTitle)
             }
         },
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-        shape = Shapes.Control,
-        colors = TextFieldDefaults.colors(
-            focusedContainerColor = Sunny.ButterLight, unfocusedContainerColor = Sunny.ButterLight,
-            focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent, cursorColor = Sunny.PeachDeep,
+        shape = recipeControlShape,
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedContainerColor = Sunny.Card, unfocusedContainerColor = Sunny.Card,
+            focusedTextColor = Sunny.Ink, unfocusedTextColor = Sunny.Ink,
+            focusedLabelColor = Sunny.Ink, unfocusedLabelColor = Sunny.InkTitle,
+            focusedBorderColor = Sunny.InkTitle, unfocusedBorderColor = Sunny.Track, cursorColor = Sunny.Ink,
         ),
         modifier = Modifier.fillMaxWidth(),
     )
@@ -219,22 +273,22 @@ private fun SearchField(query: String, onQuery: (String) -> Unit) {
 private fun RecipeCard(r: RecipeSummary, canWrite: Boolean, working: Boolean, onOpen: () -> Unit, onPlan: () -> Unit) {
     val dish = dishTypeOf(r.dishType)
     Row(
-        Modifier.fillMaxWidth().heightIn(min = 96.dp)
-            .shadow(4.dp, Shapes.Card, ambientColor = Color.Black, spotColor = Color.Black)
-            .background(Sunny.Card, Shapes.Card).clip(Shapes.Card).clickable(onClick = onOpen)
-            .padding(horizontal = 12.dp, vertical = 10.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        Modifier.fillMaxWidth().heightIn(min = 72.dp).clip(Shapes.Control).background(Sunny.Card)
+            .border(1.dp, Sunny.Track, Shapes.Control).clickable(role = Role.Button, onClick = onOpen)
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        RecipeThumb(r.image, dishEmoji(r.dishType), Modifier.size(70.dp).clip(RoundedCornerShape(16.dp)), emojiSize = 36.sp)
+        RecipeThumb(r.image, dishEmoji(r.dishType), Modifier.size(42.dp).clip(recipeControlShape), emojiSize = 24.sp)
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(r.title, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Sunny.Ink, maxLines = 2,
-                    overflow = TextOverflow.Ellipsis, lineHeight = 19.sp, modifier = Modifier.weight(1f))
+                Text(r.title, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Sunny.Ink, maxLines = 3,
+                    overflow = TextOverflow.Ellipsis, lineHeight = 18.sp, modifier = Modifier.weight(1f))
                 if (canWrite) {
                     Box(
-                        Modifier.size(48.dp).clip(Shapes.Control).background(if (working) Sunny.Track else Sunny.Peach)
-                            .clickable(enabled = !working, onClick = onPlan),
+                        Modifier.size(48.dp).clip(recipeControlShape)
+                            .background(if (working) Sunny.Track else Sunny.ButterLight)
+                            .clickable(enabled = !working, role = Role.Button, onClick = onPlan),
                         contentAlignment = Alignment.Center,
                     ) {
                         Icon(Icons.Filled.DateRange, contentDescription = "Planifier ${r.title}", tint = Sunny.Ink,
@@ -242,12 +296,12 @@ private fun RecipeCard(r: RecipeSummary, canWrite: Boolean, working: Boolean, on
                     }
                 }
             }
-            Row(Modifier.padding(top = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (r.favorite) Icon(Icons.Filled.Favorite, contentDescription = "Dans mes favoris", tint = Sunny.PeachDeep,
-                    modifier = Modifier.size(16.dp))
+            Row(Modifier.padding(top = 2.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                if (r.favorite) Icon(Icons.Filled.Favorite, contentDescription = "Dans mes favoris", tint = Sunny.Error,
+                    modifier = Modifier.size(14.dp))
                 dish?.let { DishTag(it.label, it.colors) }
-                r.minutes?.let { Text("$it min", fontSize = 12.sp, color = Sunny.InkSoft, maxLines = 1) }
-                if (r.tags.isNotEmpty()) Text(r.tags.joinToString(" · "), fontSize = 12.sp, color = Sunny.InkSoft, maxLines = 1,
+                r.minutes?.let { Text("$it min", fontSize = 12.sp, color = Sunny.InkTitle, maxLines = 1) }
+                if (r.tags.isNotEmpty()) Text(r.tags.joinToString(" · "), fontSize = 12.sp, color = Sunny.InkTitle, maxLines = 1,
                     overflow = TextOverflow.Ellipsis)
             }
         }

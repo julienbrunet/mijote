@@ -373,12 +373,12 @@ fun PlannerScreen(
         if (state.proposalConflict) {
             Column(Modifier.padding(horizontal = 12.dp, vertical = 4.dp)) {
                 PlannerNotice(error ?: "Le menu partagé a changé.", error = true)
-                PlannerAction("Recalculer", actions.onRebase, primary = true, enabled = !busy)
+                AgendaAction("Recalculer", actions.onRebase, primary = true, enabled = !busy)
             }
         } else if (error != null && dates.isNotEmpty()) {
             Column(Modifier.padding(horizontal = 12.dp, vertical = 4.dp)) {
                 PlannerNotice(if (week.error != null) "Dernier menu chargé · $error" else error, error = true)
-                if (week.error != null) PlannerAction("Actualiser", actions.onRefresh, enabled = !busy)
+                if (week.error != null) AgendaAction("Actualiser", actions.onRefresh, enabled = !busy)
             }
         }
         if (state.undoMove != null && !inDraft) {
@@ -387,7 +387,7 @@ fun PlannerScreen(
                 horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text("Repas déplacé", color = Sunny.Ink, fontWeight = FontWeight.SemiBold)
-                PlannerAction("Annuler", actions.onUndoMove, enabled = !busy)
+                AgendaAction("Annuler", actions.onUndoMove, enabled = !busy)
             }
         }
         PullToRefreshBox(
@@ -437,7 +437,7 @@ fun PlannerScreen(
                     if (state.loading || week.loading) PlannerLoading()
                     else PlannerCard("Repas indisponibles") {
                         PlannerSmall(error ?: "Impossible de charger le menu.")
-                        PlannerAction("Réessayer", actions.onRefresh, enabled = !busy)
+                        AgendaAction("Réessayer", actions.onRefresh, enabled = !busy)
                     }
                 }
             }
@@ -451,8 +451,8 @@ fun PlannerScreen(
                 Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
             ) {
-                PlannerAction("Copier", ::startCopy, enabled = !busy && dates.isNotEmpty())
-                PlannerAction("Composer", { select(null); panel = PlannerPanel.Generate }, primary = true,
+                AgendaAction("Copier", ::startCopy, enabled = !busy && dates.isNotEmpty())
+                AgendaAction("Composer", { select(null); panel = PlannerPanel.Generate }, primary = true,
                     enabled = !busy && dates.isNotEmpty())
             }
         }
@@ -477,11 +477,11 @@ fun PlannerScreen(
                 when {
                     panel == PlannerPanel.Discard -> PlannerCard("Quitter la proposition ?") {
                         PlannerSmall("Vos modifications du brouillon seront perdues.")
-                        PlannerAction("Quitter sans publier", {
+                        AgendaAction("Quitter sans publier", {
                             closePanel()
                             actions.onDiscard()
                         }, primary = true, warning = true, enabled = !busy)
-                        PlannerAction("Poursuivre la relecture", ::closePanel, enabled = !busy)
+                        AgendaAction("Poursuivre la relecture", ::closePanel, enabled = !busy)
                     }
                     placement != null && selected != null -> {
                         PlannerConfirmation(selected, selectedSlot, placement.title, inDraft)
@@ -558,10 +558,10 @@ fun PlannerScreen(
                     )
                     selected != null -> PlannerCard("Créneau libre") {
                         PlannerSmall(mealMoment(selected.date, selected.meal))
-                        PlannerAction("Choisir une recette", ::openPicker, primary = true, enabled = !busy)
+                        AgendaAction("Choisir une recette", ::openPicker, primary = true, enabled = !busy)
                         if (inDraft) Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            PlannerAction("Autre idée", { actions.onAddRandom(selected.date, selected.meal); closePanel() }, enabled = !busy)
-                            PlannerAction("Repas libre", { freeTitle = ""; panel = PlannerPanel.Manual }, enabled = !busy)
+                            AgendaAction("Autre idée", { actions.onAddRandom(selected.date, selected.meal); closePanel() }, enabled = !busy)
+                            AgendaAction("Repas libre", { freeTitle = ""; panel = PlannerPanel.Manual }, enabled = !busy)
                         }
                     }
                 }
@@ -581,18 +581,7 @@ private fun PlannerHeader(
     notifications: Int?,
     onNotifications: () -> Unit,
 ) {
-    Row(
-        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 3.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
-    ) {
-        Column(Modifier.weight(1f)) {
-            Text(title, Modifier.semantics { heading() }, fontSize = 26.sp, lineHeight = 29.sp,
-                fontWeight = FontWeight.Bold, color = Sunny.Ink)
-            if (subtitle != null) Text(
-                subtitle, fontSize = 12.sp, lineHeight = 16.sp, color = Sunny.InkTitle,
-            )
-        }
+    AgendaHeader(title, subtitle) {
         if (notifications != null) {
             IconButton(onClick = onNotifications, enabled = enabled, modifier = Modifier.size(48.dp)) {
                 if (notifications > 0) BadgedBox(
@@ -602,7 +591,7 @@ private fun PlannerHeader(
                 } else Icon(Icons.Filled.Notifications, "Notifications", tint = Sunny.Ink)
             }
         }
-        if (label != null && onAction != null) PlannerAction(label, onAction, enabled = enabled)
+        if (label != null && onAction != null) AgendaAction(label, onAction, enabled = enabled)
     }
 }
 
@@ -673,45 +662,13 @@ private fun PlannerLoading() {
 }
 
 @Composable
-private fun PlannerAction(
-    label: String,
-    onClick: () -> Unit,
-    primary: Boolean = false,
-    warning: Boolean = false,
-    enabled: Boolean = true,
-) {
-    val text: @Composable RowScope.() -> Unit = {
-        Text(label, fontSize = 12.sp, lineHeight = 15.sp, fontWeight = FontWeight.Bold)
-    }
-    if (primary) {
-        Button(
-            onClick = onClick, enabled = enabled, modifier = Modifier.heightIn(min = 48.dp),
-            contentPadding = PaddingValues(horizontal = 14.dp), shape = plannerShape,
-            colors = ButtonDefaults.buttonColors(
-                containerColor = if (warning) Sunny.PeachLight else Sunny.Butter,
-                contentColor = Sunny.Ink,
-            ),
-            content = text,
-        )
-    } else {
-        OutlinedButton(
-            onClick = onClick, enabled = enabled, modifier = Modifier.heightIn(min = 48.dp),
-            contentPadding = PaddingValues(horizontal = 10.dp), shape = plannerShape,
-            colors = ButtonDefaults.outlinedButtonColors(contentColor = Sunny.Ink),
-            border = androidx.compose.foundation.BorderStroke(1.dp, Sunny.Track),
-            content = text,
-        )
-    }
-}
-
-@Composable
 private fun PlannerFooter(label: String, onClick: () -> Unit, enabled: Boolean, warning: Boolean = false) {
     Row(
         Modifier.fillMaxWidth().background(Sunny.Cream)
             .padding(start = 10.dp, end = 10.dp, top = 3.dp, bottom = 6.dp),
         horizontalArrangement = Arrangement.End,
     ) {
-        PlannerAction(label, onClick, primary = true, warning = warning, enabled = enabled)
+        AgendaAction(label, onClick, primary = true, warning = warning, enabled = enabled)
     }
 }
 
@@ -780,18 +737,18 @@ private fun PlannerMealPanel(
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
-            if (allowRecipeChoice) PlannerAction("Remplacer", onPick, enabled = enabled)
-            PlannerAction("Autre idée", { actions.onSwap(slot) }, enabled = enabled)
-            PlannerAction(if (slot.manual) "Modifier l’intitulé" else "Repas libre", onManual, enabled = enabled)
-            PlannerAction("Portions", onPeople, enabled = enabled)
-            PlannerAction("Retirer", onRemove, enabled = enabled)
+            if (allowRecipeChoice) AgendaAction("Remplacer", onPick, enabled = enabled)
+            AgendaAction("Autre idée", { actions.onSwap(slot) }, enabled = enabled)
+            AgendaAction(if (slot.manual) "Modifier l’intitulé" else "Repas libre", onManual, enabled = enabled)
+            AgendaAction("Portions", onPeople, enabled = enabled)
+            AgendaAction("Retirer", onRemove, enabled = enabled)
         }
         if (allowWrite && allowMove) PlannerSmall("Un appui long sur la carte permet aussi de la déplacer.")
         if (slot.recipe != null || allowWrite && allowMove) Row(
             Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.End),
         ) {
-            if (allowWrite && allowMove) PlannerAction("Déplacer", onMove, primary = slot.recipe == null, enabled = enabled)
-            if (slot.recipe != null) PlannerAction("Voir la recette", onOpen, primary = true, enabled = enabled)
+            if (allowWrite && allowMove) AgendaAction("Déplacer", onMove, primary = slot.recipe == null, enabled = enabled)
+            if (slot.recipe != null) AgendaAction("Voir la recette", onOpen, primary = true, enabled = enabled)
         }
     }
 }
@@ -817,7 +774,7 @@ private fun PlannerRecipePicker(
             state.loading && recipes.isEmpty() -> PlannerLoading()
             error != null -> {
                 PlannerNotice(error, error = true)
-                PlannerAction("Réessayer", { onSearch(state.query) }, enabled = !busy)
+                AgendaAction("Réessayer", { onSearch(state.query) }, enabled = !busy)
             }
             recipes.isEmpty() -> PlannerSmall(if (state.query.isBlank()) "Le carnet est vide." else "Aucune recette trouvée.")
         }

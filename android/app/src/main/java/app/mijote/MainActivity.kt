@@ -16,13 +16,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Text
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -34,6 +29,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.mijote.ui.AccountsScreen
+import app.mijote.ui.AgendaAction
 import app.mijote.ui.InviteScreen
 import app.mijote.ui.InvitationsScreen
 import app.mijote.ui.LocalImageLoader
@@ -98,6 +94,8 @@ class MainActivity : ComponentActivity() {
                 else -> null
             }
             val plannerState = key(vm.serverUrl, plannerActor) { rememberSaveableStateHolder() }
+            val recipeListState = key(vm.serverUrl, plannerActor) { rememberLazyListState() }
+            var filterSheet by key(vm.serverUrl, plannerActor) { rememberSaveable { mutableStateOf(false) } }
             MijoteTheme { CompositionLocalProvider(LocalImageLoader provides { path -> vm.image(path) }) {
                 UpdateDialog(update, vm.currentVersion, onInstall = vm::installUpdate, onDismiss = vm::dismissUpdate)
                 when (val s = state.screen) {
@@ -107,15 +105,19 @@ class MainActivity : ComponentActivity() {
                         onLogin = vm::login, onChangeServer = vm::changeServer, onInvite = vm::showInvite)
                     is Screen.Invite -> InviteScreen(s.serverUrl, s.code, state.busy, state.error,
                         onSubmit = vm::redeemInvitation, onBack = vm::backFromInvite)
-                    is Screen.Preferences -> {
+                    is Screen.Preferences -> plannerState.SaveableStateProvider("account-preferences") {
                         BackHandler(onBack = vm::closePreferences)
-                        PreferencesScreen(s.user, vm.serverUrl, vm.currentVersion, check.checking, check.message ?: state.error,
-                            onPeople = vm::setPeople, onCheckUpdate = vm::checkForUpdate, onChangeServer = vm::leaveServer,
-                            onLogout = vm::logout, onBack = vm::closePreferences,
-                            onInvitations = { vm.openAdmin(AdminSection.INVITATIONS) },
-                            onAccounts = { vm.openAdmin(AdminSection.ACCOUNTS) },
-                            notificationCount = notifications.unreadCount, onNotifications = vm::openNotifications,
-                            wishSettings = wishSettings, onWishLimit = vm::setWishLimit, onReloadWishSettings = vm::loadWishSettings)
+                        val openTab: (Tab) -> Unit = { target -> vm.closePreferences(); vm.selectTab(target) }
+                        Column(Modifier.fillMaxSize().background(Sunny.Cream)) {
+                            PreferencesScreen(s.user, vm.serverUrl, vm.currentVersion, check.checking, check.message ?: state.error,
+                                onPeople = vm::setPeople, onCheckUpdate = vm::checkForUpdate, onChangeServer = vm::leaveServer,
+                                onLogout = vm::logout, onInvitations = { vm.openAdmin(AdminSection.INVITATIONS) },
+                                onAccounts = { vm.openAdmin(AdminSection.ACCOUNTS) },
+                                notificationCount = notifications.unreadCount, onNotifications = vm::openNotifications,
+                                wishSettings = wishSettings, onWishLimit = vm::setWishLimit,
+                                onReloadWishSettings = vm::loadWishSettings, modifier = Modifier.weight(1f))
+                            PlannerBottomBar(null, { openTab(Tab.MENUS) }, { openTab(Tab.RECIPES) }, {})
+                        }
                     }
                     is Screen.Admin -> {
                         BackHandler(onBack = vm::closeAdmin)
@@ -131,9 +133,6 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                     is Screen.Home -> key(vm.serverUrl, s.user.id) {
-                        // Hoisted outside the detail and placement branches so back keeps the exact list anchor.
-                        val recipeListState = rememberLazyListState()
-                        var filterSheet by rememberSaveable { mutableStateOf(false) }
                         val edited = editor
                         val shown = recipe
                         val placing = placement
@@ -197,20 +196,15 @@ class MainActivity : ComponentActivity() {
                                         onQuery = { vm.searchRecipes(it, debounce = true) },
                                         onOpen = { vm.openRecipe(it.id, it.title) },
                                         onPlan = { vm.choosePlacement(it.id, it.title) },
-                                        onRefresh = { vm.refreshRecipes() }, onPreferences = vm::openPreferences,
+                                        onRefresh = { vm.refreshRecipes() },
                                         onFilters = vm::setRecipeFilters, sheetOpen = filterSheet,
                                         onSheet = { filterSheet = it }, working = menu.working != null)
                                 }
-                                Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 5.dp),
+                                Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
                                     horizontalArrangement = Arrangement.spacedBy(8.dp, androidx.compose.ui.Alignment.End)) {
-                                    OutlinedButton(onClick = { filterSheet = true }, modifier = Modifier.heightIn(min = 48.dp)) {
-                                        Text(if (recipes.filters.count > 0) "Filtres (${recipes.filters.count})" else "Filtres")
-                                    }
-                                    if (s.user.canWrite) Button(onClick = { vm.editRecipe(new = true) },
-                                        modifier = Modifier.heightIn(min = 48.dp),
-                                        colors = ButtonDefaults.buttonColors(containerColor = Sunny.Butter, contentColor = Sunny.Ink)) {
-                                        Text("Ajouter une recette")
-                                    }
+                                    val filters = if (recipes.filters.count > 0) "Filtres (${recipes.filters.count})" else "Filtres"
+                                    AgendaAction(filters, { filterSheet = true })
+                                    if (s.user.canWrite) AgendaAction("Ajouter une recette", { vm.editRecipe(new = true) }, primary = true)
                                 }
                                 PlannerBottomBar(Tab.RECIPES, { vm.selectTab(Tab.MENUS) }, selectRecipes, vm::openPreferences)
                             }
