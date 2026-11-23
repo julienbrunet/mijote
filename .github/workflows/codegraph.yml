@@ -1,0 +1,44 @@
+name: Code graph
+
+on:
+  push:
+    paths: &codegraph-paths
+      - 'server/**/*.go'
+      - 'server/go.mod'
+      - 'server/go.sum'
+      - 'server/internal/admin/static/**/*.js'
+      - 'android/**/*.kt'
+      - 'android/**/*.kts'
+      - 'site/**/*.js'
+      - 'tools/codegraph/**'
+      - '.github/workflows/codegraph.yml'
+  pull_request:
+    paths: *codegraph-paths
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: tools/codegraph/package-lock.json
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - run: go install github.com/sourcegraph/scip-go/cmd/scip-go@v0.1.26
+      - run: npm ci --prefix tools/codegraph
+      - run: python -m pip install -r tools/codegraph/requirements.txt
+      - run: python tools/codegraph/build.py --check
+      - run: python tools/codegraph/query.py status
