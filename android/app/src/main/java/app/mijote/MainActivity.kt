@@ -28,6 +28,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -90,6 +91,13 @@ class MainActivity : ComponentActivity() {
             val placement by vm.placement.collectAsStateWithLifecycle()
             val picker by vm.plannerRecipes.collectAsStateWithLifecycle()
             val copy by vm.weekCopy.collectAsStateWithLifecycle()
+            val plannerActor = when (val screen = state.screen) {
+                is Screen.Home -> screen.user.id
+                is Screen.Preferences -> screen.user.id
+                is Screen.Admin -> screen.user.id
+                else -> null
+            }
+            val plannerState = key(vm.serverUrl, plannerActor) { rememberSaveableStateHolder() }
             MijoteTheme { CompositionLocalProvider(LocalImageLoader provides { path -> vm.image(path) }) {
                 UpdateDialog(update, vm.currentVersion, onInstall = vm::installUpdate, onDismiss = vm::dismissUpdate)
                 when (val s = state.screen) {
@@ -151,32 +159,38 @@ class MainActivity : ComponentActivity() {
                                 onBack = vm::closeNotifications, onRefresh = { vm.loadNotifications() },
                                 onMore = { vm.loadNotifications(more = true) }, onOpen = vm::openNotification,
                                 onRead = vm::readNotification, onDelete = vm::deleteNotification)
-                            showPlanner -> PlannerScreen(
-                                user = s.user, state = menu, week = week, placement = placing, recipes = picker, copy = copy,
-                                unreadNotifications = notifications.unreadCount,
-                                actions = PlannerActions(
-                                    onWeek = vm::showPlannerWeek, onRefresh = vm::refreshPlannerWeek,
-                                    onCancelPlacement = vm::cancelPlacement,
-                                    onChooseRecipe = { vm.choosePlacement(it.id, it.title) },
-                                    onPlan = { date, meal, replace -> vm.placeRecipe(date, meal, replace, week.menu) },
-                                    onSearchRecipes = vm::searchPlannerRecipes,
-                                    onOpenRecipe = { slot, readOnly ->
-                                        slot.recipe?.let { vm.openRecipe(it.id, it.title, slotId = slot.id, slotPeople = slot.people,
-                                            slotReadOnly = readOnly) }
-                                    },
-                                    onGenerate = vm::generateMenu, onSetPeople = vm::setPeople,
-                                    onPublish = vm::validateReview, onDiscard = vm::closeReview, onRebase = vm::rebaseReview,
-                                    onMove = { source, date, meal -> vm.movePlannerMeal(source, date, meal, week.menu) },
-                                    onUndoMove = vm::undoMealMove, onSwap = { vm.swapMeal(it.id) },
-                                    onRemove = { vm.removeMeal(it.id) }, onRename = { slot, title -> vm.renameMeal(slot.id, title) },
-                                    onMealPeople = { slot, count -> vm.setMealPeople(slot.id, count) },
-                                    onAddRandom = vm::addMeal, onAddManual = vm::addManualMeal,
-                                    onCopyPreview = vm::previewWeekCopy, onCopyReplace = vm::setCopyReplace,
-                                    onApplyCopy = vm::applyWeekCopy, onCloseCopy = vm::closeWeekCopy,
-                                    onRecipes = selectRecipes, onAccount = vm::openPreferences,
-                                    onNotifications = vm::openNotifications,
-                                ),
-                            )
+                            showPlanner -> plannerState.SaveableStateProvider("planner-timeline") {
+                                val displayedWeek = week
+                                PlannerScreen(
+                                    user = s.user, state = menu, week = displayedWeek, placement = placing, recipes = picker, copy = copy,
+                                    unreadNotifications = notifications.unreadCount,
+                                    actions = PlannerActions(
+                                        onWeek = vm::showPlannerWeek, onRefresh = vm::refreshPlannerWeek,
+                                        onLoadBefore = { vm.loadPlannerBoundary(before = true, retry = it) },
+                                        onLoadAfter = { vm.loadPlannerBoundary(before = false, retry = it) },
+                                        onVisibleDay = vm::trackPlannerWeek,
+                                        onCancelPlacement = vm::cancelPlacement,
+                                        onChooseRecipe = { vm.choosePlacement(it.id, it.title) },
+                                        onPlan = { date, meal, replace -> vm.placeRecipe(date, meal, replace, displayedWeek.snapshot(date)) },
+                                        onSearchRecipes = vm::searchPlannerRecipes,
+                                        onOpenRecipe = { slot, readOnly ->
+                                            slot.recipe?.let { vm.openRecipe(it.id, it.title, slotId = slot.id, slotPeople = slot.people,
+                                                slotReadOnly = readOnly) }
+                                        },
+                                        onGenerate = vm::generateMenu, onSetPeople = vm::setPeople,
+                                        onPublish = vm::validateReview, onDiscard = vm::closeReview, onRebase = vm::rebaseReview,
+                                        onMove = { source, date, meal -> vm.movePlannerMeal(source, date, meal, displayedWeek.snapshot(date)) },
+                                        onUndoMove = vm::undoMealMove, onSwap = { vm.swapMeal(it.id) },
+                                        onRemove = { vm.removeMeal(it.id) }, onRename = { slot, title -> vm.renameMeal(slot.id, title) },
+                                        onMealPeople = { slot, count -> vm.setMealPeople(slot.id, count) },
+                                        onAddRandom = vm::addMeal, onAddManual = vm::addManualMeal,
+                                        onCopyPreview = vm::previewWeekCopy, onCopyReplace = vm::setCopyReplace,
+                                        onApplyCopy = vm::applyWeekCopy, onCloseCopy = vm::closeWeekCopy,
+                                        onRecipes = selectRecipes, onAccount = vm::openPreferences,
+                                        onNotifications = vm::openNotifications,
+                                    ),
+                                )
+                            }
                             else -> Column(Modifier.fillMaxSize().background(Sunny.Cream)) {
                                 Box(Modifier.weight(1f).fillMaxWidth()) {
                                     RecipesTab(recipes, canWrite = s.user.canWrite, listState = recipeListState,

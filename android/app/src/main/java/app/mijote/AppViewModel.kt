@@ -45,6 +45,7 @@ import java.util.UUID
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -102,7 +103,26 @@ data class MenuState(
     val proposalConflict: Boolean = false,
 )
 
-data class PlannerWeekState(val start: LocalDate? = null, val menu: Menu? = null, val loading: Boolean = false, val error: String? = null)
+data class PlannerWeekState(
+    val start: LocalDate? = null,
+    val menu: Menu? = null,
+    val loading: Boolean = false,
+    val error: String? = null,
+    val weeks: Map<LocalDate, Menu> = emptyMap(),
+    val loadingBefore: Boolean = false,
+    val loadingAfter: Boolean = false,
+    val beforeError: String? = null,
+    val afterError: String? = null,
+    val jumpSerial: Int = 0,
+    val requestWeek: LocalDate? = null,
+) {
+    /** Use the snapshot of the selected date for versioned writes, even when the timeline spans several weeks. */
+    fun snapshot(date: LocalDate): Menu? {
+        val monday = date.weekStart()
+        if (monday == (requestWeek ?: start) && (loading || error != null)) return null
+        return weeks[monday] ?: menu?.takeIf { monday == start }
+    }
+}
 data class PlacementRecipe(val id: String, val title: String)
 data class WeekCopyState(
     val preview: WeekCopy? = null, val from: LocalDate? = null, val to: LocalDate? = null,
@@ -169,7 +189,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val _menu = MutableStateFlow(MenuState())
     val menu: StateFlow<MenuState> = _menu.asStateFlow()
 
-    private val _plannerWeek = MutableStateFlow(PlannerWeekState())
+    private val _plannerWeek = MutableStateFlow(PlannerWeekState(jumpSerial = UUID.randomUUID().hashCode()))
     val plannerWeek: StateFlow<PlannerWeekState> = _plannerWeek.asStateFlow()
     private val _placement = MutableStateFlow<PlacementRecipe?>(null)
     val placement: StateFlow<PlacementRecipe?> = _placement.asStateFlow()
@@ -179,6 +199,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     val weekCopy: StateFlow<WeekCopyState> = _weekCopy.asStateFlow()
     private val cachedWeeks = LinkedHashMap<LocalDate, Menu>()
     private var weekJob: Job? = null
+    private var beforeWeekJob: Job? = null
+    private var afterWeekJob: Job? = null
+    private var visiblePlannerWeek: LocalDate? = null
+    private var plannerWriteRevision = 0L
     private var copyJob: Job? = null
     private var pickerJob: Job? = null
     private var preferenceJob: Job? = null
@@ -345,63 +369,137 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun loadMenu(manual: Boolean = false) {
         if (_menu.value.working != null || _menu.value.refreshing) return
         val actor = signedInUser()?.id ?: return
+        val address = serverUrl
         val before = _menu.value.menu
         loadNotifications()
         _menu.update { it.copy(loading = it.menu == null, refreshing = true, error = null) }
         viewModelScope.launch {
             try {
                 val m = session.authed { api, access -> api.menu(access) }
-                if (signedInUser()?.id != actor) return@launch
+                if (signedInUser()?.id != actor || serverUrl != address) return@launch
                 _menu.update { if (it.menu === before && it.working == null) it.copy(menu = m, loading = false, refreshing = false, error = null)
                     else it.copy(loading = false, refreshing = false) }
-                if (_menu.value.working == null) showPlannerWeek(_plannerWeek.value.start ?: m.today.weekStart())
+                if (_menu.value.working == null) {
+                    if (_plannerWeek.value.start == null) showPlannerWeek(m.today)
+                    else refreshVisiblePlannerWeek()
+                }
             } catch (e: SessionExpiredException) {
-                if (signedInUser()?.id != actor) return@launch
+                if (signedInUser()?.id != actor || serverUrl != address) return@launch
                 _menu.update { it.copy(loading = false, refreshing = false) }
                 toLogin("Votre session a expiré : reconnectez-vous.")
             } catch (e: IOException) {
-                if (signedInUser()?.id != actor) return@launch
+                if (signedInUser()?.id != actor || serverUrl != address) return@launch
                 // Keep an existing menu available offline and report failed requests.
                 _menu.update { it.copy(loading = false, refreshing = false, error = errorMessage(e)) }
             }
         }
     }
 
-    /** Fetch a whole calendar week, including days before the server's current date. */
+    /** Explicit navigation scrolls to this week. Edges of the timeline load independently. */
     fun showPlannerWeek(date: LocalDate) {
         if (signedInUser() == null) return
         val start = date.weekStart()
         weekJob?.cancel()
-        _plannerWeek.value = PlannerWeekState(start, cachedWeeks[start], loading = true)
-        weekJob = viewModelScope.launch {
+        beforeWeekJob?.cancel()
+        afterWeekJob?.cancel()
+        val previous = _plannerWeek.value
+        val withinTimeline = start in previous.weeks
+        val weeks = if (withinTimeline) previous.weeks else
+            cachedWeeks[start]?.let { mapOf(start to it) }.orEmpty()
+        visiblePlannerWeek = start
+        _plannerWeek.value = PlannerWeekState(start, weeks[start], loading = true, weeks = weeks,
+            beforeError = previous.beforeError.takeIf { withinTimeline },
+            afterError = previous.afterError.takeIf { withinTimeline },
+            jumpSerial = previous.jumpSerial + 1, requestWeek = start)
+        weekJob = requestPlannerWeek(start)
+    }
+
+    /** Extend exactly one edge by one week. Failures need an explicit retry at that edge. */
+    fun loadPlannerBoundary(before: Boolean, retry: Boolean = false) {
+        if (signedInUser() == null || _menu.value.working != null) return
+        val state = _plannerWeek.value
+        if (state.loading || state.weeks.isEmpty()) return
+        val busy = if (before) state.loadingBefore else state.loadingAfter
+        val failure = if (before) state.beforeError else state.afterError
+        if (busy || (failure != null && !retry)) return
+        val target = if (before) state.weeks.keys.minOrNull()!!.minusWeeks(1)
+            else state.weeks.keys.maxOrNull()!!.plusWeeks(1)
+        _plannerWeek.update { if (before) it.copy(loadingBefore = true, beforeError = null)
+            else it.copy(loadingAfter = true, afterError = null) }
+        if (before) beforeWeekJob = requestPlannerWeek(target, before = true)
+        else afterWeekJob = requestPlannerWeek(target, before = false)
+    }
+
+    fun trackPlannerWeek(date: LocalDate) {
+        val start = date.weekStart()
+        if (start in _plannerWeek.value.weeks) visiblePlannerWeek = start
+    }
+
+    private fun refreshVisiblePlannerWeek(date: LocalDate? = null) {
+        val state = _plannerWeek.value
+        val page = date?.weekStart()?.takeIf { it in state.weeks }
+            ?: visiblePlannerWeek?.takeIf { it in state.weeks } ?: state.start ?: return
+        weekJob?.cancel()
+        _plannerWeek.update { it.copy(loading = true, error = null, requestWeek = page) }
+        weekJob = requestPlannerWeek(page)
+    }
+
+    private fun requestPlannerWeek(page: LocalDate, before: Boolean? = null): Job {
+        val requester = signedInUser()?.id
+        val address = serverUrl
+        val serial = _plannerWeek.value.jumpSerial
+        val writeRevision = plannerWriteRevision
+        return viewModelScope.launch {
+            fun current() = isActive && requester != null && requester == signedInUser()?.id &&
+                address == serverUrl && _plannerWeek.value.jumpSerial == serial
+
+            fun finish(fetched: Menu? = null, message: String? = null) {
+                _plannerWeek.update { state ->
+                    val pages = if (fetched == null) state.weeks else state.weeks + (page to fetched)
+                    val updated = state.copy(weeks = pages, menu = state.start?.let(pages::get))
+                    when (before) {
+                        true -> updated.copy(loadingBefore = false, beforeError = message)
+                        false -> updated.copy(loadingAfter = false, afterError = message)
+                        null -> updated.copy(loading = false, error = message, requestWeek = page.takeIf { message != null })
+                    }
+                }
+            }
+
             try {
-                val week = session.authed { api, access -> api.menu(access, start, start.plusDays(6)) }
-                cachedWeeks.remove(start)
-                cachedWeeks[start] = week
+                val week = session.authed { api, access -> api.menu(access, page, page.plusDays(6)) }
+                if (!current()) return@launch
+                if (plannerWriteRevision != writeRevision) {
+                    finish()
+                    return@launch
+                }
+                cachedWeeks.remove(page)
+                cachedWeeks[page] = week
                 if (cachedWeeks.size > 12) cachedWeeks.remove(cachedWeeks.keys.first())
-                _plannerWeek.value = PlannerWeekState(start, week)
+                finish(week)
             } catch (e: SessionExpiredException) {
-                toLogin("Votre session a expiré : reconnectez-vous.")
+                if (current()) toLogin("Votre session a expiré : reconnectez-vous.")
             } catch (e: IOException) {
-                _plannerWeek.update { it.copy(loading = false, error = errorMessage(e)) }
+                if (current()) finish(message = errorMessage(e))
             }
         }
     }
 
-    fun refreshPlannerWeek() {
+    fun refreshPlannerWeek() = refreshPlannerWeek(null)
+
+    private fun refreshPlannerWeek(date: LocalDate?) {
         val start = _plannerWeek.value.start
         if (start == null || _menu.value.menu == null) loadMenu(manual = true)
         else if (_menu.value.working == null) {
             loadNotifications()
-            showPlannerWeek(start)
+            refreshVisiblePlannerWeek(date)
         }
     }
 
     fun choosePlacement(id: String, title: String) {
         if (signedInUser()?.canWrite != true || _menu.value.working != null) return
         _placement.value = PlacementRecipe(id, title)
-        val today = _menu.value.menu?.today ?: return
-        val week = _plannerWeek.value.start
+        val today = _menu.value.menu?.today ?: _plannerWeek.value.menu?.today ?: return
+        val week = visiblePlannerWeek ?: _plannerWeek.value.start
         val draft = _menu.value.proposal
         if (week == null || (draft != null && (week > draft.to || week.plusDays(6) < draft.from))) {
             showPlannerWeek(draft?.from ?: today)
@@ -671,39 +769,54 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Update the displayed snapshots immediately from the server's confirmed period. */
     private fun updateSharedPeriod(proposal: MenuProposal, saved: List<MenuSlot>) {
+        plannerWriteRevision++
         fun Menu.updated(replacements: List<MenuSlot>) = copy(slots =
             (slots.filter { it.date < proposal.from || it.date > proposal.to } + replacements)
                 .sortedWith(compareBy<MenuSlot> { it.date }.thenBy { it.meal != "lunch" }))
+        fun Menu.updatedWeek(first: LocalDate): Menu {
+            val last = first.plusDays(6)
+            if (last < proposal.from || first > proposal.to) return this
+            return updated(saved.filter { it.date in first..last })
+        }
         _menu.update { state -> state.copy(menu = state.menu?.let { menu ->
             menu.updated(saved.filter { it.date >= menu.today })
         }) }
         for ((first, week) in cachedWeeks.toMap()) {
-            val last = first.plusDays(6)
-            if (last < proposal.from || first > proposal.to) continue
-            cachedWeeks[first] = week.updated(saved.filter { it.date in first..last })
+            cachedWeeks[first] = week.updatedWeek(first)
         }
-        _plannerWeek.update { it.copy(menu = it.start?.let(cachedWeeks::get) ?: it.menu) }
+        _plannerWeek.update { state ->
+            val weeks = state.weeks.mapValues { (first, week) -> week.updatedWeek(first) }
+            state.copy(weeks = weeks, menu = state.start?.let(weeks::get))
+        }
+    }
+
+    private fun plannerSlotDate(id: String): LocalDate? = _plannerWeek.value.weeks.values.firstNotNullOfOrNull { week ->
+        week.slots.firstOrNull { it.id == id }?.date
     }
 
     /** Runs a change of the planned meals, then reloads the menu; [done] is told on success. */
-    private fun change(key: String, done: String? = null, onSaved: () -> Unit = {}, action: (Api, String) -> Unit) {
+    private fun change(
+        key: String, done: String? = null, onSaved: () -> Unit = {}, date: LocalDate? = plannerSlotDate(key),
+        action: (Api, String) -> Unit,
+    ) {
         if (_menu.value.working != null || signedInUser()?.canWrite != true) return
         _menu.update { it.copy(working = key, error = null, undoMove = null) }
         viewModelScope.launch {
             preferenceJob?.join()
             try {
                 session.authed { api, access -> action(api, access) }
+                plannerWriteRevision++
                 onSaved()
                 done?.let { notice(it) }
                 val m = session.authed { api, access -> api.menu(access) }
                 _menu.update { it.copy(menu = m, working = null) }
-                refreshPlannerWeek()
+                refreshPlannerWeek(date)
             } catch (e: SessionExpiredException) {
                 _menu.update { it.copy(working = null) }
                 toLogin("Votre session a expiré : reconnectez-vous.")
             } catch (e: IOException) {
                 _menu.update { it.copy(working = null, error = errorMessage(e)) }
-                refreshPlannerWeek()
+                refreshPlannerWeek(date)
             }
         }
     }
@@ -715,8 +828,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             editProposal { it.move(source.id, target.id) }
             return
         }
-        if (signedInUser()?.canWrite != true || _menu.value.refreshing || _menu.value.working != null || snapshot == null) return
-        val today = _menu.value.menu?.today ?: snapshot.today
+        if (signedInUser()?.canWrite != true || _menu.value.refreshing || _menu.value.working != null) return
+        if (snapshot == null || snapshot != _plannerWeek.value.snapshot(date)) {
+            _menu.update { it.copy(error = "La semaine a changé. Choisissez à nouveau la destination.") }
+            return
+        }
+        val today = maxOf(_menu.value.menu?.today ?: snapshot.today, snapshot.today)
         val from = minOf(date, source.date)
         val to = maxOf(date, source.date)
         if (from < today || to >= from.plusDays(60)) return
@@ -792,7 +909,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun addMeal(date: LocalDate, meal: String) {
         if (_menu.value.proposal != null) draftRecipe(date, meal)
-        else change("$date|$meal") { api, access -> api.addSlot(access, date, meal) }
+        else change("$date|$meal", date = date) { api, access -> api.addSlot(access, date, meal) }
     }
 
     fun removeMeal(slotId: String) {
@@ -823,7 +940,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             kotlinx.coroutines.delay(600)
             try {
                 session.authed { api, access -> api.setSlotPeople(access, slotId, people) }
-                refreshPlannerWeek()
+                plannerWriteRevision++
+                refreshPlannerWeek(plannerSlotDate(slotId))
             } catch (e: SessionExpiredException) {
                 toLogin("Votre session a expiré : reconnectez-vous.")
             } catch (e: IOException) {
@@ -844,7 +962,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun placeRecipe(date: LocalDate, meal: String, replace: Boolean, snapshot: Menu?) {
         val selected = _placement.value ?: return
         val user = signedInUser()?.takeIf { it.canWrite } ?: return
-        val today = _menu.value.menu?.today ?: snapshot?.today ?: return
+        val today = listOfNotNull(_menu.value.menu?.today, snapshot?.today).maxOrNull() ?: return
         if (date < today || (meal != "lunch" && meal != "dinner") || _menu.value.working != null) return
         val draft = _menu.value.proposal
         val done = "Ajouté au menu : ${app.mijote.ui.mealMoment(date, meal)}"
@@ -879,9 +997,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             }
             return
         }
-        if (date > today.plusDays(20) || snapshot == null) return
+        if (date > today.plusDays(20)) return
+        if (snapshot == null || snapshot != _plannerWeek.value.snapshot(date)) {
+            _menu.update { it.copy(error = "La semaine a changé. Choisissez à nouveau le créneau.") }
+            return
+        }
         if (!replace) {
-            change("$date|$meal", done, completed) { api, access ->
+            change("$date|$meal", done, completed, date = date) { api, access ->
                 api.planSlot(access, date, meal, selected.id, null, replace = false)
             }
             return
@@ -893,7 +1015,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val patched = existing.copy(recipe = recipe, title = null, locked = true, people = user.people)
         val proposal = MenuProposal(date, date, known.map { if (it.id == existing.id) patched else it },
             known.map { SlotVersion(it.id, it.version) })
-        change("$date|$meal", done, completed) { api, access ->
+        change("$date|$meal", done, completed, date = date) { api, access ->
             api.confirmMenu(access, proposal)
         }
     }
@@ -1268,13 +1390,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun resetPlanner() {
         weekJob?.cancel()
+        beforeWeekJob?.cancel()
+        afterWeekJob?.cancel()
         copyJob?.cancel()
         pickerJob?.cancel()
         preferenceJob?.cancel()
         searchJob?.cancel()
         peopleJob?.cancel()
         cachedWeeks.clear()
-        _plannerWeek.value = PlannerWeekState()
+        visiblePlannerWeek = null
+        _plannerWeek.value = PlannerWeekState(jumpSerial = _plannerWeek.value.jumpSerial + 1)
         _plannerRecipes.value = RecipesState()
         _placement.value = null
         _weekCopy.value = WeekCopyState()
