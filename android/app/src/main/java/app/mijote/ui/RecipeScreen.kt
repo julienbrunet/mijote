@@ -1,8 +1,23 @@
 package app.mijote.ui
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -10,197 +25,266 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.DateRange
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
-import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconToggleButton
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.mijote.RecipeState
 import app.mijote.data.RecipeDetail
 import app.mijote.data.text
 
-
-/**
- * Recipe detail: picture, times, ingredients for the user's number of people, steps. Members can
- * plan it on a day and edit it; the admin can archive it.
- */
+/** Recipe detail with portions, preparation and actions for the signed-in user's role. */
 @Composable
 fun RecipeScreen(
-    state: RecipeState, people: Int, onBack: () -> Unit,
-    canWrite: Boolean = false, canArchive: Boolean = false,
-    onPlan: () -> Unit = {}, onEdit: () -> Unit = {}, onArchive: () -> Unit = {},
+    state: RecipeState,
+    people: Int,
+    onBack: () -> Unit,
+    canWrite: Boolean = false,
+    canArchive: Boolean = false,
+    onPlan: () -> Unit = {},
+    onEdit: () -> Unit = {},
+    onArchive: () -> Unit = {},
     onFavorite: () -> Unit = {},
     onWish: (() -> Unit)? = null,
     /** Set when opened from a planned meal by a member: the number of people is saved for that meal. */
     onMealPeople: ((Int) -> Unit)? = null,
 ) {
-    var confirmArchive by remember { mutableStateOf(false) }
+    var confirmArchive by rememberSaveable(state.id) { mutableStateOf(false) }
     if (confirmArchive) AlertDialog(
         onDismissRequest = { confirmArchive = false },
-        containerColor = Sunny.Card,
-        title = { Text("Archiver cette recette ?", fontWeight = FontWeight.Bold, color = Sunny.Ink, fontSize = 18.sp) },
-        text = { Text("Elle disparaît de la liste et n'est plus proposée dans les menus, mais elle n'est pas supprimée : " +
-            "les menus passés la gardent et elle peut être restaurée depuis l'administration web.", color = Sunny.Ink) },
-        confirmButton = { TextButton(onClick = { confirmArchive = false; onArchive() }) { Text("Archiver", color = Sunny.Error, fontWeight = FontWeight.Bold) } },
-        dismissButton = { TextButton(onClick = { confirmArchive = false }) { Text("Annuler", color = Sunny.Slate) } },
+        containerColor = Sunny.Cream,
+        title = { AgendaSectionTitle("Archiver cette recette ?") },
+        text = { Text("Elle disparaît de la liste et n’est plus proposée dans les nouveaux menus. " +
+            "Elle reste dans les menus passés et peut être restaurée depuis l’administration web.", color = Sunny.Ink) },
+        confirmButton = {
+            AgendaAction("Archiver", {
+                confirmArchive = false
+                onArchive()
+            }, primary = true, warning = true, enabled = !state.busy)
+        },
+        dismissButton = { AgendaAction("Annuler", { confirmArchive = false }) },
     )
-    val r = state.recipe
-    Column(Modifier.fillMaxSize().background(Sunny.Butter).verticalScroll(rememberScrollState())) {
-        Box(Modifier.fillMaxWidth().height(260.dp).clip(RoundedCornerShape(bottomStart = 40.dp, bottomEnd = 40.dp))) {
-            RecipeThumb(r?.image, dishEmoji(r?.dishType), Modifier.fillMaxSize(), emojiSize = 90.sp)
-            Box(
-                Modifier.statusBarsPadding().padding(16.dp).size(44.dp).background(Color.White.copy(alpha = 0.9f), CircleShape)
-                    .clickable(onClick = onBack),
-                contentAlignment = Alignment.Center,
-            ) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Retour", tint = Sunny.Ink) }
-            // Personal favorite: every user, read-only ones included, has their own list.
-            if (r != null) Box(
-                Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(16.dp).size(44.dp)
-                    .background(Color.White.copy(alpha = 0.9f), CircleShape).clip(CircleShape).clickable(onClick = onFavorite),
-                contentAlignment = Alignment.Center,
+
+    val recipe = state.recipe
+    val wishAction = onWish?.takeIf { recipe != null && !recipe.archived }
+    val contentInsets = WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom)
+    val scrollState = key(state.id) { rememberScrollState() }
+    Scaffold(
+        containerColor = Sunny.Cream,
+        contentWindowInsets = contentInsets,
+        topBar = {
+            Row(
+                Modifier.fillMaxWidth()
+                    .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Top))
+                    .padding(horizontal = 12.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(if (r.favorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
-                    contentDescription = if (r.favorite) "Retirer de mes favoris" else "Ajouter à mes favoris", tint = Sunny.PeachDeep)
+                AgendaAction("Retour", onBack, icon = Icons.AutoMirrored.Filled.ArrowBack)
+                if (recipe != null) RecipeFavorite(recipe.favorite, onFavorite)
             }
-        }
-        Column(Modifier.padding(horizontal = 22.dp).padding(top = 22.dp, bottom = 48.dp).navigationBarsPadding()) {
-            Text(r?.title ?: state.title, fontSize = 28.sp, lineHeight = 32.sp, fontWeight = FontWeight.Bold, color = Sunny.InkTitle)
-            if (r != null && !r.archived && onWish != null) {
-                val wish = state.wish
-                Button(onClick = onWish, enabled = !state.wishing && wish?.requested != true && wish?.remaining != 0,
-                    shape = Shapes.Control,
-                    colors = ButtonDefaults.buttonColors(containerColor = Sunny.PeachDeep, contentColor = Color.White),
-                    modifier = Modifier.fillMaxWidth().padding(top = 16.dp).height(52.dp)) {
-                    Text(if (state.wishing) "Envoi…" else if (wish?.requested == true) "Envie envoyée" else "J’ai envie de cette recette",
-                        fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                }
-                Text(if (wish?.requested == true) "Les personnes qui créent les menus ont été informées."
-                    else if (wish != null) "${wish.remaining} demande${if (wish.remaining > 1) "s" else ""} restante${if (wish.remaining > 1) "s" else ""} cette semaine · maximum ${wish.weeklyLimit}."
-                    else "Partagez votre envie avec les personnes qui créent les menus.",
-                    fontSize = 13.sp, color = Sunny.InkTitle, modifier = Modifier.padding(top = 8.dp))
-                ErrorText(state.wishError)
-            }
-            if (r != null && canWrite) {
-                Button(
-                    onClick = onPlan, enabled = !state.busy, shape = Shapes.Control,
-                    colors = ButtonDefaults.buttonColors(containerColor = Sunny.PeachDeep, contentColor = Color.White),
-                    modifier = Modifier.fillMaxWidth().padding(top = 16.dp).height(52.dp),
-                ) {
-                    Icon(Icons.Filled.DateRange, contentDescription = null, modifier = Modifier.size(20.dp))
-                    Text("Ajouter au menu", fontWeight = FontWeight.Bold, fontSize = 15.sp, modifier = Modifier.padding(start = 8.dp))
-                }
-                Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    SmallAction("Modifier", Icons.Filled.Edit, Sunny.Ink, Modifier.weight(1f), enabled = !state.busy, onClick = onEdit)
-                    if (canArchive) SmallAction("Archiver", Icons.Filled.Delete, Sunny.Error, Modifier.weight(1f), enabled = !state.busy) {
-                        confirmArchive = true
+        },
+        bottomBar = {
+            if (recipe != null && (canWrite || wishAction != null)) {
+                Column(Modifier.fillMaxWidth().background(Sunny.Cream).windowInsetsPadding(contentInsets)) {
+                    HorizontalDivider(color = Sunny.Track)
+                    if (!canWrite && state.wishError != null) {
+                        Box(Modifier.padding(horizontal = 12.dp)) { ErrorText(state.wishError) }
+                    }
+                    Row(
+                        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+                        horizontalArrangement = Arrangement.End,
+                    ) {
+                        if (canWrite) {
+                            AgendaAction("Ajouter au menu", onPlan, primary = true, enabled = !state.busy,
+                                icon = Icons.Filled.DateRange)
+                        } else if (wishAction != null) {
+                            val label = when {
+                                state.wishing -> "Envoi…"
+                                state.wish?.requested == true -> "Envie envoyée"
+                                else -> "J’ai envie de cette recette"
+                            }
+                            AgendaAction(label, wishAction, primary = true,
+                                enabled = !state.wishing && state.wish?.requested != true && state.wish?.remaining != 0)
+                        }
                     }
                 }
-                if (state.error != null) ErrorText(state.error)
             }
-            when {
-                r != null -> Content(r, state.slotPeople ?: people, onMealPeople)
-                state.error != null -> ErrorText(state.error)
-                else -> Box(Modifier.fillMaxWidth().padding(top = 48.dp), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = Sunny.PeachDeep)
+        },
+    ) { padding ->
+        Column(
+            Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding)
+                .verticalScroll(scrollState).padding(bottom = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            AgendaHeader(recipe?.title ?: state.title)
+            Column(Modifier.padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                if (recipe == null) {
+                    if (state.error != null) {
+                        ErrorText(state.error)
+                    } else {
+                        Box(Modifier.fillMaxWidth().padding(vertical = 32.dp), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator(color = Sunny.PeachDeep)
+                        }
+                    }
+                } else {
+                    RecipeThumb(
+                        recipe.image, dishEmoji(recipe.dishType),
+                        Modifier.fillMaxWidth().height(if (recipe.image == null) 140.dp else 196.dp).clip(Shapes.Control),
+                        emojiSize = 54.sp,
+                    )
+                    RecipeOverview(recipe)
+                    if (canWrite) {
+                        ErrorText(state.error)
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) {
+                            AgendaAction("Modifier", onEdit, enabled = !state.busy)
+                            if (canArchive) AgendaAction("Archiver", { confirmArchive = true }, enabled = !state.busy)
+                        }
+                    }
+                    if (wishAction != null) {
+                        val wish = state.wish
+                        val hint = when {
+                            wish?.requested == true -> "Les personnes qui créent les menus ont été informées."
+                            wish != null -> {
+                                val suffix = if (wish.remaining > 1) "s" else ""
+                                "${wish.remaining} demande$suffix restante$suffix cette semaine · maximum ${wish.weeklyLimit}."
+                            }
+                            else -> "Partagez votre envie avec les personnes qui créent les menus."
+                        }
+                        AgendaCard {
+                            Text(hint, color = Sunny.InkTitle, fontSize = 13.sp, lineHeight = 18.sp)
+                        }
+                    }
+                    RecipeInstructions(recipe, state.slotPeople ?: people, onMealPeople)
                 }
             }
         }
     }
 }
 
-
 @Composable
-private fun Content(r: RecipeDetail, defaultPeople: Int, onMealPeople: ((Int) -> Unit)?) {
-    // From a planned meal (member): the meal's number of people, saved at each change.
-    // Otherwise: starts from the user's preference, for this view only.
-    var people by remember(r.id) { mutableIntStateOf(defaultPeople) }
-    val change = { n: Int -> people = n; onMealPeople?.invoke(n); Unit }
-    Row(Modifier.padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-        dishTypeOf(r.dishType)?.let { DishTag(it.label, it.colors) }
-    }
-    val times = listOfNotNull(r.prepMinutes?.let { "Préparation" to it }, r.cookMinutes?.let { "Cuisson" to it },
-        r.totalMinutes?.let { "Total" to it })
-    if (times.isNotEmpty()) {
-        Row(Modifier.padding(top = 18.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            times.forEach { (label, min) ->
-                Column(
-                    Modifier.weight(1f).background(Sunny.Card, Shapes.Control).padding(vertical = 12.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    Text("$min min", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Sunny.Ink)
-                    Text(label, fontSize = 11.sp, color = Sunny.InkSoft)
-                }
-            }
-        }
-    }
-    if (r.ingredients.isNotEmpty()) {
-        Row(Modifier.fillMaxWidth().padding(top = 28.dp, bottom = 12.dp, start = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text("Ingrédients", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Sunny.Ink)
-                Text((if (people > 1) "pour $people personnes" else "pour 1 personne") +
-                    (if (onMealPeople != null) " · pour ce repas" else ""), fontSize = 13.sp, color = Sunny.InkTitle)
-            }
-            PeopleStep("−", "Une personne de moins", people > 1) { change(people - 1) }
-            Text("$people", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Sunny.Ink,
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.width(36.dp))
-            PeopleStep("+", "Une personne de plus", people < 20) { change(people + 1) }
-        }
-        Column(Modifier.fillMaxWidth().background(Sunny.Card, Shapes.Card).padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            r.ingredients.forEach { Text("•  ${it.text(people)}", fontSize = 15.sp, color = Sunny.Ink, lineHeight = 20.sp) }
-        }
-    }
-    if (r.steps.isNotEmpty()) {
-        Section("Préparation", null)
-        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            r.steps.forEachIndexed { i, step ->
-                Row(Modifier.fillMaxWidth().background(Sunny.Card, Shapes.Card).padding(16.dp)) {
-                    Box(Modifier.size(28.dp).background(Sunny.Peach, CircleShape), contentAlignment = Alignment.Center) {
-                        Text("${i + 1}", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                    }
-                    Text(step, fontSize = 15.sp, color = Sunny.Ink, lineHeight = 21.sp, modifier = Modifier.padding(start = 14.dp).weight(1f))
-                }
-            }
-        }
-    }
-    r.notes?.let {
-        Section("Notes", null)
-        Text(it, fontSize = 15.sp, color = Sunny.Ink, lineHeight = 21.sp,
-            modifier = Modifier.fillMaxWidth().background(Sunny.ButterLight, Shapes.Card).padding(16.dp))
-    }
-}
-
-@Composable
-private fun SmallAction(text: String, icon: ImageVector, color: Color, modifier: Modifier, enabled: Boolean, onClick: () -> Unit) {
-    Row(
-        modifier.height(46.dp).clip(Shapes.Control).background(Sunny.Card).clickable(enabled = enabled, onClick = onClick),
-        horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically,
+private fun RecipeFavorite(favorite: Boolean, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(12.dp)
+    IconToggleButton(
+        checked = favorite,
+        onCheckedChange = { onClick() },
+        modifier = Modifier.size(48.dp).clip(shape).background(if (favorite) Sunny.ButterLight else Sunny.Card)
+            .border(1.dp, Sunny.Track, shape),
     ) {
-        Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(18.dp))
-        Text(text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = color, modifier = Modifier.padding(start = 6.dp))
+        Icon(
+            if (favorite) Icons.Filled.Favorite else Icons.Filled.FavoriteBorder,
+            contentDescription = if (favorite) "Retirer de mes favoris" else "Ajouter à mes favoris",
+            tint = if (favorite) Sunny.Error else Sunny.Ink,
+        )
+    }
+}
+
+@Composable
+private fun RecipeOverview(recipe: RecipeDetail) {
+    val dishType = dishTypeOf(recipe.dishType)
+    val times = listOfNotNull(
+        recipe.prepMinutes?.let { "Préparation" to it },
+        recipe.cookMinutes?.let { "Cuisson" to it },
+        recipe.totalMinutes?.let { "Total" to it },
+    )
+    if (dishType != null || times.isNotEmpty()) AgendaCard {
+        dishType?.let { DishTag(it.label, it.colors) }
+        if (times.isNotEmpty()) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                times.forEach { (label, minutes) ->
+                    Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("$minutes min", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Sunny.Ink,
+                            textAlign = TextAlign.Center)
+                        Text(label, fontSize = 12.sp, color = Sunny.InkTitle, textAlign = TextAlign.Center)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RecipeInstructions(recipe: RecipeDetail, defaultPeople: Int, onMealPeople: ((Int) -> Unit)?) {
+    var people by rememberSaveable(recipe.id) { mutableIntStateOf(defaultPeople) }
+    fun setPortions(value: Int) {
+        people = value
+        onMealPeople?.invoke(value)
+    }
+
+    if (recipe.ingredients.isNotEmpty()) AgendaCard {
+        AgendaSectionTitle("Ingrédients")
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            val portions = if (people > 1) "Pour $people personnes" else "Pour 1 personne"
+            Text(
+                portions + if (onMealPeople != null) " · pour ce repas" else "",
+                Modifier.weight(1f), fontSize = 13.sp, lineHeight = 17.sp, color = Sunny.InkTitle,
+            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                PeopleStep("−", "Une personne de moins", people > 1) { setPortions(people - 1) }
+                Text("$people", Modifier.width(30.dp), fontSize = 16.sp, color = Sunny.Ink,
+                    fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+                PeopleStep("+", "Une personne de plus", people < 20) { setPortions(people + 1) }
+            }
+        }
+        HorizontalDivider(color = Sunny.Track)
+        recipe.ingredients.forEach {
+            Text("•  ${it.text(people)}", fontSize = 15.sp, color = Sunny.Ink, lineHeight = 20.sp)
+        }
+    }
+    if (recipe.steps.isNotEmpty()) AgendaCard {
+        AgendaSectionTitle("Préparation")
+        recipe.steps.forEachIndexed { index, step ->
+            if (index > 0) HorizontalDivider(color = Sunny.Track)
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Box(Modifier.size(26.dp).background(Sunny.ButterLight, CircleShape), contentAlignment = Alignment.Center) {
+                    Text("${index + 1}", color = Sunny.Ink, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                }
+                Text(step, Modifier.weight(1f).padding(top = 2.dp), fontSize = 15.sp, color = Sunny.Ink, lineHeight = 21.sp)
+            }
+        }
+    }
+    recipe.notes?.let { notes ->
+        AgendaCard {
+            AgendaSectionTitle("Notes")
+            Text(notes, fontSize = 15.sp, color = Sunny.Ink, lineHeight = 21.sp)
+        }
     }
 }
 
 @Composable
 private fun PeopleStep(sign: String, label: String, enabled: Boolean, onClick: () -> Unit) {
-    Box(
-        Modifier.size(40.dp).clip(Shapes.Control).background(Sunny.Card).clickable(enabled = enabled, onClickLabel = label, onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) { Text(sign, fontSize = 20.sp, fontWeight = FontWeight.SemiBold, color = if (enabled) Sunny.Ink else Sunny.InkSoft) }
-}
-
-@Composable
-private fun Section(title: String, hint: String?) {
-    Row(Modifier.fillMaxWidth().padding(top = 28.dp, bottom = 12.dp, start = 4.dp), verticalAlignment = Alignment.Bottom) {
-        Text(title, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Sunny.Ink, modifier = Modifier.weight(1f))
-        hint?.let { Text(it, fontSize = 13.sp, color = Sunny.InkTitle) }
+    IconButton(onClick, enabled = enabled, modifier = Modifier.size(48.dp).semantics { contentDescription = label }) {
+        Box(
+            Modifier.size(34.dp).background(if (enabled) Sunny.ButterLight else Sunny.Track, RoundedCornerShape(12.dp)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(sign, fontSize = 20.sp, fontWeight = FontWeight.SemiBold, color = if (enabled) Sunny.Ink else Sunny.InkTitle)
+        }
     }
 }

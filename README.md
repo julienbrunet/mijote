@@ -17,6 +17,8 @@ The project is under active development.
 
 Download an Android APK and the server binary for your Linux machine from [releases](https://github.com/julienbrunet/mijote/releases). The server needs PostgreSQL 13 or later; Android requires version 8.0 or later. Follow the [installation guide](https://julienbrunet.github.io/mijote/#install) to configure the database, server and HTTPS reverse proxy, then connect the app. Back up both PostgreSQL and the server's image directory.
 
+Open `/app/` on the same HTTPS instance to use the family planner from a browser. Sign in with an existing Mijote account. Administrators use `/admin/` for instance management.
+
 ## Repository
 
 - [`android/`](android/) — Kotlin and Jetpack Compose Android app.

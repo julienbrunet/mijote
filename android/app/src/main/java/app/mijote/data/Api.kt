@@ -4,6 +4,7 @@ import org.json.JSONObject
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
+import java.time.LocalDate
 
 /** An error answered by the server: HTTP status and the `error` code of its JSON body. */
 class ApiException(val status: Int, val code: String, message: String) : IOException(message)
@@ -130,7 +131,12 @@ class Api(private val baseUrl: String, private val http: Http = UrlConnectionHtt
     fun readNotification(access: String, id: String) { call("PUT", "/api/v1/notifications/$id/read", JSONObject(), bearer = access) }
     fun deleteNotification(access: String, id: String) { call("DELETE", "/api/v1/notifications/$id", bearer = access) }
 
-    fun menu(access: String): Menu = parseMenu(call("GET", "/api/v1/menu", bearer = access))
+    /** The usual upcoming menu, or the inclusive range requested by the calendar. */
+    fun menu(access: String, from: LocalDate? = null, to: LocalDate? = null): Menu {
+        val query = listOfNotNull(from?.let { "from=$it" }, to?.let { "to=$it" }).joinToString("&")
+        val path = if (query.isEmpty()) "/api/v1/menu" else "/api/v1/menu?$query"
+        return parseMenu(call("GET", path, bearer = access))
+    }
 
     /** Generates [meals] meals from [start] (FR-GEN); answers 409 not_enough_recipes on a too small base. */
     fun generateMenu(access: String, start: java.time.LocalDate, meals: Int, plan: MealPlan): List<MenuSlot> =

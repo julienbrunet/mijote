@@ -3,41 +3,52 @@ package app.mijote
 import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
-import java.time.LocalDate
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
 import androidx.activity.SystemBarStyle
+import androidx.activity.compose.BackHandler
+import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import app.mijote.ui.GenerateScreen
-import app.mijote.ui.HomeScreen
+import app.mijote.ui.AccountsScreen
+import app.mijote.ui.AgendaAction
 import app.mijote.ui.InviteScreen
+import app.mijote.ui.InvitationsScreen
+import app.mijote.ui.LocalImageLoader
 import app.mijote.ui.LoginScreen
 import app.mijote.ui.MijoteTheme
-import app.mijote.ui.PreferencesScreen
-import androidx.activity.compose.BackHandler
-import app.mijote.ui.ServerScreen
-import app.mijote.ui.UpdateDialog
-import app.mijote.ui.LocalImageLoader
-import app.mijote.ui.RecipeScreen
 import app.mijote.ui.NotificationsScreen
-import app.mijote.ui.ReviewScreen
-import app.mijote.ui.menuDays
-import app.mijote.ui.menuPeriod
-import app.mijote.ui.reviewDays
-import app.mijote.ui.periodLabel
-import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import app.mijote.ui.AccountsScreen
-import app.mijote.ui.InvitationsScreen
-import app.mijote.ui.PlanMealDialog
+import app.mijote.ui.PlannerActions
+import app.mijote.ui.PlannerScreen
+import app.mijote.ui.PreferencesScreen
 import app.mijote.ui.RecipeEditorScreen
+import app.mijote.ui.RecipeScreen
 import app.mijote.ui.RecipesTab
+import app.mijote.ui.ServerScreen
+import app.mijote.ui.Sunny
 import app.mijote.ui.Tab
+import app.mijote.ui.UpdateDialog
 
 class MainActivity : ComponentActivity() {
     private val vm: AppViewModel by viewModels()
@@ -74,9 +85,20 @@ class MainActivity : ComponentActivity() {
             val admin by vm.admin.collectAsStateWithLifecycle()
             val notifications by vm.notifications.collectAsStateWithLifecycle()
             val wishSettings by vm.wishSettings.collectAsStateWithLifecycle()
-            // The recipe (id, title) the "plan on a day" dialog is open for.
-            var filterSheet by remember { mutableStateOf(false) }
-            var planning by remember { mutableStateOf<Pair<String, String>?>(null) }
+            val week by vm.plannerWeek.collectAsStateWithLifecycle()
+            val placement by vm.placement.collectAsStateWithLifecycle()
+            val picker by vm.plannerRecipes.collectAsStateWithLifecycle()
+            val randomRecipes by vm.randomMealRecipes.collectAsStateWithLifecycle()
+            val copyDestination by vm.mealCopyDestination.collectAsStateWithLifecycle()
+            val plannerActor = when (val screen = state.screen) {
+                is Screen.Home -> screen.user.id
+                is Screen.Preferences -> screen.user.id
+                is Screen.Admin -> screen.user.id
+                else -> null
+            }
+            val plannerState = key(vm.serverUrl, plannerActor) { rememberSaveableStateHolder() }
+            val recipeListState = key(vm.serverUrl, plannerActor) { rememberLazyListState() }
+            var filterSheet by key(vm.serverUrl, plannerActor) { rememberSaveable { mutableStateOf(false) } }
             MijoteTheme { CompositionLocalProvider(LocalImageLoader provides { path -> vm.image(path) }) {
                 UpdateDialog(update, vm.currentVersion, onInstall = vm::installUpdate, onDismiss = vm::dismissUpdate)
                 when (val s = state.screen) {
@@ -86,15 +108,17 @@ class MainActivity : ComponentActivity() {
                         onLogin = vm::login, onChangeServer = vm::changeServer, onInvite = vm::showInvite)
                     is Screen.Invite -> InviteScreen(s.serverUrl, s.code, state.busy, state.error,
                         onSubmit = vm::redeemInvitation, onBack = vm::backFromInvite)
-                    is Screen.Preferences -> {
-                        BackHandler(onBack = vm::closePreferences)
+                    is Screen.Preferences -> plannerState.SaveableStateProvider("account-preferences") {
+                        val back = vm::closePreferences
+                        BackHandler(onBack = back)
                         PreferencesScreen(s.user, vm.serverUrl, vm.currentVersion, check.checking, check.message ?: state.error,
                             onPeople = vm::setPeople, onCheckUpdate = vm::checkForUpdate, onChangeServer = vm::leaveServer,
-                            onLogout = vm::logout, onBack = vm::closePreferences,
+                            onLogout = vm::logout, onBack = back,
                             onInvitations = { vm.openAdmin(AdminSection.INVITATIONS) },
                             onAccounts = { vm.openAdmin(AdminSection.ACCOUNTS) },
                             notificationCount = notifications.unreadCount, onNotifications = vm::openNotifications,
-                            wishSettings = wishSettings, onWishLimit = vm::setWishLimit, onReloadWishSettings = vm::loadWishSettings)
+                            wishSettings = wishSettings, onWishLimit = vm::setWishLimit,
+                            onReloadWishSettings = vm::loadWishSettings)
                     }
                     is Screen.Admin -> {
                         BackHandler(onBack = vm::closeAdmin)
@@ -109,91 +133,83 @@ class MainActivity : ComponentActivity() {
                                 onBack = vm::closeAdmin)
                         }
                     }
-                    is Screen.Home -> {
-                        val m = menu.menu
-                        val review = menu.review
-                        val open = { meal: app.mijote.ui.MealUi ->
-                            meal.recipeId?.let { vm.openRecipe(it, meal.title, slotId = meal.id, slotPeople = meal.people) }; Unit
-                        }
-                        val today = m?.today ?: LocalDate.now()
-                        planning?.let { (recipeId, heading) ->
-                            PlanMealDialog(heading, today, m?.slots.orEmpty(),
-                                onDismiss = { planning = null },
-                                onConfirm = { date, meal, replace ->
-                                    planning = null
-                                    vm.planMeal(date, meal, recipeId, null, replace)
-                                })
-                        }
+                    is Screen.Home -> key(vm.serverUrl, s.user.id) {
                         val edited = editor
-                        if (edited != null) BackHandler(onBack = vm::closeEditor)
-                        else if (recipe != null) BackHandler(onBack = vm::closeRecipe)
-                        else if (notifications.open) BackHandler(onBack = vm::closeNotifications)
-                        else if (review != null) BackHandler(onBack = vm::closeReview)
-                        else if (tab != Tab.MENUS) BackHandler { vm.selectTab(Tab.MENUS) }
                         val shown = recipe
-                        if (edited != null) {
-                            RecipeEditorScreen(edited, onChange = vm::updateDraft, onSave = vm::saveRecipe, onBack = vm::closeEditor)
-                        } else if (shown != null) {
-                            RecipeScreen(shown, s.user.people, onBack = vm::closeRecipe,
-                                canWrite = s.user.canWrite, canArchive = s.user.isAdmin,
-                                onPlan = { planning = shown.id to (shown.recipe?.title ?: shown.title) },
+                        val placing = placement
+                        val showPlanner = placing != null || tab != Tab.RECIPES || menu.proposal != null
+                        val selectRecipes = { vm.selectTab(Tab.RECIPES) }
+                        val backToAgenda = { vm.selectTab(Tab.MENUS) }
+                        when {
+                            edited != null -> BackHandler(onBack = vm::closeEditor)
+                            shown != null && placing == null -> BackHandler(onBack = vm::closeRecipe)
+                            notifications.open && placing == null -> BackHandler(onBack = vm::closeNotifications)
+                            !showPlanner -> BackHandler {
+                                if (filterSheet) filterSheet = false else backToAgenda()
+                            }
+                        }
+                        when {
+                            edited != null -> RecipeEditorScreen(edited, onChange = vm::updateDraft, onSave = vm::saveRecipe, onBack = vm::closeEditor)
+                            shown != null && placing == null -> RecipeScreen(shown, s.user.people, onBack = vm::closeRecipe,
+                                canWrite = s.user.canWrite && !shown.slotReadOnly, canArchive = s.user.isAdmin && !shown.slotReadOnly,
+                                onPlan = { vm.choosePlacement(shown.id, shown.recipe?.title ?: shown.title) },
                                 onEdit = { vm.editRecipe(new = false) }, onArchive = vm::archiveRecipe,
                                 onFavorite = { vm.toggleFavorite(shown.id) },
                                 onWish = if (s.user.isReadonly) vm::requestRecipe else null,
-                                onMealPeople = shown.slotId?.takeIf { s.user.canWrite }?.let { slot -> { n: Int -> vm.saveMealPeople(slot, n) } })
-                        } else if (notifications.open) {
-                            NotificationsScreen(notifications, onBack = vm::closeNotifications,
-                                onRefresh = { vm.loadNotifications() }, onMore = { vm.loadNotifications(more = true) },
-                                onOpen = vm::openNotification, onRead = vm::readNotification, onDelete = vm::deleteNotification)
-                        } else if (review != null && m != null) {
-                            ReviewScreen(
-                                period = periodLabel(review.from, review.to),
-                                days = reviewDays(m.copy(slots = menu.proposal?.slots.orEmpty()), review.from, review.to, s.user.people),
-                                working = menu.working, error = menu.error,
-                                onOpenMeal = open,
-                                onSwapMeal = { vm.swapMeal(it.id) },
-                                onRemoveMeal = { vm.removeMeal(it.id) },
-                                onAddMeal = vm::addMeal,
-                                onValidate = vm::validateReview,
-                                onMoveMeal = { source, target -> vm.moveMeal(source.id, target.id) },
-                                onTab = { selected -> if (menu.working == null) { vm.closeReview(); vm.selectTab(selected) } },
-                                onAddManualMeal = { date, meal, title -> vm.planMeal(date, meal, null, title, replace = false) },
-                                onRenameMeal = { meal, title -> vm.renameMeal(meal.id, title) },
-                                onMealPeople = { meal, n -> vm.setMealPeople(meal.id, n) },
-                            )
-                        } else {
-                            HomeScreen(
-                                s.user, onLogout = vm::logout,
-                                period = m?.let(::menuPeriod), days = m?.let { menuDays(it, s.user.people) }.orEmpty(),
-                                generatedCount = 0, onNewWeek = vm::loadMenu, onPreferences = vm::openPreferences,
-                                loading = menu.loading, menuLoaded = m != null,
-                                working = menu.working, error = menu.error,
-                                onOpenMeal = open,
-                                onSwapMeal = { vm.swapMeal(it.id) },
-                                onRemoveMeal = { vm.removeMeal(it.id) },
-                                onRenameMeal = { meal, title -> vm.renameMeal(meal.id, title) },
-                                onMoveMeal = { source, target -> vm.moveMeal(source.id, target.id) },
-                                canUndoMove = menu.undoMove != null, onUndoMove = vm::undoMealMove,
-                                tab = tab, onTab = vm::selectTab,
-                                onAddRecipe = { vm.editRecipe(new = true) },
-                                onFilterRecipes = { filterSheet = true }, filterCount = recipes.filters.count,
-                                refreshing = menu.refreshing, onRefresh = { vm.loadMenu(manual = true) },
-                                onNotifications = if (s.user.canWrite) vm::openNotifications else null, unreadNotifications = notifications.unreadCount, hasNotifications = notifications.items.isNotEmpty() || notifications.unreadCount > 0,
-                                recipes = {
-                                    RecipesTab(recipes, canWrite = s.user.canWrite,
+                                onMealPeople = shown.slotId?.takeIf { s.user.canWrite && !shown.slotReadOnly }
+                                    ?.let { slot -> { count: Int -> vm.saveMealPeople(slot, count) } })
+                            notifications.open && placing == null -> NotificationsScreen(notifications,
+                                onBack = vm::closeNotifications, onRefresh = { vm.loadNotifications() },
+                                onMore = { vm.loadNotifications(more = true) }, onOpen = vm::openNotification,
+                                onRead = vm::readNotification, onDelete = vm::deleteNotification)
+                            showPlanner -> plannerState.SaveableStateProvider("planner-timeline") {
+                                val displayedWeek = week
+                                PlannerScreen(
+                                    user = s.user, state = menu, week = displayedWeek, placement = placing, recipes = picker,
+                                    unreadNotifications = notifications.unreadCount,
+                                    randomRecipes = randomRecipes, copyDestination = copyDestination,
+                                    actions = PlannerActions(
+                                        onWeek = vm::showPlannerWeek, onRefresh = vm::refreshPlannerWeek,
+                                        onLoadBefore = { vm.loadPlannerBoundary(before = true, retry = it) },
+                                        onLoadAfter = { vm.loadPlannerBoundary(before = false, retry = it) },
+                                        onVisibleDay = vm::trackPlannerWeek,
+                                        onCancelPlacement = vm::cancelPlacement,
+                                        onPlan = { date, meal, replace -> vm.placeRecipe(date, meal, replace, displayedWeek.snapshot(date)) },
+                                        onSearchRecipes = vm::searchPlannerRecipes,
+                                        onLoadRandomRecipes = vm::loadRandomMealRecipes,
+                                        onReadCopyDestination = vm::loadMealCopyDestination,
+                                        onOpenRecipe = { slot, readOnly ->
+                                            slot.recipe?.let { vm.openRecipe(it.id, it.title, slotId = slot.id, slotPeople = slot.people,
+                                                slotReadOnly = readOnly) }
+                                        },
+                                        onGenerate = vm::generateMenu, onSetPeople = vm::setPeople,
+                                        onPublish = vm::validateReview, onDiscard = vm::closeReview, onRebase = vm::rebaseReview,
+                                        onMove = { source, date, meal -> vm.movePlannerMeal(source, date, meal, displayedWeek.snapshot(date)) },
+                                        onUndoMove = vm::undoMealMove, onSaveMeal = vm::savePlannerMeal,
+                                        onRecipes = selectRecipes, onAccount = vm::openPreferences,
+                                        onNotifications = vm::openNotifications,
+                                    ),
+                                )
+                            }
+                            else -> Column(Modifier.fillMaxSize().background(Sunny.Cream).safeDrawingPadding()) {
+                                Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)) {
+                                    AgendaAction("Retour", backToAgenda, icon = Icons.AutoMirrored.Filled.ArrowBack)
+                                }
+                                Box(Modifier.weight(1f).fillMaxWidth()) {
+                                    RecipesTab(recipes, canWrite = s.user.canWrite, listState = recipeListState,
                                         onQuery = { vm.searchRecipes(it, debounce = true) },
                                         onOpen = { vm.openRecipe(it.id, it.title) },
-                                        onPlan = { planning = it.id to it.title },
+                                        onPlan = { vm.choosePlacement(it.id, it.title) },
                                         onRefresh = { vm.refreshRecipes() },
-                                        onPreferences = vm::openPreferences,
-                                        onFilters = vm::setRecipeFilters,
-                                        sheetOpen = filterSheet, onSheet = { filterSheet = it },
-                                        working = menu.working != null)
-                                },
-                            ) {
-                                GenerateScreen(m?.info, m?.today ?: LocalDate.now(), s.user.people, menu.generating, menu.error,
-                                    onGenerate = vm::generateMenu, onPreferences = vm::openPreferences,
-                                    onPeople = vm::setPeople, slots = m?.slots.orEmpty())
+                                        onFilters = vm::setRecipeFilters, sheetOpen = filterSheet,
+                                        onSheet = { filterSheet = it }, working = menu.working != null)
+                                }
+                                Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp, androidx.compose.ui.Alignment.End)) {
+                                    val filters = if (recipes.filters.count > 0) "Filtres (${recipes.filters.count})" else "Filtres"
+                                    AgendaAction(filters, { filterSheet = true })
+                                    if (s.user.canWrite) AgendaAction("Ajouter une recette", { vm.editRecipe(new = true) }, primary = true)
+                                }
                             }
                         }
                     }

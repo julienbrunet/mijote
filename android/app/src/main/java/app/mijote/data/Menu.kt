@@ -22,6 +22,12 @@ data class MenuSlot(
     val manual get() = title != null
 }
 
+/** Latest use during the five dates ending on delivery day. A use exactly five days before is eligible. */
+internal fun recentRecipeDays(slots: List<MenuSlot>, day: LocalDate): Map<String, Int> =
+    slots.filter { it.date in day.minusDays(4)..day && it.recipe != null }
+        .groupBy { it.recipe!!.id }
+        .mapValues { (_, meals) -> (day.toEpochDay() - meals.maxOf { it.date.toEpochDay() }).toInt() }
+
 /** Meals planned by the family settings, Monday first: lunch_dinner, dinner or none. */
 data class GenerationInfo(val recipeCount: Int, val minRecipes: Int, val horizonDays: Int, val defaultMeals: List<String>) {
     val enoughRecipes get() = recipeCount >= minRecipes && recipeCount > 0
@@ -96,6 +102,9 @@ fun defaultMealCount(defaults: List<String>, start: LocalDate, days: Int): Int =
 
 /** Next Monday strictly after [d]. */
 fun nextMonday(d: LocalDate): LocalDate = d.plusDays(((DayOfWeek.MONDAY.value - d.dayOfWeek.value + 6) % 7 + 1).toLong())
+
+/** Monday of the week containing this date. */
+fun LocalDate.weekStart(): LocalDate = minusDays((dayOfWeek.value - 1).toLong())
 
 /**
  * What generating from [start] to [end] does to the meals already planned there (requirements.md §10):

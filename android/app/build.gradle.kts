@@ -5,6 +5,8 @@ plugins {
     id("app.cash.paparazzi")
 }
 
+val uxPreview = providers.gradleProperty("uxPreview").map { it == "true" }.orElse(false)
+
 android {
     namespace = "app.mijote"
     compileSdk = 35
@@ -12,6 +14,7 @@ android {
         applicationId = "app.mijote"
         minSdk = 26
         targetSdk = 35
+        manifestPlaceholders["appLabel"] = "Mijote"
         // Set by CI from the android-vX.Y.Z tag (see .github/workflows/android.yml).
         versionCode = (findProperty("versionCode") as String?)?.toInt() ?: 1
         versionName = findProperty("versionName") as String? ?: "0.0.0-dev"
@@ -28,6 +31,13 @@ android {
         }
     }
     buildTypes {
+        debug {
+            if (uxPreview.get()) {
+                applicationIdSuffix = ".uxpreview"
+                versionNameSuffix = "-ux"
+                manifestPlaceholders["appLabel"] = "Mijote aperçu"
+            }
+        }
         release {
             signingConfig = signingConfigs.findByName("release")
         }
