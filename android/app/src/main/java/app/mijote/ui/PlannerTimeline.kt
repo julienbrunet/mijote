@@ -94,8 +94,10 @@ private val agendaScrubDate = DateTimeFormatter.ofPattern("EEE d MMM yyyy", Loca
 private val agendaMeals = listOf("lunch", "dinner")
 private val agendaCardHeight = 76.dp
 private val agendaScrubberWidth = 52.dp
-private val agendaThumbHeight = 70.dp
+private val agendaGripHeight = 70.dp
+private val agendaThumbHeight = 44.dp
 private val agendaShape = RoundedCornerShape(17.dp)
+private val agendaTodayShape = RoundedCornerShape(20.dp)
 
 private data class TimelineCell(
     val moment: PlannerMoment,
@@ -279,7 +281,7 @@ internal fun PlannerTimeline(
         LazyColumn(
             state = listState,
             userScrollEnabled = gesture.source == null,
-            contentPadding = PaddingValues(start = 12.dp, top = 7.dp, end = agendaScrubberWidth + 3.dp, bottom = 18.dp),
+            contentPadding = PaddingValues(start = 8.dp, top = 7.dp, end = agendaScrubberWidth, bottom = 18.dp),
             verticalArrangement = Arrangement.spacedBy(18.dp),
             modifier = Modifier.fillMaxSize(),
         ) {
@@ -290,35 +292,46 @@ internal fun PlannerTimeline(
                     if (index == 0 && (loadingBefore || beforeError != null)) {
                         TimelineBoundary(loadingBefore, beforeError, boundaryEnabled) { onBoundary(true, true) }
                     }
-                    TimelineDayHeader(date, today)
-                    agendaMeals.forEach { meal ->
-                        val moment = PlannerMoment(date, meal)
-                        val slot = slots[moment]
-                        val readOnly = isReadOnly(date)
-                        val enabled = loaded && isEnabled(moment, slot)
-                        val moving = gesture.source
-                        val placeholder = moving?.moment == moment
-                        val accessibleMove = slot?.takeIf { loaded && canDrag(moment, it) }
-                        DisposableEffect(moment) {
-                            onDispose { gesture.cells.remove(moment) }
+                    val isToday = date == today
+                    val dayBackground = if (isToday) {
+                        Modifier.background(Sunny.ButterLight.copy(alpha = 0.72f), agendaTodayShape)
+                            .border(1.dp, Sunny.Butter, agendaTodayShape)
+                    } else Modifier
+                    Column(
+                        Modifier.fillMaxWidth().then(dayBackground)
+                            .padding(horizontal = 7.dp, vertical = if (isToday) 7.dp else 0.dp),
+                        verticalArrangement = Arrangement.spacedBy(7.dp),
+                    ) {
+                        TimelineDayHeader(date, today)
+                        agendaMeals.forEach { meal ->
+                            val moment = PlannerMoment(date, meal)
+                            val slot = slots[moment]
+                            val readOnly = isReadOnly(date)
+                            val enabled = loaded && isEnabled(moment, slot)
+                            val moving = gesture.source
+                            val placeholder = moving?.moment == moment
+                            val accessibleMove = slot?.takeIf { loaded && canDrag(moment, it) }
+                            DisposableEffect(moment) {
+                                onDispose { gesture.cells.remove(moment) }
+                            }
+                            TimelineMealCard(
+                                moment = moment, slot = slot,
+                                active = selected == moment, readOnly = readOnly, loaded = loaded,
+                                copied = moment in copyChanges, hover = gesture.target == moment,
+                                enabled = enabled && moving == null,
+                                onClick = { onSelect(moment, slot) },
+                                onKeyboardMove = accessibleMove?.let { { onKeyboardMove(it) } },
+                                modifier = Modifier.fillMaxWidth().onGloballyPositioned { coords ->
+                                    if (loaded) {
+                                        val origin = coords.localToRoot(Offset.Zero)
+                                        val original = Rect(
+                                            origin.x, origin.y, origin.x + coords.size.width, origin.y + coords.size.height,
+                                        )
+                                        gesture.cells[moment] = TimelineCell(moment, slot, coords.boundsInRoot(), original)
+                                    } else gesture.cells.remove(moment)
+                                }.alpha(if (placeholder) 0.35f else 1f),
+                            )
                         }
-                        TimelineMealCard(
-                            moment = moment, slot = slot,
-                            active = selected == moment, readOnly = readOnly, loaded = loaded,
-                            copied = moment in copyChanges, hover = gesture.target == moment,
-                            enabled = enabled && moving == null,
-                            onClick = { onSelect(moment, slot) },
-                            onKeyboardMove = accessibleMove?.let { { onKeyboardMove(it) } },
-                            modifier = Modifier.fillMaxWidth().onGloballyPositioned { coords ->
-                                if (loaded) {
-                                    val origin = coords.localToRoot(Offset.Zero)
-                                    val original = Rect(
-                                        origin.x, origin.y, origin.x + coords.size.width, origin.y + coords.size.height,
-                                    )
-                                    gesture.cells[moment] = TimelineCell(moment, slot, coords.boundsInRoot(), original)
-                                } else gesture.cells.remove(moment)
-                            }.alpha(if (placeholder) 0.35f else 1f),
-                        )
                     }
                     if (index == dates.lastIndex && (loadingAfter || afterError != null)) {
                         TimelineBoundary(loadingAfter, afterError, boundaryEnabled) { onBoundary(false, true) }
@@ -363,6 +376,7 @@ internal fun PlannerTimeline(
 private fun TimelineDayHeader(date: LocalDate, today: LocalDate) {
     val formatted = agendaDate.format(date).replaceFirstChar { it.uppercase() }
     val title = if (date.year == today.year) formatted else "$formatted ${date.year}"
+    val isToday = date == today
     Row(
         Modifier.fillMaxWidth().padding(horizontal = 4.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -370,11 +384,12 @@ private fun TimelineDayHeader(date: LocalDate, today: LocalDate) {
     ) {
         Text(
             title, Modifier.weight(1f).semantics { heading() },
-            color = Sunny.Ink, fontSize = 17.sp, lineHeight = 21.sp, fontWeight = FontWeight.Bold,
+            color = Sunny.Ink, fontSize = if (isToday) 18.sp else 17.sp,
+            lineHeight = if (isToday) 22.sp else 21.sp, fontWeight = FontWeight.Bold,
         )
-        if (date == today) Text(
-            "Aujourd’hui", Modifier.background(Sunny.Butter, CircleShape).padding(horizontal = 8.dp, vertical = 4.dp),
-            color = Sunny.Ink, fontSize = 11.sp, lineHeight = 14.sp, fontWeight = FontWeight.SemiBold,
+        if (isToday) Text(
+            "Aujourd’hui", Modifier.background(Sunny.Butter, CircleShape).padding(horizontal = 9.dp, vertical = 4.dp),
+            color = Sunny.Ink, fontSize = 12.sp, lineHeight = 15.sp, fontWeight = FontWeight.Bold,
         )
     }
 }
@@ -543,11 +558,12 @@ private fun TimelineScrubber(
             awaitEachGesture {
                 val down = awaitFirstDown()
                 down.consume()
-                val thumbSize = agendaThumbHeight.toPx().coerceAtMost(size.height.toFloat())
-                val travel = (size.height - thumbSize).coerceAtLeast(1f)
+                val gripSize = agendaGripHeight.toPx().coerceAtMost(size.height.toFloat())
+                val thumbInset = (gripSize - agendaThumbHeight.toPx().coerceAtMost(gripSize)) / 2f
+                val travel = (size.height - gripSize).coerceAtLeast(1f)
                 val currentTop = actualFraction * travel
-                val onThumb = down.position.y in currentTop..currentTop + thumbSize
-                val grip = if (onThumb) down.position.y - currentTop else thumbSize / 2f
+                val onThumb = down.position.y in currentTop..currentTop + gripSize
+                val grip = if (onThumb) down.position.y - currentTop else gripSize / 2f
                 var lastSeek = -1
 
                 fun seekByFinger(y: Float, scroll: Boolean) {
@@ -560,7 +576,7 @@ private fun TimelineScrubber(
                         listState.requestScrollToItem(index)
                         lastSeek = index
                     }
-                    currentPreview(window[index], (fraction * travel).roundToInt())
+                    currentPreview(window[index], (fraction * travel + thumbInset).roundToInt())
                 }
 
                 dragging = true
@@ -577,23 +593,28 @@ private fun TimelineScrubber(
             }
         },
     ) {
-        val thumb = agendaThumbHeight.coerceAtMost(maxHeight)
-        val travel = (maxHeight - thumb).coerceAtLeast(0.dp)
+        // Keep the full-width touch band and its tall thumb grip while drawing a thinner rail.
+        val gripHeight = agendaGripHeight.coerceAtMost(maxHeight)
+        val thumbHeight = agendaThumbHeight.coerceAtMost(gripHeight)
+        val travel = (maxHeight - gripHeight).coerceAtLeast(0.dp)
         Box(
-            Modifier.align(Alignment.CenterEnd).padding(end = 21.dp, top = 10.dp, bottom = 10.dp)
-                .width(5.dp).fillMaxHeight().background(Sunny.Track, CircleShape),
+            Modifier.align(Alignment.Center).padding(vertical = (gripHeight - thumbHeight) / 2)
+                .width(3.dp).fillMaxHeight().background(Sunny.Slate.copy(alpha = 0.25f), CircleShape),
         )
         Box(
-            Modifier.align(Alignment.TopEnd).padding(end = 7.dp).offset(y = travel * actualFraction)
-                .size(width = 34.dp, height = thumb)
-                .shadow(if (dragging) 7.dp else 2.dp, RoundedCornerShape(14.dp))
-                .background(if (ready) Sunny.Butter else Sunny.Track, RoundedCornerShape(14.dp))
-                .border(1.dp, if (dragging) Sunny.Ink else Sunny.Track, RoundedCornerShape(14.dp)),
+            Modifier.align(Alignment.TopCenter).offset(y = travel * actualFraction)
+                .height(gripHeight).fillMaxWidth(),
             contentAlignment = Alignment.Center,
         ) {
-            Column(verticalArrangement = Arrangement.spacedBy(3.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                repeat(3) { Box(Modifier.width(13.dp).height(2.dp).background(Sunny.Ink, CircleShape)) }
+            val thumbColor = when {
+                dragging -> Sunny.Ink
+                ready -> Sunny.InkTitle
+                else -> Sunny.Slate.copy(alpha = 0.38f)
             }
+            Box(
+                Modifier.size(width = if (dragging) 12.dp else 9.dp, height = thumbHeight)
+                    .background(thumbColor, CircleShape),
+            )
         }
     }
 }

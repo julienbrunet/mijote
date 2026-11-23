@@ -279,7 +279,10 @@ private fun RecipeCard(r: RecipeSummary, canWrite: Boolean, working: Boolean, on
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        RecipeThumb(r.image, dishEmoji(r.dishType), Modifier.size(42.dp).clip(recipeControlShape), emojiSize = 24.sp)
+        RecipeThumb(
+            r.image, dishEmoji(r.dishType),
+            Modifier.size(64.dp).clip(recipeControlShape), emojiSize = 32.sp,
+        )
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(r.title, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Sunny.Ink, maxLines = 3,
