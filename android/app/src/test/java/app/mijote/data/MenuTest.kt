@@ -47,6 +47,11 @@ class MenuTest {
     }
 
     @Test
+    fun weekStartCanBeInThePreviousYear() {
+        assertEquals(LocalDate.of(2025, 12, 29), LocalDate.of(2026, 1, 1).weekStart())
+    }
+
+    @Test
     fun lunchOnlyPlanHasOneMealPerDay() {
         val d = LocalDate.of(2026, 11, 2)
         assertEquals(listOf("lunch"), mealsOn(MealPlan.LUNCH, emptyList(), d))

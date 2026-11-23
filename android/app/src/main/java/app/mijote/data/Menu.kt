@@ -103,6 +103,9 @@ fun defaultMealCount(defaults: List<String>, start: LocalDate, days: Int): Int =
 /** Next Monday strictly after [d]. */
 fun nextMonday(d: LocalDate): LocalDate = d.plusDays(((DayOfWeek.MONDAY.value - d.dayOfWeek.value + 6) % 7 + 1).toLong())
 
+/** Monday of the week containing this date. */
+fun LocalDate.weekStart(): LocalDate = minusDays((dayOfWeek.value - 1).toLong())
+
 /**
  * What generating from [start] to [end] does to the meals already planned there (requirements.md §10):
  * (replaced, kept). Locked meals and manual meals are kept; the others are replaced or removed.
