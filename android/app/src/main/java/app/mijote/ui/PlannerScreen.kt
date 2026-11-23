@@ -33,10 +33,13 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import app.mijote.MenuState
 import app.mijote.PlacementRecipe
 import app.mijote.PlannerWeekState
@@ -551,8 +554,43 @@ fun PlannerScreen(
         if (!isHome) Spacer(Modifier.windowInsetsBottomHeight(WindowInsets.navigationBars))
     }
 
-    if (showSheet) {
-        val saving by rememberUpdatedState(busy || draft?.requestId != null)
+    if (showSheet && draft != null && selected != null && !selecting) {
+        val original = draft.original
+        val canEditMeal = !readOnly(selected.date)
+        val saving = busy || draft.requestId != null
+        PlannerMealDialog(saving, ::dismissSheet) {
+            PlannerMealEditor(
+                moment = selected, original = original, recipe = original?.recipe?.asSummary(),
+                stagedRecipe = draft.chosenRecipe?.takeIf { it.id != original?.recipe?.id }?.asSummary(),
+                stagedManual = draft.manualTitle?.takeIf { it != original?.title },
+                people = draft.people, manualInput = draft.manualInput, removed = draft.removed,
+                canPlanRecipe = canEditMeal && (inDraft || selected.date <= today.plusDays(20)),
+                canEdit = canEditMeal, busy = saving, dirty = draft.dirty,
+                error = draft.error, scrollState = mealEditorScroll,
+                onPeople = { mealDraft = draft.copy(people = it, error = null) },
+                onManualInput = { mealDraft = draft.copy(manualInput = it, error = null) },
+                onValidateManual = {
+                    val title = draft.manualInput.trim()
+                    if (title.codePointCount(0, title.length) in 1..100) {
+                        mealDraft = draft.copy(
+                            manualTitle = title, chosenRecipe = null, removed = false, error = null,
+                        )
+                    }
+                },
+                onPick = ::openPicker,
+                onOpen = original?.takeIf { it.recipe != null }?.let { slot ->
+                    { actions.onOpenRecipe(slot.copy(people = draft.people), true) }
+                },
+                onRemove = {
+                    mealDraft = draft.copy(
+                        removed = true, manualInput = "", manualTitle = null, chosenRecipe = null, error = null,
+                    )
+                },
+                onSave = { saveMeal(selected, draft) },
+            )
+        }
+    } else if (showSheet) {
+        val saving by rememberUpdatedState(busy)
         val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true,
             confirmValueChange = { it != SheetValue.Hidden || !saving })
         ModalBottomSheet(
@@ -561,40 +599,6 @@ fun PlannerScreen(
             containerColor = Sunny.Cream,
             contentColor = Sunny.Ink,
         ) {
-            if (draft != null && selected != null && !selecting) {
-                val recipe = draft.recipe?.let { RecipeSummary(it.id, it.title, it.dishType, it.minutes, it.image, emptyList()) }
-                val canEditMeal = !readOnly(selected.date) && !state.proposalConflict
-                Box(Modifier.fillMaxWidth().fillMaxHeight(0.88f)) {
-                    PlannerMealEditor(
-                        moment = selected, original = draft.original, recipe = recipe, people = draft.people,
-                        manualInput = draft.manualInput, manual = draft.title != null, removed = draft.removed,
-                        canPlanRecipe = canEditMeal && (inDraft || selected.date <= today.plusDays(20)),
-                        canEdit = canEditMeal, busy = busy || draft.requestId != null, dirty = draft.dirty,
-                        error = draft.error, scrollState = mealEditorScroll,
-                        onPeople = { mealDraft = draft.copy(people = it, error = null) },
-                        onManualInput = { mealDraft = draft.copy(manualInput = it, error = null) },
-                        onValidateManual = {
-                            val text = draft.manualInput.trim()
-                            if (text.codePointCount(0, text.length) in 1..100) {
-                                mealDraft = draft.copy(
-                                    manualTitle = text, chosenRecipe = null, removed = false, error = null,
-                                )
-                            }
-                        },
-                        onPick = ::openPicker,
-                        onOpen = recipe?.let {
-                            { draft.replacement(selected)?.let { slot -> actions.onOpenRecipe(slot, true) }; Unit }
-                        },
-                        onRemove = {
-                            mealDraft = draft.copy(
-                                removed = true, manualInput = "", manualTitle = null, chosenRecipe = null, error = null,
-                            )
-                        },
-                        onSave = { saveMeal(selected, draft) },
-                    )
-                }
-                return@ModalBottomSheet
-            }
             Column(
                 Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 12.dp).padding(bottom = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -641,6 +645,37 @@ fun PlannerScreen(
                     }
                 }
                 if (state.error != null && !state.proposalConflict) PlannerNotice(state.error, error = true)
+            }
+        }
+    }
+}
+
+private fun MenuRecipe.asSummary() = RecipeSummary(id, title, dishType, minutes, image, emptyList())
+
+@Composable
+private fun PlannerMealDialog(saving: Boolean, onDismiss: () -> Unit, content: @Composable () -> Unit) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(
+            dismissOnBackPress = !saving,
+            dismissOnClickOutside = false,
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false,
+        ),
+    ) {
+        Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
+            Box(
+                Modifier.matchParentSize()
+                    .clickable(enabled = !saving, interactionSource = null, indication = null, onClick = onDismiss)
+                    .clearAndSetSemantics { },
+            )
+            Surface(
+                modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().fillMaxHeight(0.90f)
+                    .semantics { paneTitle = "Fiche repas" },
+                color = Sunny.Cream, contentColor = Sunny.Ink,
+                shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+            ) {
+                content()
             }
         }
     }

@@ -32,10 +32,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
@@ -288,29 +287,26 @@ internal fun PlannerTimeline(
         LazyColumn(
             state = listState,
             userScrollEnabled = gesture.source == null,
-            contentPadding = PaddingValues(start = 10.dp, top = 7.dp, end = 10.dp, bottom = bottomPadding),
-            verticalArrangement = Arrangement.spacedBy(if (largeCards) 22.dp else 18.dp),
+            contentPadding = PaddingValues(start = 12.dp, top = 8.dp, end = 12.dp, bottom = bottomPadding),
+            verticalArrangement = Arrangement.spacedBy(if (largeCards) 20.dp else 16.dp),
             modifier = Modifier.fillMaxSize(),
         ) {
             items(dates.size, key = { dates[it].toEpochDay() }) { index ->
                 val date = dates[index]
                 val loaded = isDateLoaded(date)
-                Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (index == 0 && (loadingBefore || beforeError != null)) {
                         TimelineBoundary(loadingBefore, beforeError, boundaryEnabled) { onBoundary(true, true) }
                     }
-                    if (largeCards && index > 0) {
-                        HorizontalDivider(Modifier.padding(horizontal = 7.dp), color = Sunny.Track)
-                    }
                     val isToday = date == today
                     val dayBackground = if (isToday) {
-                        Modifier.background(Sunny.ButterLight.copy(alpha = 0.72f), agendaTodayShape)
-                            .border(1.dp, Sunny.Butter, agendaTodayShape)
+                        Modifier.background(Sunny.Card, agendaTodayShape)
+                            .border(1.dp, Sunny.Track, agendaTodayShape)
                     } else Modifier
                     Column(
                         Modifier.fillMaxWidth().then(dayBackground)
-                            .padding(horizontal = 7.dp, vertical = if (isToday) 7.dp else 0.dp),
-                        verticalArrangement = Arrangement.spacedBy(if (largeCards) 11.dp else 7.dp),
+                            .padding(horizontal = 8.dp, vertical = if (isToday) 8.dp else 0.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         TimelineDayHeader(date, today)
                         val mealCard: @Composable (String, Modifier) -> Unit = { meal, cardModifier ->
@@ -353,7 +349,7 @@ internal fun PlannerTimeline(
                         if (largeCards) {
                             Row(
                                 Modifier.fillMaxWidth().height(IntrinsicSize.Min),
-                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
                             ) {
                                 agendaMeals.forEach { meal -> mealCard(meal, Modifier.weight(1f).fillMaxHeight()) }
                             }
@@ -392,7 +388,7 @@ private fun TimelineDayHeader(date: LocalDate, today: LocalDate) {
     val title = if (date.year == today.year) formatted else "$formatted ${date.year}"
     val isToday = date == today
     Row(
-        Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+        Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -555,10 +551,13 @@ private fun TimelineMealCard(
                     .onGloballyPositioned { onOptionsBounds(it.boundsInRoot()) },
             ) {
                 Box(
-                    Modifier.size(33.dp).background(if (large) Sunny.Card else background, CircleShape),
+                    Modifier.size(30.dp).background(if (large) Sunny.Card else background, CircleShape),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Icon(Icons.Filled.MoreVert, "Options du repas · $title", tint = Sunny.Ink)
+                    Icon(
+                        Icons.Filled.Edit, "Modifier le repas · $title",
+                        tint = Sunny.Ink, modifier = Modifier.size(17.dp),
+                    )
                 }
             }
         }
