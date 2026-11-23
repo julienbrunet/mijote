@@ -115,7 +115,6 @@ internal fun PlannerRandomRecipesScreen(
     onRetry: () -> Unit, onChoose: (RecipeSummary) -> Unit, onBack: () -> Unit,
 ) {
     var selected by rememberSaveable(moment.date.toEpochDay(), moment.meal) { mutableStateOf<List<String>>(emptyList()) }
-    var seen by rememberSaveable(moment.date.toEpochDay(), moment.meal) { mutableStateOf<List<String>>(emptyList()) }
     val ideas = remember(state.recipes) {
         val tags = state.recipes.flatMap(RecipeSummary::tags).distinctBy { it.lowercase() }
             .groupBy { it.lowercase() }.values.map { it.first() }
@@ -138,17 +137,11 @@ internal fun PlannerRandomRecipesScreen(
                 }
         }
     }
-    val cards = remember(state.recipes, selected, seen, ideas) {
-        val byId = state.recipes.associateBy(RecipeSummary::id)
+    val cards = remember(state.recipes, selected, ideas) {
         val filters = ideas.filter { it.id in selected }
-        seen.mapNotNull(byId::get) + state.recipes.filter { recipe ->
-            recipe.id !in seen && (filters.isEmpty() || filters.any { it.matches(recipe) })
-        }
+        state.recipes.filter { recipe -> filters.all { it.matches(recipe) } }
     }
-    val pager = rememberPagerState { cards.size }
-    val scope = rememberCoroutineScope()
-    val page = pager.currentPage.coerceIn(0, cards.lastIndex.coerceAtLeast(0))
-    val current = cards.getOrNull(page)
+    val filterScroll = rememberScrollState()
     BackHandler(onBack = onBack)
     Column(Modifier.fillMaxSize().background(Sunny.Cream).safeDrawingPadding()) {
         RecipeOptionsHeader("Recette au hasard", moment, onBack)
@@ -156,12 +149,19 @@ internal fun PlannerRandomRecipesScreen(
             state.loading -> LinearProgressIndicator(Modifier.fillMaxWidth().padding(horizontal = 12.dp))
             state.error != null -> RecipeOptionsStatus(state.error, onRetry)
             state.recipes.isEmpty() -> RecipeOptionsStatus("Aucune recette disponible pour ce créneau.", onRetry)
-            else -> {
+            else -> key(selected, cards) {
+                val pager = rememberPagerState { cards.size }
+                val scope = rememberCoroutineScope()
+                val page = pager.currentPage.coerceIn(0, cards.lastIndex.coerceAtLeast(0))
+                val current = cards.getOrNull(page)
                 if (current != null) HorizontalPager(
-                    state = pager, reverseLayout = true, key = { cards[it].id },
+                    state = pager,
                     modifier = Modifier.weight(1f).fillMaxWidth(),
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 5.dp), pageSpacing = 10.dp,
-                ) { index -> RandomRecipeCard(cards[index], state.recentDays[cards[index].id]) }
+                ) { index ->
+                    val recipe = cards[index]
+                    RandomRecipeCard(recipe, state.recentDays[recipe.id])
+                }
                 else Box(Modifier.weight(1f).fillMaxWidth()) {
                     RecipeOptionsStatus("Aucune recette ne correspond à ces envies.", { selected = emptyList() }, "Effacer les envies")
                 }
@@ -179,11 +179,10 @@ internal fun PlannerRandomRecipesScreen(
                     ) { Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, "Suggestion suivante") }
                 }
                 Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp)) {
-                    AgendaSectionTitle("Envies pour la suite")
-                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    AgendaSectionTitle("Filtrer les suggestions")
+                    Row(Modifier.horizontalScroll(filterScroll), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         ideas.forEach { idea ->
                             RecipeOptionChip(idea.label, idea.id in selected) {
-                                seen = cards.take(page + 1).map(RecipeSummary::id)
                                 selected = toggled(selected, idea.id)
                             }
                         }

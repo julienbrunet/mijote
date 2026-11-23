@@ -4,6 +4,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.lazy.LazyListLayoutInfo
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -17,6 +18,8 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Person
@@ -30,6 +33,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
@@ -239,16 +243,11 @@ fun PlannerScreen(
     var focusedHomeDate by remember { mutableStateOf<LocalDate?>(null) }
     var requestedHomeDate by remember(today) { mutableStateOf(false) }
     var homeMenuOpen by remember { mutableStateOf(false) }
-    val todayVisible by remember(list, today) {
-        derivedStateOf {
-            val layout = list.layoutInfo
-            layout.visibleItemsInfo.any {
-                it.key == today.toEpochDay() &&
-                    it.offset < layout.viewportEndOffset && it.offset + it.size > layout.viewportStartOffset
-            }
-        }
+    val bottomInset = WindowInsets.navigationBars.getBottom(LocalDensity.current)
+    val todayDirection by remember(list, today, bottomInset) {
+        derivedStateOf { list.layoutInfo.directionToToday(today.toEpochDay(), bottomInset) }
     }
-    val showTodayButton = isHome && focusedHomeDate == today && dates.isNotEmpty() && !todayVisible
+    val todayButtonDirection = todayDirection.takeIf { isHome && focusedHomeDate == today && todayIndex >= 0 }
     val targetWeek = copyTargetEpoch?.let(LocalDate::ofEpochDay) ?: maxOf(visibleDate.weekStart(), today.weekStart())
     val sourceWeek = copySourceEpoch?.let(LocalDate::ofEpochDay) ?: targetWeek.minusWeeks(1)
     val pastCopyDate = LocalDate.ofEpochDay(pastCopyEpoch).coerceIn(today.plusDays(1), today.plusDays(20))
@@ -445,7 +444,7 @@ fun PlannerScreen(
             draft != null && selected != null -> true
             else -> false
         }
-        val canBack = !showSheet && (selecting || inDraft || showTodayButton)
+        val canBack = !showSheet && (selecting || inDraft || todayButtonDirection != null)
         BackHandler(canBack || busy) {
             if (!busy) when {
                 placement != null -> cancelPlacement()
@@ -586,8 +585,10 @@ fun PlannerScreen(
                         }
                     }
                     if (isHome) {
-                        if (showTodayButton && !homeMenuOpen) {
+                        val direction = todayButtonDirection
+                        if (direction != null && !homeMenuOpen) {
                             PlannerTodayButton(
+                                direction = direction,
                                 onClick = ::goToToday,
                                 modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding()
                                     .padding(horizontal = 80.dp, vertical = 16.dp),
@@ -838,10 +839,28 @@ private fun PlannerMealOverlay(
     }
 }
 
+private enum class TodayDirection { Up, Down }
+
+private fun LazyListLayoutInfo.directionToToday(today: Long, bottomInset: Int): TodayDirection? {
+    val item = visibleItemsInfo.firstOrNull { it.key == today }
+    if (item == null) {
+        val firstDay = visibleItemsInfo.firstOrNull()?.key as? Long ?: return null
+        return if (today < firstDay) TodayDirection.Up else TodayDirection.Down
+    }
+    return when {
+        item.offset < viewportStartOffset -> TodayDirection.Up
+        item.offset + item.size > viewportEndOffset - bottomInset -> TodayDirection.Down
+        else -> null
+    }
+}
+
 @Composable
-private fun PlannerTodayButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
+private fun PlannerTodayButton(direction: TodayDirection, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val pointsUp = direction == TodayDirection.Up
+    val label = if (pointsUp) "Revenir à aujourd’hui, vers le haut" else "Revenir à aujourd’hui, vers le bas"
     Surface(
-        onClick = onClick, modifier = modifier.heightIn(min = 48.dp), shape = Shapes.Control,
+        onClick = onClick, modifier = modifier.heightIn(min = 48.dp).semantics { contentDescription = label },
+        shape = Shapes.Control,
         color = Sunny.Card, contentColor = Sunny.Ink, shadowElevation = 5.dp,
         border = androidx.compose.foundation.BorderStroke(1.dp, Sunny.Track),
     ) {
@@ -850,7 +869,7 @@ private fun PlannerTodayButton(onClick: () -> Unit, modifier: Modifier = Modifie
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            Icon(Icons.Filled.DateRange, null, Modifier.size(18.dp))
+            Icon(if (pointsUp) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown, null, Modifier.size(22.dp))
             Text("Aujourd’hui", fontSize = 13.sp, fontWeight = FontWeight.Bold)
         }
     }

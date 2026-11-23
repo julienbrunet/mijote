@@ -327,7 +327,7 @@ internal fun PlannerTimeline(
                     val isToday = date == today
                     val dayBackground = when {
                         !isToday -> Modifier
-                        largeCards -> Modifier.background(Sunny.Cream)
+                        largeCards -> Modifier.background(Sunny.PeachLight)
                         else -> Modifier.background(Sunny.Card, agendaTodayShape)
                             .border(1.dp, Sunny.Track, agendaTodayShape)
                     }
