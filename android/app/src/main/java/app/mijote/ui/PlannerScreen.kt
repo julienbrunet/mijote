@@ -29,6 +29,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
@@ -38,8 +40,6 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import app.mijote.MenuState
 import app.mijote.PlacementRecipe
 import app.mijote.PlannerWeekState
@@ -387,264 +387,261 @@ fun PlannerScreen(
                 }
             }
         }
-        return
-    }
+    } else {
+        val showSheet = when {
+            panel == PlannerPanel.Discard -> true
+            state.proposalConflict -> false
+            selecting -> selected != null
+            panel != PlannerPanel.None || activeCopy -> true
+            draft != null && selected != null -> true
+            else -> false
+        }
+        val canBack = !showSheet && (selecting || inDraft || showTodayButton)
+        BackHandler(canBack || busy) {
+            if (!busy) when {
+                placement != null -> cancelPlacement()
+                panel == PlannerPanel.Move -> closePanel()
+                inDraft -> panel = PlannerPanel.Discard
+                else -> goToToday()
+            }
+        }
 
-    val showSheet = when {
-        panel == PlannerPanel.Discard -> true
-        state.proposalConflict -> false
-        selecting -> selected != null
-        panel != PlannerPanel.None || activeCopy -> true
-        draft != null && selected != null -> true
-        else -> false
-    }
-    val canBack = !showSheet && (selecting || inDraft || showTodayButton)
-    BackHandler(canBack || busy) {
-        if (!busy) when {
-            placement != null -> cancelPlacement()
-            panel == PlannerPanel.Move -> closePanel()
-            inDraft -> panel = PlannerPanel.Discard
-            else -> goToToday()
+        val title = when {
+            placement != null -> "Planifier"
+            panel == PlannerPanel.Move -> "Déplacer un repas"
+            inDraft -> "Proposition"
+            else -> ""
         }
-    }
+        val subtitle = when {
+            inDraft -> "Brouillon privé · " + periodLabel(proposal!!.from, proposal.to)
+            else -> null
+        }
+        val generationStart = LocalDate.ofEpochDay(fromEpoch)
+        val generationCount = duration * if (plan == MealPlan.LUNCH_DINNER) 2 else 1
+        val headerAction: (() -> Unit)? = when {
+            placement != null -> ::cancelPlacement
+            panel == PlannerPanel.Move -> ::closePanel
+            inDraft -> { { panel = PlannerPanel.Discard } }
+            else -> null
+        }
+        val error = week.error ?: state.error
+        val mealBeingPlaced = placement?.title ?: source?.let { mealTitle(it) }
 
-    val title = when {
-        placement != null -> "Planifier"
-        panel == PlannerPanel.Move -> "Déplacer un repas"
-        inDraft -> "Proposition"
-        else -> ""
-    }
-    val subtitle = when {
-        inDraft -> "Brouillon privé · " + periodLabel(proposal!!.from, proposal.to)
-        else -> null
-    }
-    val generationStart = LocalDate.ofEpochDay(fromEpoch)
-    val generationCount = duration * if (plan == MealPlan.LUNCH_DINNER) 2 else 1
-    val headerAction: (() -> Unit)? = when {
-        placement != null -> ::cancelPlacement
-        panel == PlannerPanel.Move -> ::closePanel
-        inDraft -> { { panel = PlannerPanel.Discard } }
-        else -> null
-    }
-    val error = week.error ?: state.error
-    val mealBeingPlaced = placement?.title ?: source?.let { mealTitle(it) }
-
-    Column(Modifier.fillMaxSize().background(Sunny.Cream).statusBarsPadding().imePadding()) {
-        if (isHome) {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 6.dp)) {
-                BrandTitle(logoSize = 38.dp, textSize = 32)
-            }
-        } else {
-            headerAction?.let { back ->
-                Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)) {
-                    AgendaAction("Retour", back, enabled = !busy, icon = Icons.AutoMirrored.Filled.ArrowBack)
-                }
-            }
-            AgendaHeader(title, subtitle)
-        }
-        if (selecting && mealBeingPlaced != null) {
-            Column(Modifier.padding(horizontal = 12.dp, vertical = 4.dp)) {
-                PlannerNotice(if (placement != null) "$mealBeingPlaced · Choisissez un midi ou un soir"
-                    else "$mealBeingPlaced · Choisissez la nouvelle place")
-            }
-        }
-        if (state.proposalConflict) {
-            Column(Modifier.padding(horizontal = 12.dp, vertical = 4.dp)) {
-                PlannerNotice(error ?: "Le menu partagé a changé.", error = true)
-                AgendaAction("Recalculer", actions.onRebase, primary = true, enabled = !busy)
-            }
-        } else if (error != null && dates.isNotEmpty()) {
-            Column(Modifier.padding(horizontal = 12.dp, vertical = 4.dp)) {
-                PlannerNotice(if (week.error != null) "Dernier menu chargé · $error" else error, error = true)
-                if (week.error != null) AgendaAction("Actualiser", actions.onRefresh, enabled = !busy)
-            }
-        }
-        if (state.undoMove != null && !inDraft) {
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 12.dp).background(Sunny.ButterLight, plannerShape).padding(start = 12.dp),
-                horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text("Repas déplacé", color = Sunny.Ink, fontWeight = FontWeight.SemiBold)
-                AgendaAction("Annuler", actions.onUndoMove, enabled = !busy)
-            }
-        }
-        Box(Modifier.weight(1f).fillMaxWidth()) {
-            PullToRefreshBox(
-                isRefreshing = state.refreshing || (week.loading && dates.isNotEmpty()),
-                onRefresh = { if (!busy && !inDraft) actions.onRefresh() },
-                modifier = Modifier.fillMaxSize(),
-            ) {
-                if (dates.isNotEmpty()) {
-                    PlannerTimeline(
-                        modifier = Modifier.fillMaxSize(),
-                        dates = dates,
-                        today = today,
-                        slots = displayed,
-                        listState = list,
-                        selected = selected,
-                        copyChanges = copyChanges,
-                        isReadOnly = ::readOnly,
-                        isEnabled = { moment, slot ->
-                            !busy && when {
-                                placement != null -> canPlan(moment.date)
-                                panel == PlannerPanel.Move -> canMove(moment)
-                                activeCopy || state.proposalConflict -> false
-                                else -> slot != null || canPlan(moment.date)
-                            }
-                        },
-                        canDrag = { moment, _ -> !busy && !showSheet && !selecting && !activeCopy && editable(moment.date) },
-                        canDrop = { moment -> !busy && !activeCopy && canMove(moment) },
-                        onSelect = { moment, slot ->
-                            if (isHome && slot?.recipe != null) actions.onOpenRecipe(slot, true)
-                            else if (selecting) select(moment)
-                            else openMeal(moment, slot)
-                        },
-                        onKeyboardMove = ::startMove,
-                        onDrop = { slot, moment -> startMove(slot); select(moment) },
-                        onBoundary = { before, retry ->
-                            if (before) actions.onLoadBefore(retry) else actions.onLoadAfter(retry)
-                        },
-                        onVisibleDay = { date ->
-                            visibleEpoch = date.toEpochDay()
-                            actions.onVisibleDay(date)
-                        },
-                        loadingBefore = week.loadingBefore,
-                        loadingAfter = week.loadingAfter,
-                        beforeError = week.beforeError,
-                        afterError = week.afterError,
-                        isDateLoaded = ::loadedDay,
-                        boundaryEnabled = loaded.isNotEmpty() && !busy && !state.loading && !week.loading,
-                        largeCards = isHome,
-                        hasMealOptions = { moment, _ -> !activeCopy && editable(moment.date) },
-                        onMealOptions = ::openMeal,
-                        bottomPadding = if (isHome) 80.dp + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() else 18.dp,
-                    )
+        val showMealEditor = showSheet && draft != null && selected != null && !selecting
+        Box(Modifier.fillMaxSize()) {
+            val agendaSemantics = if (showMealEditor) Modifier.clearAndSetSemantics { } else Modifier
+            Column(Modifier.fillMaxSize().then(agendaSemantics).background(Sunny.Cream).statusBarsPadding().imePadding()) {
+                if (isHome) {
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 6.dp)) {
+                        BrandTitle(logoSize = 38.dp, textSize = 32)
+                    }
                 } else {
-                    Column(Modifier.padding(12.dp)) {
-                        if (state.loading || week.loading) PlannerLoading()
-                        else PlannerCard("Repas indisponibles") {
-                            PlannerSmall(error ?: "Impossible de charger le menu.")
-                            AgendaAction("Réessayer", actions.onRefresh, enabled = !busy)
+                    headerAction?.let { back ->
+                        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)) {
+                            AgendaAction("Retour", back, enabled = !busy, icon = Icons.AutoMirrored.Filled.ArrowBack)
                         }
                     }
+                    AgendaHeader(title, subtitle)
                 }
-            }
-            if (isHome) {
-                if (showTodayButton) {
-                    PlannerTodayButton(
-                        onClick = ::goToToday,
-                        modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding()
-                            .padding(horizontal = 80.dp, vertical = 16.dp),
-                    )
+                if (selecting && mealBeingPlaced != null) {
+                    Column(Modifier.padding(horizontal = 12.dp, vertical = 4.dp)) {
+                        PlannerNotice(if (placement != null) "$mealBeingPlaced · Choisissez un midi ou un soir"
+                            else "$mealBeingPlaced · Choisissez la nouvelle place")
+                    }
                 }
-                PlannerHomeMenu(
-                    expanded = homeMenuOpen, onExpanded = { homeMenuOpen = it },
-                    canWrite = user.canWrite, canPlan = !busy && dates.isNotEmpty(),
-                    unreadNotifications = unreadNotifications,
-                    onRecipes = actions.onRecipes, onAccount = actions.onAccount, onNotifications = actions.onNotifications,
-                    onGenerate = { select(null); panel = PlannerPanel.Generate }, onCopy = ::startCopy,
-                    modifier = Modifier.align(Alignment.BottomEnd).navigationBarsPadding()
-                        .padding(end = 16.dp, bottom = 12.dp),
-                )
-            }
-        }
-        if (inDraft && !selecting && !state.proposalConflict) {
-            PlannerFooter(if (state.working == "confirm") "Publication…" else "Publier", actions.onPublish, enabled = !busy)
-        }
-        if (!isHome) Spacer(Modifier.windowInsetsBottomHeight(WindowInsets.navigationBars))
-    }
-
-    if (showSheet && draft != null && selected != null && !selecting) {
-        val original = draft.original
-        val canEditMeal = !readOnly(selected.date)
-        val saving = busy || draft.requestId != null
-        PlannerMealDialog(saving, ::dismissSheet) {
-            PlannerMealEditor(
-                moment = selected, original = original, recipe = original?.recipe?.asSummary(),
-                stagedRecipe = draft.chosenRecipe?.takeIf { it.id != original?.recipe?.id }?.asSummary(),
-                stagedManual = draft.manualTitle?.takeIf { it != original?.title },
-                people = draft.people, manualInput = draft.manualInput, removed = draft.removed,
-                canPlanRecipe = canEditMeal && (inDraft || selected.date <= today.plusDays(20)),
-                canEdit = canEditMeal, busy = saving, dirty = draft.dirty,
-                error = draft.error, scrollState = mealEditorScroll,
-                onPeople = { mealDraft = draft.copy(people = it, error = null) },
-                onManualInput = { mealDraft = draft.copy(manualInput = it, error = null) },
-                onValidateManual = {
-                    val title = draft.manualInput.trim()
-                    if (title.codePointCount(0, title.length) in 1..100) {
-                        mealDraft = draft.copy(
-                            manualTitle = title, chosenRecipe = null, removed = false, error = null,
+                if (state.proposalConflict) {
+                    Column(Modifier.padding(horizontal = 12.dp, vertical = 4.dp)) {
+                        PlannerNotice(error ?: "Le menu partagé a changé.", error = true)
+                        AgendaAction("Recalculer", actions.onRebase, primary = true, enabled = !busy)
+                    }
+                } else if (error != null && dates.isNotEmpty()) {
+                    Column(Modifier.padding(horizontal = 12.dp, vertical = 4.dp)) {
+                        PlannerNotice(if (week.error != null) "Dernier menu chargé · $error" else error, error = true)
+                        if (week.error != null) AgendaAction("Actualiser", actions.onRefresh, enabled = !busy)
+                    }
+                }
+                if (state.undoMove != null && !inDraft) {
+                    Row(
+                        Modifier.fillMaxWidth().padding(horizontal = 12.dp).background(Sunny.ButterLight, plannerShape).padding(start = 12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("Repas déplacé", color = Sunny.Ink, fontWeight = FontWeight.SemiBold)
+                        AgendaAction("Annuler", actions.onUndoMove, enabled = !busy)
+                    }
+                }
+                Box(Modifier.weight(1f).fillMaxWidth()) {
+                    PullToRefreshBox(
+                        isRefreshing = state.refreshing || (week.loading && dates.isNotEmpty()),
+                        onRefresh = { if (!busy && !inDraft) actions.onRefresh() },
+                        modifier = Modifier.fillMaxSize(),
+                    ) {
+                        if (dates.isNotEmpty()) {
+                            PlannerTimeline(
+                                modifier = Modifier.fillMaxSize(),
+                                dates = dates,
+                                today = today,
+                                slots = displayed,
+                                listState = list,
+                                selected = selected,
+                                copyChanges = copyChanges,
+                                isReadOnly = ::readOnly,
+                                isEnabled = { moment, slot ->
+                                    !busy && when {
+                                        placement != null -> canPlan(moment.date)
+                                        panel == PlannerPanel.Move -> canMove(moment)
+                                        activeCopy || state.proposalConflict -> false
+                                        else -> slot != null || canPlan(moment.date)
+                                    }
+                                },
+                                canDrag = { moment, _ -> !busy && !showSheet && !selecting && !activeCopy && editable(moment.date) },
+                                canDrop = { moment -> !busy && !activeCopy && canMove(moment) },
+                                onSelect = { moment, slot ->
+                                    if (isHome && slot?.recipe != null) actions.onOpenRecipe(slot, true)
+                                    else if (selecting) select(moment)
+                                    else openMeal(moment, slot)
+                                },
+                                onKeyboardMove = ::startMove,
+                                onDrop = { slot, moment -> startMove(slot); select(moment) },
+                                onBoundary = { before, retry ->
+                                    if (before) actions.onLoadBefore(retry) else actions.onLoadAfter(retry)
+                                },
+                                onVisibleDay = { date ->
+                                    visibleEpoch = date.toEpochDay()
+                                    actions.onVisibleDay(date)
+                                },
+                                loadingBefore = week.loadingBefore,
+                                loadingAfter = week.loadingAfter,
+                                beforeError = week.beforeError,
+                                afterError = week.afterError,
+                                isDateLoaded = ::loadedDay,
+                                boundaryEnabled = loaded.isNotEmpty() && !busy && !state.loading && !week.loading,
+                                largeCards = isHome,
+                                hasMealOptions = { moment, _ -> !activeCopy && editable(moment.date) },
+                                onMealOptions = ::openMeal,
+                                bottomPadding = if (isHome) 80.dp + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() else 18.dp,
+                            )
+                        } else {
+                            Column(Modifier.padding(12.dp)) {
+                                if (state.loading || week.loading) PlannerLoading()
+                                else PlannerCard("Repas indisponibles") {
+                                    PlannerSmall(error ?: "Impossible de charger le menu.")
+                                    AgendaAction("Réessayer", actions.onRefresh, enabled = !busy)
+                                }
+                            }
+                        }
+                    }
+                    if (isHome) {
+                        if (showTodayButton) {
+                            PlannerTodayButton(
+                                onClick = ::goToToday,
+                                modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding()
+                                    .padding(horizontal = 80.dp, vertical = 16.dp),
+                            )
+                        }
+                        PlannerHomeMenu(
+                            expanded = homeMenuOpen, onExpanded = { homeMenuOpen = it },
+                            canWrite = user.canWrite, canPlan = !busy && dates.isNotEmpty(),
+                            unreadNotifications = unreadNotifications,
+                            onRecipes = actions.onRecipes, onAccount = actions.onAccount, onNotifications = actions.onNotifications,
+                            onGenerate = { select(null); panel = PlannerPanel.Generate }, onCopy = ::startCopy,
+                            modifier = Modifier.align(Alignment.BottomEnd).navigationBarsPadding()
+                                .padding(end = 16.dp, bottom = 12.dp),
                         )
                     }
-                },
-                onPick = ::openPicker,
-                onOpen = original?.takeIf { it.recipe != null }?.let { slot ->
-                    { actions.onOpenRecipe(slot.copy(people = draft.people), true) }
-                },
-                onRemove = {
-                    mealDraft = draft.copy(
-                        removed = true, manualInput = "", manualTitle = null, chosenRecipe = null, error = null,
+                }
+                if (inDraft && !selecting && !state.proposalConflict) {
+                    PlannerFooter(if (state.working == "confirm") "Publication…" else "Publier", actions.onPublish, enabled = !busy)
+                }
+                if (!isHome) Spacer(Modifier.windowInsetsBottomHeight(WindowInsets.navigationBars))
+            }
+
+            if (showSheet && draft != null && selected != null && !selecting) {
+                val original = draft.original
+                val canEditMeal = !readOnly(selected.date)
+                val saving = busy || draft.requestId != null
+                PlannerMealOverlay(saving, ::dismissSheet) {
+                    PlannerMealEditor(
+                        moment = selected, original = original, recipe = original?.recipe?.asSummary(),
+                        stagedRecipe = draft.chosenRecipe?.takeIf { it.id != original?.recipe?.id }?.asSummary(),
+                        stagedManual = draft.manualTitle?.takeIf { it != original?.title },
+                        people = draft.people, manualInput = draft.manualInput, removed = draft.removed,
+                        canPlanRecipe = canEditMeal && (inDraft || selected.date <= today.plusDays(20)),
+                        canEdit = canEditMeal, busy = saving, dirty = draft.dirty,
+                        error = draft.error, scrollState = mealEditorScroll,
+                        onPeople = { mealDraft = draft.copy(people = it, error = null) },
+                        onManualInput = { mealDraft = draft.copy(manualInput = it, error = null) },
+                        onValidateManual = {
+                            val title = draft.manualInput.trim()
+                            if (title.codePointCount(0, title.length) in 1..100) {
+                                mealDraft = draft.copy(
+                                    manualTitle = title, chosenRecipe = null, removed = false, error = null,
+                                )
+                            }
+                        },
+                        onPick = ::openPicker,
+                        onOpen = original?.takeIf { it.recipe != null }?.let { slot ->
+                            { actions.onOpenRecipe(slot.copy(people = draft.people), true) }
+                        },
+                        onRemove = {
+                            mealDraft = draft.copy(
+                                removed = true, manualInput = "", manualTitle = null, chosenRecipe = null, error = null,
+                            )
+                        },
+                        onSave = { saveMeal(selected, draft) },
                     )
-                },
-                onSave = { saveMeal(selected, draft) },
-            )
+                }
+            }
         }
-    } else if (showSheet) {
-        val saving by rememberUpdatedState(busy)
-        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true,
-            confirmValueChange = { it != SheetValue.Hidden || !saving })
-        ModalBottomSheet(
-            onDismissRequest = ::dismissSheet,
-            sheetState = sheetState,
-            containerColor = Sunny.Cream,
-            contentColor = Sunny.Ink,
-        ) {
-            Column(
-                Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 12.dp).padding(bottom = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                when {
-                    panel == PlannerPanel.Discard -> PlannerCard("Quitter la proposition ?") {
-                        PlannerSmall("Vos modifications du brouillon seront perdues.")
-                        AgendaAction("Quitter sans publier", {
-                            closePanel()
-                            actions.onDiscard()
-                        }, primary = true, warning = true, enabled = !busy)
-                        AgendaAction("Poursuivre la relecture", ::closePanel, enabled = !busy)
-                    }
-                    placement != null && selected != null -> {
-                        PlannerConfirmation(selected, selectedSlot, placement.title, inDraft)
-                        PlannerFooter(if (selectedSlot != null) "Remplacer le repas" else "Planifier le repas",
-                            { actions.onPlan(selected.date, selected.meal, selectedSlot != null) },
-                            enabled = !busy && canPlan(selected.date), warning = selectedSlot != null)
-                    }
-                    panel == PlannerPanel.Move && selected != null && source != null -> {
-                        PlannerConfirmation(selected, selectedSlot, null, inDraft, moving = true)
-                        PlannerFooter("Déplacer ici", {
-                            actions.onMove(source, selected.date, selected.meal)
-                            closePanel()
-                        }, enabled = !busy && canMove(selected))
-                    }
-                    panel == PlannerPanel.Generate -> {
-                        PlannerGeneration(generationStart, today, duration, plan, user.people, generationCount,
-                            visibleSlots, state.menu?.slots.orEmpty(), info, busy,
-                            onStart = { fromEpoch = it.toEpochDay() }, onDuration = { duration = it },
-                            onPlan = { plan = it }, onPeople = actions.onSetPeople)
-                        PlannerFooter(if (state.generating) "Création en cours…" else "Créer la proposition",
-                            { actions.onGenerate(generationStart, generationCount, plan) }, enabled = info?.enoughRecipes == true && !busy)
-                    }
-                    activeCopy -> {
-                        PlannerCopyPanel(targetWeek, sourceWeek, copy, busy, actions.onCopyReplace,
-                            onSource = { copySourceEpoch = it.toEpochDay() })
-                        if (copy.preview == null) {
-                            PlannerFooter("Vérifier la copie", { actions.onCopyPreview(sourceWeek, targetWeek) }, enabled = !busy)
-                        } else {
-                            PlannerFooter("Appliquer à la semaine", { applyingCopy = true; actions.onApplyCopy() },
-                                enabled = !busy && copied != null)
+
+        if (showSheet && !showMealEditor) {
+            PlannerActionSheet(busy, ::dismissSheet) {
+                Column(
+                    Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 12.dp).padding(bottom = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    when {
+                        panel == PlannerPanel.Discard -> PlannerCard("Quitter la proposition ?") {
+                            PlannerSmall("Vos modifications du brouillon seront perdues.")
+                            AgendaAction("Quitter sans publier", {
+                                closePanel()
+                                actions.onDiscard()
+                            }, primary = true, warning = true, enabled = !busy)
+                            AgendaAction("Poursuivre la relecture", ::closePanel, enabled = !busy)
+                        }
+                        placement != null && selected != null -> {
+                            PlannerConfirmation(selected, selectedSlot, placement.title, inDraft)
+                            PlannerFooter(if (selectedSlot != null) "Remplacer le repas" else "Planifier le repas",
+                                { actions.onPlan(selected.date, selected.meal, selectedSlot != null) },
+                                enabled = !busy && canPlan(selected.date), warning = selectedSlot != null)
+                        }
+                        panel == PlannerPanel.Move && selected != null && source != null -> {
+                            PlannerConfirmation(selected, selectedSlot, null, inDraft, moving = true)
+                            PlannerFooter("Déplacer ici", {
+                                actions.onMove(source, selected.date, selected.meal)
+                                closePanel()
+                            }, enabled = !busy && canMove(selected))
+                        }
+                        panel == PlannerPanel.Generate -> {
+                            PlannerGeneration(generationStart, today, duration, plan, user.people, generationCount,
+                                visibleSlots, state.menu?.slots.orEmpty(), info, busy,
+                                onStart = { fromEpoch = it.toEpochDay() }, onDuration = { duration = it },
+                                onPlan = { plan = it }, onPeople = actions.onSetPeople)
+                            PlannerFooter(if (state.generating) "Création en cours…" else "Créer la proposition",
+                                { actions.onGenerate(generationStart, generationCount, plan) }, enabled = info?.enoughRecipes == true && !busy)
+                        }
+                        activeCopy -> {
+                            PlannerCopyPanel(targetWeek, sourceWeek, copy, busy, actions.onCopyReplace,
+                                onSource = { copySourceEpoch = it.toEpochDay() })
+                            if (copy.preview == null) {
+                                PlannerFooter("Vérifier la copie", { actions.onCopyPreview(sourceWeek, targetWeek) }, enabled = !busy)
+                            } else {
+                                PlannerFooter("Appliquer à la semaine", { applyingCopy = true; actions.onApplyCopy() },
+                                    enabled = !busy && copied != null)
+                            }
                         }
                     }
+                    if (state.error != null && !state.proposalConflict) PlannerNotice(state.error, error = true)
                 }
-                if (state.error != null && !state.proposalConflict) PlannerNotice(state.error, error = true)
             }
         }
     }
@@ -652,31 +649,44 @@ fun PlannerScreen(
 
 private fun MenuRecipe.asSummary() = RecipeSummary(id, title, dishType, minutes, image, emptyList())
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun PlannerMealDialog(saving: Boolean, onDismiss: () -> Unit, content: @Composable () -> Unit) {
-    Dialog(
+private fun PlannerActionSheet(busy: Boolean, onDismiss: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
+    val saving by rememberUpdatedState(busy)
+    val sheetState = rememberModalBottomSheetState(
+        skipPartiallyExpanded = true,
+        confirmValueChange = { it != SheetValue.Hidden || !saving },
+    )
+    ModalBottomSheet(
         onDismissRequest = onDismiss,
-        properties = DialogProperties(
-            dismissOnBackPress = !saving,
-            dismissOnClickOutside = false,
-            usePlatformDefaultWidth = false,
-            decorFitsSystemWindows = false,
-        ),
-    ) {
+        sheetState = sheetState,
+        containerColor = Sunny.Cream,
+        contentColor = Sunny.Ink,
+        content = content,
+    )
+}
+
+@Composable
+private fun PlannerMealOverlay(saving: Boolean, onDismiss: () -> Unit, content: @Composable () -> Unit) {
+    BackHandler { if (!saving) onDismiss() }
+    Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.36f))) {
+        Box(
+            Modifier.matchParentSize()
+                .clickable(enabled = !saving, interactionSource = null, indication = null, onClick = onDismiss)
+                .clearAndSetSemantics { },
+        )
         Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
-            Box(
-                Modifier.matchParentSize()
-                    .clickable(enabled = !saving, interactionSource = null, indication = null, onClick = onDismiss)
-                    .clearAndSetSemantics { },
-            )
             Surface(
                 modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().fillMaxHeight(0.90f)
-                    .semantics { paneTitle = "Fiche repas" },
+                    .semantics { paneTitle = "Fiche repas" }
+                    .pointerInput(Unit) {
+                        // Pointer events inside the panel must stay above the dismissible scrim.
+                        awaitPointerEventScope { while (true) awaitPointerEvent() }
+                    },
                 color = Sunny.Cream, contentColor = Sunny.Ink,
                 shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
-            ) {
-                content()
-            }
+                content = content,
+            )
         }
     }
 }
