@@ -5,13 +5,13 @@
 </section>
 
 <div class="tiles">
-<a class="tile" href="/admin/recipes"><b>{{.Counts.Recipes}}</b><span>Recettes</span><small>{{.Counts.ArchivedRecipes}} archivée(s) · {{.Counts.Tags}} étiquette(s)</small></a>
-<a class="tile" href="/admin/accounts"><b>{{.Counts.Users}}</b><span>Comptes</span><small>{{.Counts.Members}} membre(s) · {{.Counts.Readonly}} lecture seule{{if .Counts.Disabled}} · {{.Counts.Disabled}} désactivé(s){{end}}</small></a>
-<a class="tile" href="/admin/"><b>{{.Counts.UpcomingMeals}}</b><span>Repas à venir</span><small>{{with .Counts.LastPlannedDate}}jusqu'au {{day .}}{{else}}aucun{{end}}{{if .Counts.ManualMeals}} · {{.Counts.ManualMeals}} libre(s){{end}}</small></a>
-<a class="tile" href="/admin/?period=past"><b>{{.Counts.PastMeals}}</b><span>Repas passés</span><small>historique conservé</small></a>
-<a class="tile" href="/admin/invitations"><b>{{.Counts.PendingInvitations}}</b><span>Invitations</span><small>en attente</small></a>
-<a class="tile" href="/admin/sessions"><b>{{.Counts.AppSessions}}</b><span>Appareils connectés</span><small>{{.Counts.AdminSessions}} session(s) admin</small></a>
-<a class="tile" href="/admin/tokens"><b>{{.Counts.APITokens}}</b><span>Jetons d'API</span><small>actifs</small></a>
+<a class="tile" href="/app/admin/recipes"><b>{{.Counts.Recipes}}</b><span>Recettes</span><small>{{.Counts.ArchivedRecipes}} archivée(s) · {{.Counts.Tags}} étiquette(s)</small></a>
+<a class="tile" href="/app/admin/accounts"><b>{{.Counts.Users}}</b><span>Comptes</span><small>{{.Counts.Members}} membre(s) · {{.Counts.Readonly}} lecture seule{{if .Counts.Disabled}} · {{.Counts.Disabled}} désactivé(s){{end}}</small></a>
+<a class="tile" href="/app/admin/"><b>{{.Counts.UpcomingMeals}}</b><span>Repas à venir</span><small>{{with .Counts.LastPlannedDate}}jusqu'au {{day .}}{{else}}aucun{{end}}{{if .Counts.ManualMeals}} · {{.Counts.ManualMeals}} libre(s){{end}}</small></a>
+<a class="tile" href="/app/admin/?period=past"><b>{{.Counts.PastMeals}}</b><span>Repas passés</span><small>historique conservé</small></a>
+<a class="tile" href="/app/admin/invitations"><b>{{.Counts.PendingInvitations}}</b><span>Invitations</span><small>en attente</small></a>
+<a class="tile" href="/app/admin/sessions"><b>{{.Counts.AppSessions}}</b><span>Appareils connectés</span><small>{{.Counts.AdminSessions}} session(s) admin</small></a>
+<a class="tile" href="/app/admin/tokens"><b>{{.Counts.APITokens}}</b><span>Jetons d'API</span><small>actifs</small></a>
 </div>
 
 <div class="cols">

@@ -203,10 +203,10 @@ func (a *Admin) saveRecipe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if id == "" {
-		redirect(w, r, "/admin/recipes/"+saved.ID, "recipe_created")
+		redirect(w, r, "/app/admin/recipes/"+saved.ID, "recipe_created")
 		return
 	}
-	redirect(w, r, "/admin/recipes/"+id, "recipe_saved")
+	redirect(w, r, "/app/admin/recipes/"+id, "recipe_saved")
 }
 
 func (a *Admin) setRecipeArchived(archived bool, ok string) http.HandlerFunc {
@@ -218,7 +218,7 @@ func (a *Admin) setRecipeArchived(archived bool, ok string) http.HandlerFunc {
 			a.fail(w, r, err)
 			return
 		}
-		redirect(w, r, "/admin/recipes", ok)
+		redirect(w, r, "/app/admin/recipes", ok)
 	}
 }
 
@@ -251,7 +251,7 @@ func (a *Admin) tagAction(w http.ResponseWriter, r *http.Request, ok string, do 
 		a.fail(w, r, err)
 		return
 	}
-	redirect(w, r, "/admin/tags", ok)
+	redirect(w, r, "/app/admin/tags", ok)
 }
 
 func (a *Admin) renameTag(w http.ResponseWriter, r *http.Request) {
@@ -304,7 +304,7 @@ func (a *Admin) removeRecipeImage(w http.ResponseWriter, r *http.Request) {
 
 func (a *Admin) imageResult(w http.ResponseWriter, r *http.Request, id string, err error) {
 	if err == nil {
-		redirect(w, r, "/admin/recipes/"+id, "recipe_saved")
+		redirect(w, r, "/app/admin/recipes/"+id, "recipe_saved")
 		return
 	}
 	if err == store.ErrNotFound {

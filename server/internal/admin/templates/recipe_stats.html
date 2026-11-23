@@ -1,6 +1,6 @@
 {{define "content"}}{{with .Data}}
 <section class="card"><div class="toolbar"><h2>Période</h2>
-<nav class="tabs" aria-label="Période">{{range .Periods}}<a href="/admin/recipes/stats?period={{.Key}}" {{if eq .Key $.Data.Period}}class="on" aria-current="page"{{end}}>{{.Label}}</a>{{end}}</nav></div>
+<nav class="tabs" aria-label="Période">{{range .Periods}}<a href="/app/admin/recipes/stats?period={{.Key}}" {{if eq .Key $.Data.Period}}class="on" aria-current="page"{{end}}>{{.Label}}</a>{{end}}</nav></div>
 <p class="muted">Repas passés de la période (jusqu'à hier) : {{.Served}} avec une recette, {{.Manual}} repas libre(s). {{.Never}} recette(s) active(s) n'ont encore jamais été servies.</p>
 </section>
 <section class="card"><h2>Équilibre des types de plat</h2>
@@ -10,7 +10,7 @@
 </section>
 <section class="card scroll"><table>
 <tr><th>Recette</th><th>Type</th><th class="num">Servie (période)</th><th class="num">Servie (total)</th><th>Dernière fois</th><th>Prochaine fois</th></tr>
-{{range .Recipes}}<tr><td><a href="/admin/recipes/{{.ID}}">{{.Title}}</a>{{if .Archived}} <span class="badge off">archivée</span>{{end}}</td>
+{{range .Recipes}}<tr><td><a href="/app/admin/recipes/{{.ID}}">{{.Title}}</a>{{if .Archived}} <span class="badge off">archivée</span>{{end}}</td>
 <td><span class="dish dish-{{.DishType}}">{{label $.Data.DishOpts .DishType}}</span></td>
 <td class="num">{{.Count}}</td><td class="num">{{.Total}}</td>
 <td>{{with .Last}}{{day .}}{{else}}<span class="badge">jamais servie</span>{{end}}</td>

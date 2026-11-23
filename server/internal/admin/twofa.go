@@ -57,23 +57,29 @@ func (a *Admin) readChallenge(r *http.Request) (userID, next string, remember, o
 
 func (a *Admin) twoFALoginPage(w http.ResponseWriter, r *http.Request) {
 	if _, next, _, ok := a.readChallenge(r); ok {
+		if target := r.URL.Query().Get("next"); target != "" {
+			next = safeNext(target)
+		}
 		a.render(w, r, "login_2fa", http.StatusOK, view{Title: "Vérification en deux étapes", Data: loginData{next}})
 		return
 	}
-	http.Redirect(w, r, "/admin/login", http.StatusSeeOther)
+	http.Redirect(w, r, "/app/admin/login", http.StatusSeeOther)
 }
 
 func (a *Admin) twoFALogin(w http.ResponseWriter, r *http.Request) {
 	userID, next, remember, ok := a.readChallenge(r)
 	if !ok {
-		http.Redirect(w, r, "/admin/login", http.StatusSeeOther)
+		http.Redirect(w, r, "/app/admin/login", http.StatusSeeOther)
 		return
+	}
+	if target := r.FormValue("next"); target != "" {
+		next = safeNext(target)
 	}
 	c := a.client(r)
 	u, err := a.Store.GetUser(r.Context(), userID)
 	if err != nil || u.Disabled() || !u.IsAdmin() {
 		a.setCookie(w, r, challengeCookie, "", -1)
-		http.Redirect(w, r, "/admin/login", http.StatusSeeOther)
+		http.Redirect(w, r, "/app/admin/login", http.StatusSeeOther)
 		return
 	}
 	fail := func(status int, msg string) {
@@ -148,7 +154,7 @@ func (a *Admin) twoFASetup(w http.ResponseWriter, r *http.Request) {
 		a.accountError(w, r, err)
 		return
 	}
-	redirect(w, r, "/admin/account", "")
+	redirect(w, r, "/app/admin/account", "")
 }
 
 func (a *Admin) twoFAEnable(w http.ResponseWriter, r *http.Request) {
@@ -204,7 +210,7 @@ func (a *Admin) twoFADisable(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.Store.LogAuthEvent(r.Context(), &s.user.ID, s.user.Username, "admin", "2fa_disabled", "", a.client(r))
-	redirect(w, r, "/admin/account", "2fa_disabled")
+	redirect(w, r, "/app/admin/account", "2fa_disabled")
 }
 
 func (a *Admin) twoFABackup(w http.ResponseWriter, r *http.Request) {

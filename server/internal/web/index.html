@@ -3,30 +3,36 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#fff5e6">
 <title>Mijote · Planning familial</title>
-<link rel="icon" href="/admin/logo.svg" type="image/svg+xml">
+<link rel="icon" href="/app/admin/logo.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/app/planner.css">
 <script defer src="/app/planner.js"></script>
 </head>
 <body>
-<header class="top">
-  <div class="masthead">
-    <a href="/app/" class="brand"><img src="/admin/logo.svg" alt="" width="40" height="40"><img src="/admin/wordmark.svg" width="92" height="32" alt="Mijote"></a>
-    <nav id="nav" aria-label="Navigation principale"></nav>
-  </div>
-</header>
+<a class="skip-link" href="#main">Aller au contenu</a>
+<div class="app-shell">
+  <aside class="sidebar">
+    <a href="/app/" class="brand">
+      <img src="/app/admin/logo.svg" alt="" width="43" height="43">
+      <span><img src="/app/admin/wordmark.svg" width="92" height="32" alt="Mijote"><span class="brand-caption">Le menu du foyer</span></span>
+    </a>
+    <nav id="nav" class="main-nav" aria-label="Navigation principale"></nav>
+    <div id="profile" class="sidebar-profile"></div>
+    <button id="nav-toggle" class="nav-toggle" type="button" aria-controls="nav" aria-expanded="false" aria-label="Ouvrir le menu"></button>
+  </aside>
+  <main id="main" tabindex="-1">
+    <section class="login card">
+      <h1>Connexion</h1>
+      <form id="login">
+        <label>Identifiant<input name="username" autocomplete="username" required></label>
+        <label>Mot de passe<input name="password" type="password" autocomplete="current-password" required></label>
+        <button class="primary">Se connecter</button>
+      </form>
+    </section>
+  </main>
+</div>
 <div id="status" role="status" class="status" hidden></div>
-<main id="main">
-  <section class="login card">
-    <h1>Connexion</h1>
-    <form id="login">
-      <label>Identifiant<input name="username" autocomplete="username" required></label>
-      <label>Mot de passe<input name="password" type="password" autocomplete="current-password" required></label>
-      <button class="primary">Se connecter</button>
-    </form>
-    <p><a href="/admin/login">Administration</a></p>
-  </section>
-</main>
 <dialog id="panel" aria-labelledby="panel-title"></dialog>
 <noscript>Activez JavaScript pour retrouver votre menu partagé.</noscript>
 </body>

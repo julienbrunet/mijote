@@ -95,7 +95,9 @@ var funcs = template.FuncMap{
 	},
 	"bytes": formatBytes,
 	"dec":   func(v float64) string { return strings.Replace(strconv.FormatFloat(v, 'f', 2, 64), ".", ",", 1) },
-	"asset": func(name string) string { return "/admin/" + name + "?v=" + strings.Trim(staticFiles[name].etag, `"`) },
+	"asset": func(name string) string {
+		return "/app/admin/" + name + "?v=" + strings.Trim(staticFiles[name].etag, `"`)
+	},
 	"dish": func(code *string) string {
 		if code == nil {
 			return ""
@@ -195,64 +197,64 @@ func New(st *store.Store, guard *auth.Guard, proxies auth.Proxies, key []byte, i
 
 // Routes registers the /admin routes on mux.
 func (a *Admin) Routes(mux *http.ServeMux) {
-	mux.HandleFunc("GET /admin/setup", a.setupPage)
-	mux.HandleFunc("POST /admin/setup", a.setup)
-	mux.HandleFunc("GET /admin/login", a.loginPage)
-	mux.HandleFunc("POST /admin/login", a.login)
-	mux.HandleFunc("GET /admin/login/2fa", a.twoFALoginPage)
-	mux.HandleFunc("POST /admin/login/2fa", a.twoFALogin)
+	mux.HandleFunc("GET /app/admin/setup", a.setupPage)
+	mux.HandleFunc("POST /app/admin/setup", a.setup)
+	mux.HandleFunc("GET /app/admin/login", a.loginPage)
+	mux.HandleFunc("POST /app/admin/login", a.login)
+	mux.HandleFunc("GET /app/admin/login/2fa", a.twoFALoginPage)
+	mux.HandleFunc("POST /app/admin/login/2fa", a.twoFALogin)
 	// Public page behind the shared invitation link (no session).
 	mux.HandleFunc("GET /invite/{code}", a.invitePage)
 	for name := range staticFiles {
-		mux.HandleFunc("GET /admin/"+name, serveStatic(name))
+		mux.HandleFunc("GET /app/admin/"+name, serveStatic(name))
 	}
 
 	protected := map[string]http.HandlerFunc{
-		"GET /admin/{$}":                        a.home,
-		"POST /admin/logout":                    a.logout,
-		"GET /admin/account":                    a.accountPage,
-		"POST /admin/password":                  a.changePassword,
-		"POST /admin/logout-everywhere":         a.logoutEverywhere,
-		"POST /admin/2fa/setup":                 a.twoFASetup,
-		"POST /admin/2fa/enable":                a.twoFAEnable,
-		"POST /admin/2fa/disable":               a.twoFADisable,
-		"POST /admin/2fa/backup":                a.twoFABackup,
-		"GET /admin/sessions":                   a.sessionsPage,
-		"POST /admin/sessions/app/{id}":         a.revokeAppSession,
-		"POST /admin/sessions/admin/{id}":       a.revokeAdminSession,
-		"GET /admin/journal":                    a.journalPage,
-		"GET /admin/accounts":                   a.accountsPage,
-		"POST /admin/accounts/{id}/disable":     a.disableAccount,
-		"POST /admin/accounts/{id}/enable":      a.enableAccount,
-		"POST /admin/accounts/{id}/password":    a.resetAccountPassword,
-		"POST /admin/accounts/{id}/role":        a.changeAccountRole,
-		"GET /admin/invitations":                a.invitationsPage,
-		"POST /admin/invitations":               a.createInvitation,
-		"POST /admin/invitations/{id}/revoke":   a.revokeInvitation,
-		"GET /admin/meals":                      a.oldMealsPage,
-		"GET /admin/meals/{id}":                 a.mealPage,
-		"POST /admin/meals/{id}/recipe":         a.setMealRecipe,
-		"POST /admin/meals/{id}/title":          a.setMealTitle,
-		"POST /admin/meals/{id}/swap":           a.swapMeal,
-		"POST /admin/meals/{id}/delete":         a.deleteMeal,
-		"GET /admin/recipes/stats":              a.recipeStatsPage,
-		"GET /admin/system":                     a.systemPage,
-		"GET /admin/tokens":                     a.tokensPage,
-		"POST /admin/tokens":                    a.createToken,
-		"POST /admin/tokens/{id}/revoke":        a.revokeToken,
-		"GET /admin/recipes":                    a.recipesPage,
-		"GET /admin/recipes/new":                a.newRecipePage,
-		"POST /admin/recipes":                   a.saveRecipe,
-		"GET /admin/recipes/{id}":               a.editRecipePage,
-		"POST /admin/recipes/{id}":              a.saveRecipe,
-		"POST /admin/recipes/{id}/archive":      a.setRecipeArchived(true, "recipe_archived"),
-		"POST /admin/recipes/{id}/restore":      a.setRecipeArchived(false, "recipe_restored"),
-		"GET /admin/recipes/{id}/image":         a.recipeImage,
-		"POST /admin/recipes/{id}/image":        a.uploadRecipeImage,
-		"POST /admin/recipes/{id}/image/remove": a.removeRecipeImage,
-		"GET /admin/tags":                       a.tagsPage,
-		"POST /admin/tags/{id}/rename":          a.renameTag,
-		"POST /admin/tags/{id}/delete":          a.deleteTag,
+		"GET /app/admin/{$}":                        a.home,
+		"POST /app/admin/logout":                    a.logout,
+		"GET /app/admin/account":                    a.accountPage,
+		"POST /app/admin/password":                  a.changePassword,
+		"POST /app/admin/logout-everywhere":         a.logoutEverywhere,
+		"POST /app/admin/2fa/setup":                 a.twoFASetup,
+		"POST /app/admin/2fa/enable":                a.twoFAEnable,
+		"POST /app/admin/2fa/disable":               a.twoFADisable,
+		"POST /app/admin/2fa/backup":                a.twoFABackup,
+		"GET /app/admin/sessions":                   a.sessionsPage,
+		"POST /app/admin/sessions/app/{id}":         a.revokeAppSession,
+		"POST /app/admin/sessions/app/admin/{id}":   a.revokeAdminSession,
+		"GET /app/admin/journal":                    a.journalPage,
+		"GET /app/admin/accounts":                   a.accountsPage,
+		"POST /app/admin/accounts/{id}/disable":     a.disableAccount,
+		"POST /app/admin/accounts/{id}/enable":      a.enableAccount,
+		"POST /app/admin/accounts/{id}/password":    a.resetAccountPassword,
+		"POST /app/admin/accounts/{id}/role":        a.changeAccountRole,
+		"GET /app/admin/invitations":                a.invitationsPage,
+		"POST /app/admin/invitations":               a.createInvitation,
+		"POST /app/admin/invitations/{id}/revoke":   a.revokeInvitation,
+		"GET /app/admin/meals":                      a.oldMealsPage,
+		"GET /app/admin/meals/{id}":                 a.mealPage,
+		"POST /app/admin/meals/{id}/recipe":         a.setMealRecipe,
+		"POST /app/admin/meals/{id}/title":          a.setMealTitle,
+		"POST /app/admin/meals/{id}/swap":           a.swapMeal,
+		"POST /app/admin/meals/{id}/delete":         a.deleteMeal,
+		"GET /app/admin/recipes/stats":              a.recipeStatsPage,
+		"GET /app/admin/system":                     a.systemPage,
+		"GET /app/admin/tokens":                     a.tokensPage,
+		"POST /app/admin/tokens":                    a.createToken,
+		"POST /app/admin/tokens/{id}/revoke":        a.revokeToken,
+		"GET /app/admin/recipes":                    a.recipesPage,
+		"GET /app/admin/recipes/new":                a.newRecipePage,
+		"POST /app/admin/recipes":                   a.saveRecipe,
+		"GET /app/admin/recipes/{id}":               a.editRecipePage,
+		"POST /app/admin/recipes/{id}":              a.saveRecipe,
+		"POST /app/admin/recipes/{id}/archive":      a.setRecipeArchived(true, "recipe_archived"),
+		"POST /app/admin/recipes/{id}/restore":      a.setRecipeArchived(false, "recipe_restored"),
+		"GET /app/admin/recipes/{id}/image":         a.recipeImage,
+		"POST /app/admin/recipes/{id}/image":        a.uploadRecipeImage,
+		"POST /app/admin/recipes/{id}/image/remove": a.removeRecipeImage,
+		"GET /app/admin/tags":                       a.tagsPage,
+		"POST /app/admin/tags/{id}/rename":          a.renameTag,
+		"POST /app/admin/tags/{id}/delete":          a.deleteTag,
 	}
 	for pattern, h := range protected {
 		mux.Handle(pattern, a.requireSession(h))
@@ -278,22 +280,22 @@ type navItem struct {
 
 // navigation is the main menu of the admin (requirements.md §4.8).
 var navigation = []navItem{
-	{Key: "home", Label: "Accueil", Href: "/admin/"},
-	{Key: "recipes", Label: "Recettes", Href: "/admin/recipes", Subs: []navItem{
-		{Key: "recipes", Label: "Recettes", Href: "/admin/recipes"},
-		{Key: "tags", Label: "Étiquettes", Href: "/admin/tags"},
-		{Key: "stats", Label: "Statistiques", Href: "/admin/recipes/stats"},
+	{Key: "home", Label: "Accueil", Href: "/app/admin/"},
+	{Key: "recipes", Label: "Recettes", Href: "/app/admin/recipes", Subs: []navItem{
+		{Key: "recipes", Label: "Recettes", Href: "/app/admin/recipes"},
+		{Key: "tags", Label: "Étiquettes", Href: "/app/admin/tags"},
+		{Key: "stats", Label: "Statistiques", Href: "/app/admin/recipes/stats"},
 	}},
-	{Key: "users", Label: "Utilisateurs", Href: "/admin/accounts", Subs: []navItem{
-		{Key: "accounts", Label: "Comptes", Href: "/admin/accounts"},
-		{Key: "invitations", Label: "Invitations", Href: "/admin/invitations"},
-		{Key: "sessions", Label: "Sessions", Href: "/admin/sessions"},
-		{Key: "journal", Label: "Journal des connexions", Href: "/admin/journal"},
+	{Key: "users", Label: "Utilisateurs", Href: "/app/admin/accounts", Subs: []navItem{
+		{Key: "accounts", Label: "Comptes", Href: "/app/admin/accounts"},
+		{Key: "invitations", Label: "Invitations", Href: "/app/admin/invitations"},
+		{Key: "sessions", Label: "Sessions", Href: "/app/admin/sessions"},
+		{Key: "journal", Label: "Journal des connexions", Href: "/app/admin/journal"},
 	}},
-	{Key: "system", Label: "Système", Href: "/admin/system"},
-	{Key: "profile", Label: "Profil admin", Href: "/admin/account", Subs: []navItem{
-		{Key: "account", Label: "Mon compte", Href: "/admin/account"},
-		{Key: "tokens", Label: "Jetons d'API", Href: "/admin/tokens"},
+	{Key: "system", Label: "Système", Href: "/app/admin/system"},
+	{Key: "profile", Label: "Profil admin", Href: "/app/admin/account", Subs: []navItem{
+		{Key: "account", Label: "Mon compte", Href: "/app/admin/account"},
+		{Key: "tokens", Label: "Jetons d'API", Href: "/app/admin/tokens"},
 	}},
 }
 

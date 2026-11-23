@@ -100,7 +100,7 @@ func (a *Admin) home(w http.ResponseWriter, r *http.Request) {
 
 // oldMealsPage keeps the former meal list address working.
 func (a *Admin) oldMealsPage(w http.ResponseWriter, r *http.Request) {
-	target := "/admin/"
+	target := "/app/admin/"
 	if r.URL.RawQuery != "" {
 		target += "?" + r.URL.RawQuery
 	}
@@ -160,7 +160,7 @@ func (a *Admin) mealResult(w http.ResponseWriter, r *http.Request, err error, ok
 	case err != nil:
 		a.fail(w, r, err)
 	default:
-		redirect(w, r, "/admin/", ok)
+		redirect(w, r, "/app/admin/", ok)
 	}
 }
 

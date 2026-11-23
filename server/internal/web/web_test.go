@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -9,7 +10,7 @@ import (
 
 func TestFamilyPlannerRoutes(t *testing.T) {
 	mux := http.NewServeMux()
-	Routes(mux)
+	Routes(mux, func(context.Context) (bool, error) { return false, nil })
 	for _, test := range []struct {
 		path    string
 		status  int
@@ -19,6 +20,7 @@ func TestFamilyPlannerRoutes(t *testing.T) {
 		{"/app/", http.StatusOK, "Planning familial"},
 		{"/app/planner.js", http.StatusOK, "/menu/confirm"},
 		{"/app/planner.css", http.StatusOK, ".slots"},
+		{"/app/inter-regular.woff2", http.StatusOK, "wOF2"},
 		{"/app/private", http.StatusNotFound, ""},
 	} {
 		t.Run(test.path, func(t *testing.T) {

@@ -71,5 +71,5 @@ func (a *Admin) revokeToken(w http.ResponseWriter, r *http.Request) {
 	}
 	s := current(r)
 	a.Store.LogAuthEvent(r.Context(), &s.user.ID, s.user.Username, "admin", "token_revoked", "", a.client(r))
-	redirect(w, r, "/admin/tokens", "token_revoked")
+	redirect(w, r, "/app/admin/tokens", "token_revoked")
 }

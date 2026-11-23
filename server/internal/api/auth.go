@@ -3,6 +3,7 @@ package api
 import (
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/julienbrunet/mijote/server/internal/auth"
 	"github.com/julienbrunet/mijote/server/internal/store"
@@ -11,7 +12,7 @@ import (
 type tokenPair struct {
 	AccessToken  string         `json:"accessToken"`
 	ExpiresIn    int            `json:"expiresIn"`
-	RefreshToken string         `json:"refreshToken"`
+	RefreshToken string         `json:"refreshToken,omitempty"`
 	User         map[string]any `json:"user"`
 }
 
@@ -22,11 +23,19 @@ func (a *API) writeTokens(w http.ResponseWriter, r *http.Request, status int, u 
 		return
 	}
 	w.Header().Set("Cache-Control", "no-store")
+	if strings.HasPrefix(r.URL.Path, browserSessionPath+"/") {
+		a.webRefreshCookie(w, r, refresh, 0)
+		refresh = ""
+	}
 	writeJSON(w, status, tokenPair{AccessToken: access, ExpiresIn: int(auth.AccessTTL.Seconds()),
 		RefreshToken: refresh, User: userJSON(u)})
 }
 
 func (a *API) login(w http.ResponseWriter, r *http.Request) {
+	a.loginWith(w, r, nil)
+}
+
+func (a *API) loginWith(w http.ResponseWriter, r *http.Request, establishAdmin func(http.ResponseWriter, *http.Request, store.User) error) {
 	var in struct {
 		Username   string `json:"username"`
 		Password   string `json:"password"`
@@ -67,6 +76,12 @@ func (a *API) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.Guard.Succeeded(in.Username)
+	if establishAdmin != nil {
+		if err := establishAdmin(w, r, u); err != nil {
+			fail(w, r, err)
+			return
+		}
+	}
 	sid, refresh, err := a.Store.StartAppSession(r.Context(), u.ID, c)
 	if err != nil {
 		fail(w, r, err)
@@ -83,8 +98,12 @@ func (a *API) refresh(w http.ResponseWriter, r *http.Request) {
 	if !body(w, r, &in) {
 		return
 	}
+	a.rotateRefresh(w, r, in.RefreshToken)
+}
+
+func (a *API) rotateRefresh(w http.ResponseWriter, r *http.Request, raw string) {
 	c := a.client(r)
-	u, sid, refresh, err := a.Store.RotateRefresh(r.Context(), in.RefreshToken, c)
+	u, sid, refresh, err := a.Store.RotateRefresh(r.Context(), raw, c)
 	switch {
 	case errors.Is(err, store.ErrRefreshReuse):
 		a.Store.LogAuthEvent(r.Context(), &u.ID, u.Username, "app", "refresh_reuse",
@@ -101,6 +120,10 @@ func (a *API) refresh(w http.ResponseWriter, r *http.Request) {
 
 // logout closes the device session of the access token.
 func (a *API) logout(w http.ResponseWriter, r *http.Request) {
+	a.endSession(w, r, nil)
+}
+
+func (a *API) endSession(w http.ResponseWriter, r *http.Request, endBrowser func() error) {
 	s := current(r)
 	if s.sessionID == "" {
 		problem(w, http.StatusBadRequest, "not_a_device_session", "an API token has no session to close; revoke it in the web admin")
@@ -111,6 +134,12 @@ func (a *API) logout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.Store.LogAuthEvent(r.Context(), &s.user.ID, s.user.Username, "app", "logout", "", a.client(r))
+	if endBrowser != nil {
+		if err := endBrowser(); err != nil {
+			fail(w, r, err)
+			return
+		}
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 

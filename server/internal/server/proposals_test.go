@@ -19,7 +19,7 @@ func TestMenuProposalIsSavedOnlyOnConfirmation(t *testing.T) {
 	srv := httptest.NewServer(handler)
 	defer srv.Close()
 	web := newClient(t, srv.URL)
-	web.form("/admin/setup", url.Values{"username": {"julien"}, "password": {"secret-pass"}, "confirm": {"secret-pass"}})
+	web.form("/app/admin/setup", url.Values{"username": {"julien"}, "password": {"secret-pass"}, "confirm": {"secret-pass"}})
 	app := newClient(t, srv.URL)
 	_, token := app.json("/api/v1/auth/login", map[string]string{"username": "julien", "password": "secret-pass"})
 	access := token["accessToken"].(string)
