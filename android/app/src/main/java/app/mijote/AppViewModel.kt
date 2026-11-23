@@ -87,6 +87,8 @@ data class UpdateCheck(val checking: Boolean = false, val message: String? = nul
 /** Period of the unsaved proposal shown on the review screen. */
 data class ReviewPeriod(val from: LocalDate, val to: LocalDate)
 
+data class MealEditOutcome(val requestId: String, val error: String?)
+
 data class MenuState(
     val menu: Menu? = null,
     val loading: Boolean = true,
@@ -101,6 +103,7 @@ data class MenuState(
     val refreshing: Boolean = false,
     val undoMove: MenuProposal? = null,
     val proposalConflict: Boolean = false,
+    val mealEditOutcome: MealEditOutcome? = null,
 )
 
 data class PlannerWeekState(
@@ -203,6 +206,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private var afterWeekJob: Job? = null
     private var visiblePlannerWeek: LocalDate? = null
     private var plannerWriteRevision = 0L
+    private var mealEditJob: Job? = null
     private var copyJob: Job? = null
     private var pickerJob: Job? = null
     private var preferenceJob: Job? = null
@@ -792,6 +796,144 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun plannerSlotDate(id: String): LocalDate? = _plannerWeek.value.weeks.values.firstNotNullOfOrNull { week ->
         week.slots.firstOrNull { it.id == id }?.date
+    }
+
+    /** Saves the content and portions together, against the slot seen when the editing sheet opened. */
+    fun savePlannerMeal(requestId: String, date: LocalDate, meal: String, expected: SlotVersion?, replacement: MenuSlot?) {
+        val state = _menu.value
+        val operation = "meal-edit:$requestId"
+        if (state.working == operation) return
+
+        fun reject(message: String) {
+            _menu.update { it.copy(mealEditOutcome = MealEditOutcome(requestId, message)) }
+        }
+
+        val user = signedInUser()?.takeIf { it.canWrite }
+        if (user == null) {
+            reject("Action non autorisée pour votre compte.")
+            return
+        }
+        val title = replacement?.title?.trim()
+        val draft = state.proposal
+        val snapshot = _plannerWeek.value.snapshot(date)
+        val knownToday = listOfNotNull(state.menu?.today, _plannerWeek.value.menu?.today, snapshot?.today).maxOrNull()
+        val problem = when {
+            state.working != null || state.generating || state.refreshing || _weekCopy.value.loading ->
+                "Une opération est en cours. Réessayez dans un instant."
+            state.proposalConflict -> "Le menu a changé. Recalculez la proposition avant de la modifier."
+            meal != "lunch" && meal != "dinner" -> "Choisissez un créneau de midi ou du soir."
+            knownToday != null && date < knownToday -> "Ce repas est passé."
+            draft != null && date !in draft.from..draft.to -> "Ce repas ne fait pas partie de la proposition."
+            replacement != null && (replacement.date != date || replacement.meal != meal) ->
+                "Le créneau du repas ne correspond pas."
+            title != null && replacement?.recipe != null -> "Choisissez une recette ou un intitulé libre."
+            title != null && title.codePointCount(0, title.length) !in 1..100 ->
+                "L’intitulé doit contenir entre 1 et 100 caractères."
+            replacement?.recipe?.id?.isBlank() == true -> "Choisissez une recette."
+            replacement?.people?.let { it !in 1..20 } == true ->
+                "Le nombre de personnes doit être compris entre 1 et 20."
+            else -> null
+        }
+        if (problem != null) {
+            reject(problem)
+            return
+        }
+
+        fun matches(slot: MenuSlot?) = expected == slot?.let { SlotVersion(it.id, it.version) }
+        fun missingContent(current: MenuSlot?) = replacement != null && title == null && replacement.recipe == null &&
+            (current == null || current.title != null || current.recipe != null)
+        fun updatedSlot(current: MenuSlot?): MenuSlot? = replacement?.let { slot ->
+            slot.copy(
+                id = current?.id ?: slot.id,
+                recipe = current?.recipe?.takeIf { it.id == slot.recipe?.id } ?: slot.recipe,
+                title = title,
+                people = slot.people ?: if (current == null) user.people else current.people,
+                locked = title != null || slot.locked,
+                version = current?.version ?: 0,
+            )
+        }
+        val changed = "Ce créneau a changé. Fermez la fiche et ouvrez-la à nouveau."
+        val chooseContent = "Choisissez une recette ou saisissez un intitulé."
+        if (draft != null) {
+            val current = draft.slots.firstOrNull { it.date == date && it.meal == meal }
+            if (!matches(current)) {
+                reject(changed)
+                return
+            }
+            if (missingContent(current)) {
+                reject(chooseContent)
+                return
+            }
+            val updated = updatedSlot(current)
+            val edited = when {
+                current == updated -> draft
+                updated == null -> draft.copy(slots = draft.slots.filterNot { it.date == date && it.meal == meal })
+                else -> draft.withSlot(updated.copy(version = updated.version + 1))
+            }
+            _menu.update { it.copy(proposal = edited, error = null, mealEditOutcome = MealEditOutcome(requestId, null)) }
+            return
+        }
+
+        val address = serverUrl
+        _menu.update { it.copy(working = operation, error = null, mealEditOutcome = null) }
+        mealEditJob = viewModelScope.launch {
+            fun currentRequest() = isActive && signedInUser()?.id == user.id &&
+                serverUrl == address && _menu.value.working == operation
+            fun complete(error: String? = null, clearUndo: Boolean = false) {
+                _menu.update { it.copy(working = null, undoMove = it.undoMove.takeUnless { clearUndo },
+                    mealEditOutcome = MealEditOutcome(requestId, error)) }
+            }
+            try {
+                // ConfirmMenu compares every saved version in the period. Read the latest sibling meal
+                // and the server's date, while still requiring the original version of the edited slot.
+                val day = session.authed { api, access -> api.menu(access, date, date) }
+                if (!currentRequest()) return@launch
+                val slots = day.slots.filter { it.date == date }
+                val current = slots.firstOrNull { it.meal == meal }
+                val failure = when {
+                    date < day.today -> "Ce repas est passé."
+                    !matches(current) -> changed
+                    current == null && replacement != null && date > day.today.plusDays(20) ->
+                        "Vous pouvez ajouter un repas dans les 21 prochains jours."
+                    missingContent(current) -> chooseContent
+                    else -> null
+                }
+                if (failure != null) {
+                    complete(failure)
+                    refreshPlannerWeek(date)
+                    return@launch
+                }
+                val updated = updatedSlot(current)
+                if (current == updated) {
+                    complete()
+                    return@launch
+                }
+                val proposal = MenuProposal(date, date, slots, slots.map { SlotVersion(it.id, it.version) })
+                val edit = if (updated == null) proposal.copy(slots = slots.filterNot { it.meal == meal })
+                    else proposal.withSlot(updated)
+                val selectedRecipe = updated?.recipe?.id
+                val isSiblingRecipe = selectedRecipe != null && selectedRecipe != current?.recipe?.id &&
+                    slots.any { it.recipe?.id == selectedRecipe }
+                val saved = session.authed { api, access ->
+                    // The server permits existing recipes in a confirmation even if archived. A recipe
+                    // already used in the other meal still needs to be active when choosing it here.
+                    if (selectedRecipe != null && isSiblingRecipe && api.recipe(access, selectedRecipe).archived) {
+                        throw ApiException(422, "validation_error", "Cette recette est archivée.")
+                    }
+                    api.confirmMenu(access, edit)
+                }
+                if (!currentRequest()) return@launch
+                updateSharedPeriod(edit, saved)
+                complete(clearUndo = true)
+                refreshPlannerWeek(date)
+            } catch (e: SessionExpiredException) {
+                if (currentRequest()) toLogin("Votre session a expiré : reconnectez-vous.")
+            } catch (e: IOException) {
+                if (!currentRequest()) return@launch
+                complete(if (e is ApiException && e.code == "menu_changed") changed else errorMessage(e))
+                refreshPlannerWeek(date)
+            }
+        }
     }
 
     /** Runs a change of the planned meals, then reloads the menu; [done] is told on success. */
@@ -1392,6 +1534,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         weekJob?.cancel()
         beforeWeekJob?.cancel()
         afterWeekJob?.cancel()
+        mealEditJob?.cancel()
         copyJob?.cancel()
         pickerJob?.cancel()
         preferenceJob?.cancel()

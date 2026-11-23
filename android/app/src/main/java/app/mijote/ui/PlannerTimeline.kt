@@ -13,10 +13,13 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -32,6 +35,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
@@ -92,6 +96,7 @@ import kotlinx.coroutines.flow.collect
 private val agendaDate = DateTimeFormatter.ofPattern("EEEE d MMMM", Locale.FRENCH)
 private val agendaMeals = listOf("lunch", "dinner")
 private val agendaCardHeight = 76.dp
+private val agendaHomeCaptionHeight = 93.dp
 private val agendaShape = RoundedCornerShape(17.dp)
 private val agendaTodayShape = RoundedCornerShape(20.dp)
 
@@ -294,6 +299,9 @@ internal fun PlannerTimeline(
                     if (index == 0 && (loadingBefore || beforeError != null)) {
                         TimelineBoundary(loadingBefore, beforeError, boundaryEnabled) { onBoundary(true, true) }
                     }
+                    if (largeCards && index > 0) {
+                        HorizontalDivider(Modifier.padding(horizontal = 7.dp), color = Sunny.Track)
+                    }
                     val isToday = date == today
                     val dayBackground = if (isToday) {
                         Modifier.background(Sunny.ButterLight.copy(alpha = 0.72f), agendaTodayShape)
@@ -305,7 +313,7 @@ internal fun PlannerTimeline(
                         verticalArrangement = Arrangement.spacedBy(if (largeCards) 11.dp else 7.dp),
                     ) {
                         TimelineDayHeader(date, today)
-                        agendaMeals.forEach { meal ->
+                        val mealCard: @Composable (String, Modifier) -> Unit = { meal, cardModifier ->
                             val moment = PlannerMoment(date, meal)
                             val slot = slots[moment]
                             val readOnly = isReadOnly(date)
@@ -331,7 +339,7 @@ internal fun PlannerTimeline(
                                 onKeyboardMove = accessibleMove?.let { { onKeyboardMove(it) } },
                                 onOptions = optionsSlot?.let { { onMealOptions(moment, it) } },
                                 onOptionsBounds = { gesture.optionsBounds[moment] = it },
-                                modifier = Modifier.fillMaxWidth().onGloballyPositioned { coords ->
+                                modifier = cardModifier.onGloballyPositioned { coords ->
                                     if (loaded) {
                                         val origin = coords.localToRoot(Offset.Zero)
                                         val original = Rect(
@@ -341,6 +349,16 @@ internal fun PlannerTimeline(
                                     } else gesture.cells.remove(moment)
                                 }.alpha(if (placeholder) 0.35f else 1f),
                             )
+                        }
+                        if (largeCards) {
+                            Row(
+                                Modifier.fillMaxWidth().height(IntrinsicSize.Min),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            ) {
+                                agendaMeals.forEach { meal -> mealCard(meal, Modifier.weight(1f).fillMaxHeight()) }
+                            }
+                        } else {
+                            agendaMeals.forEach { meal -> mealCard(meal, Modifier.fillMaxWidth()) }
                         }
                     }
                     if (index == dates.lastIndex && (loadingAfter || afterError != null)) {
@@ -421,7 +439,8 @@ private fun TimelineMealCard(
         else -> null
     }
     val hasArt = slot != null && (slot.recipe != null || slot.manual)
-    val fullPhoto = large && hasArt
+    val homeEmpty = large && slot == null
+    val canAdd = homeEmpty && loaded && enabled
     val actionInset = if (onOptions == null) 12.dp else 58.dp
     val border = when {
         active || hover -> Sunny.Ink
@@ -434,8 +453,10 @@ private fun TimelineMealCard(
         slot == null -> Sunny.Cream
         else -> Sunny.Card
     }
-    val action = Modifier.fillMaxWidth().clickable(enabled = enabled, role = Role.Button, onClick = onClick)
-        .semantics {
+    val primaryAction = if (homeEmpty) Modifier else Modifier.clickable(
+        enabled = enabled, role = Role.Button, onClick = onClick,
+    )
+    val action = Modifier.fillMaxWidth().then(primaryAction).semantics {
             contentDescription = listOfNotNull(mealMoment(moment.date, moment.meal), title, info).joinToString(" · ")
             selected = active
             if (hover) stateDescription = "Destination"
@@ -445,43 +466,82 @@ private fun TimelineMealCard(
                 customActions = listOf(CustomAccessibilityAction("Déplacer le repas") { onKeyboardMove(); true })
             }
         }
-    val caption: @Composable () -> Unit = {
+    val captionLabel: @Composable (Modifier) -> Unit = { modifier ->
         Text(
             listOfNotNull(label, info).joinToString(" · "),
-            color = Sunny.InkTitle, fontSize = 12.sp, lineHeight = 15.sp, fontWeight = FontWeight.SemiBold,
+            modifier, color = Sunny.InkTitle, fontSize = 12.sp, lineHeight = 15.sp,
+            fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis,
         )
+    }
+    val captionTitle: @Composable () -> Unit = {
         Text(
             if (hover && slot == null) "Déposer ici" else title,
             color = if (slot == null && !hover) Sunny.InkTitle else Sunny.Ink,
-            fontSize = if (large) 18.sp else 15.sp,
-            lineHeight = if (large) 23.sp else 19.sp,
+            fontSize = if (large) 16.sp else 15.sp,
+            lineHeight = 19.sp,
             fontWeight = if (large) FontWeight.Bold else FontWeight.SemiBold,
             maxLines = if (large) 3 else 2, overflow = TextOverflow.Ellipsis,
         )
+    }
+    val indicators: @Composable () -> Unit = {
+        when {
+            active || hover || copied -> Icon(Icons.Filled.Check, null, Modifier.size(16.dp), tint = Sunny.Ink)
+            slot?.locked == true -> Icon(Icons.Filled.Lock, null, Modifier.size(14.dp), tint = Sunny.InkTitle)
+            !large && slot == null && loaded && enabled ->
+                Icon(Icons.Filled.Add, null, Modifier.size(20.dp), tint = Sunny.Ink)
+        }
     }
 
     Box(modifier.clip(agendaShape).background(background)
         .border(if (active || hover || copied) 2.dp else 1.dp, border, agendaShape)) {
         Column(action) {
-            if (fullPhoto && slot != null) {
-                TimelineMealArt(slot, Modifier.fillMaxWidth().aspectRatio(2.05f), 50.sp)
-            }
-            Row(
-                Modifier.fillMaxWidth().heightIn(min = if (fullPhoto) 64.dp else agendaCardHeight)
-                    .padding(start = 12.dp, end = actionInset, top = 9.dp, bottom = 9.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                if (!fullPhoto && hasArt && slot != null) {
-                    TimelineMealArt(slot, Modifier.size(42.dp).clip(RoundedCornerShape(12.dp)), 21.sp)
+            if (large) {
+                val photo = Modifier.fillMaxWidth().aspectRatio(1.8f)
+                if (hasArt && slot != null) {
+                    TimelineMealArt(slot, photo, 34.sp)
+                } else {
+                    Box(photo.background(Sunny.ButterLight.copy(alpha = 0.62f)), contentAlignment = Alignment.Center) {
+                        if (canAdd) {
+                            IconButton(onClick = onClick, modifier = Modifier.size(48.dp)) {
+                                Box(Modifier.size(33.dp).background(Sunny.Card, CircleShape), contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        Icons.Filled.Add, "Planifier · ${mealMoment(moment.date, moment.meal)}",
+                                        tint = Sunny.Ink, modifier = Modifier.size(21.dp),
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
-                Column(Modifier.weight(1f).clearAndSetSemantics { }, verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                    caption()
+                Column(
+                    Modifier.fillMaxWidth().heightIn(min = agendaHomeCaptionHeight)
+                        .padding(horizontal = 10.dp, vertical = 9.dp).clearAndSetSemantics { },
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        captionLabel(Modifier.weight(1f))
+                        indicators()
+                    }
+                    captionTitle()
                 }
-                when {
-                    active || hover || copied -> Icon(Icons.Filled.Check, null, Modifier.size(19.dp), tint = Sunny.Ink)
-                    slot?.locked == true -> Icon(Icons.Filled.Lock, null, Modifier.size(15.dp), tint = Sunny.InkTitle)
-                    slot == null && loaded && enabled -> Icon(Icons.Filled.Add, null, Modifier.size(20.dp), tint = Sunny.Ink)
+            } else {
+                Row(
+                    Modifier.fillMaxWidth().heightIn(min = agendaCardHeight)
+                        .padding(start = 12.dp, end = actionInset, top = 9.dp, bottom = 9.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    if (hasArt && slot != null) {
+                        TimelineMealArt(slot, Modifier.size(42.dp).clip(RoundedCornerShape(12.dp)), 21.sp)
+                    }
+                    Column(Modifier.weight(1f).clearAndSetSemantics { }, verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                        captionLabel(Modifier)
+                        captionTitle()
+                    }
+                    indicators()
                 }
             }
         }
@@ -489,12 +549,17 @@ private fun TimelineMealCard(
             IconButton(
                 onClick = onOptions,
                 enabled = enabled,
-                modifier = Modifier.align(if (fullPhoto) Alignment.BottomEnd else Alignment.CenterEnd)
-                    .padding(end = 5.dp, bottom = if (fullPhoto) 8.dp else 0.dp)
+                modifier = Modifier.align(if (large) Alignment.TopEnd else Alignment.CenterEnd)
+                    .padding(top = if (large) 3.dp else 0.dp, end = 4.dp)
                     .size(48.dp)
                     .onGloballyPositioned { onOptionsBounds(it.boundsInRoot()) },
             ) {
-                Icon(Icons.Filled.MoreVert, "Options du repas · $title", tint = Sunny.Ink)
+                Box(
+                    Modifier.size(33.dp).background(if (large) Sunny.Card else background, CircleShape),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(Icons.Filled.MoreVert, "Options du repas · $title", tint = Sunny.Ink)
+                }
             }
         }
     }
