@@ -6,6 +6,8 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -46,6 +48,7 @@ import app.mijote.data.MenuSlot
 import app.mijote.data.RecipeSummary
 
 /** Contents of a meal sheet. All edits remain in the caller's draft until it saves. */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun PlannerMealEditor(
     moment: PlannerMoment,
@@ -65,6 +68,7 @@ internal fun PlannerMealEditor(
     onPeople: (Int) -> Unit,
     onManualInput: (String) -> Unit,
     onPick: () -> Unit,
+    onRandom: () -> Unit,
     onOpen: (() -> Unit)?,
     onRemove: () -> Unit,
     onBack: () -> Unit,
@@ -119,15 +123,13 @@ internal fun PlannerMealEditor(
                             Text("À enregistrer", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Sunny.Ink)
                             MealEditorRecipe(replacementRecipe, onOpen = null, busy = busy)
                         }
-                        AgendaAction(
-                            when {
-                                replacementRecipe != null -> "Choisir une autre recette"
-                                original != null -> "Planifier une autre recette"
-                                else -> "Choisir une recette"
-                            },
-                            onPick,
-                            enabled = enabled,
-                        )
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            AgendaAction("Recette au hasard", onRandom, enabled = enabled)
+                            AgendaAction("Choisir une recette", onPick, enabled = enabled)
+                        }
                     }
                 }
                 MealEditorManual(

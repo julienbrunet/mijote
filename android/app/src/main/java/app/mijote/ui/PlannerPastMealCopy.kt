@@ -33,20 +33,24 @@ internal fun PlannerPastMealCopy(
     today: LocalDate,
     date: LocalDate,
     meal: String,
-    occupied: Boolean,
+    occupied: String?,
+    checking: Boolean,
+    destinationReady: Boolean,
     busy: Boolean,
     error: String?,
     onDate: (LocalDate) -> Unit,
     onMeal: (String) -> Unit,
     onConfirm: () -> Unit,
     onBack: () -> Unit,
+    onRetry: () -> Unit,
 ) {
-    val dates = List(20) { today.plusDays(it + 1L) }
+    val dates = today.plusDays(1)..today.plusDays(20)
     val title = source.title ?: source.recipe?.title
     val sourcePeople = source.people?.let { if (it == 1) "1 personne" else "$it personnes" }
     val notice = error ?: when {
         title.isNullOrBlank() -> "Ce repas n’a ni recette ni intitulé à copier."
-        occupied -> "Un repas est déjà prévu sur ce créneau. Choisissez-en un autre."
+        occupied != null -> "« $occupied » est déjà prévu sur ce créneau. La copie remplacera ce repas après confirmation."
+        checking -> "Vérification du créneau…"
         else -> null
     }
     Column(
@@ -72,11 +76,7 @@ internal fun PlannerPastMealCopy(
                         fontSize = 12.sp, lineHeight = 16.sp, color = Sunny.InkTitle)
                 }
             }
-            PlannerSelect(
-                "Date de destination", date, dates,
-                { "${dayLabel(it, today)} · ${periodLabel(it, it)}" },
-                !busy, onDate, Modifier.fillMaxWidth(),
-            )
+            PlannerDateField("Date de destination", date, dates.start, dates.endInclusive, !busy, onDate)
             Row(
                 Modifier.fillMaxWidth().selectableGroup(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -104,6 +104,9 @@ internal fun PlannerPastMealCopy(
                     .semantics { liveRegion = LiveRegionMode.Polite }.padding(8.dp),
                 fontSize = 12.sp, lineHeight = 16.sp, color = Sunny.Ink,
             )
+            if (error != null && !destinationReady && !checking) {
+                AgendaAction("Réessayer", onRetry, enabled = !busy)
+            }
         }
         Row(
             Modifier.fillMaxWidth(),
@@ -111,9 +114,13 @@ internal fun PlannerPastMealCopy(
         ) {
             AgendaAction("Retour", onBack, enabled = !busy)
             AgendaAction(
-                if (busy) "Copie en cours…" else "Copier ce repas",
-                onConfirm, primary = true,
-                enabled = !busy && !occupied && date in dates && !title.isNullOrBlank(),
+                when {
+                    busy -> "Copie en cours…"
+                    occupied != null -> "Remplacer le repas"
+                    else -> "Copier ce repas"
+                },
+                onConfirm, primary = true, warning = occupied != null,
+                enabled = !busy && !checking && destinationReady && date in dates && !title.isNullOrBlank(),
             )
         }
     }

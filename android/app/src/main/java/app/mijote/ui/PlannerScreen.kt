@@ -4,11 +4,11 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -17,7 +17,6 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.DateRange
-import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Person
@@ -41,6 +40,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.mijote.MenuState
+import app.mijote.MealCopyDestination
+import app.mijote.RandomMealRecipesState
 import app.mijote.PlacementRecipe
 import app.mijote.PlannerWeekState
 import app.mijote.RecipesState
@@ -56,12 +57,9 @@ import app.mijote.data.RecipeSummary
 import app.mijote.data.User
 import app.mijote.data.periodImpact
 import java.time.LocalDate
-import java.time.format.DateTimeFormatter
-import java.util.Locale
 import java.util.UUID
 import kotlinx.coroutines.launch
 
-private val plannerMonthDay = DateTimeFormatter.ofPattern("d MMMM", Locale.FRENCH)
 private val plannerShape = RoundedCornerShape(12.dp)
 
 private fun mealTitle(slot: MenuSlot?, past: Boolean = false) = when {
@@ -132,6 +130,8 @@ data class PlannerActions(
     val onCancelPlacement: () -> Unit = {},
     val onPlan: (LocalDate, String, Boolean) -> Unit = { _, _, _ -> },
     val onSearchRecipes: (String) -> Unit = {},
+    val onLoadRandomRecipes: (LocalDate, String) -> Unit = { _, _ -> },
+    val onReadCopyDestination: (LocalDate) -> Unit = {},
     val onOpenRecipe: (MenuSlot, Boolean) -> Unit = { _, _ -> },
     val onGenerate: (LocalDate, Int, MealPlan) -> Unit = { _, _, _ -> },
     val onSetPeople: (Int) -> Unit = {},
@@ -150,7 +150,7 @@ data class PlannerActions(
     val onNotifications: () -> Unit = {},
 )
 
-private enum class PlannerPanel { None, Picker, Move, Generate, Copy, CopyPastMeal, Discard }
+private enum class PlannerPanel { None, Picker, RandomRecipes, Move, Generate, Copy, CopyPastMeal, Discard }
 internal data class PlannerMoment(val date: LocalDate, val meal: String)
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -164,6 +164,8 @@ fun PlannerScreen(
     copy: WeekCopyState,
     unreadNotifications: Int,
     actions: PlannerActions,
+    randomRecipes: RandomMealRecipesState = RandomMealRecipesState(),
+    copyDestination: MealCopyDestination = MealCopyDestination(),
 ) {
     val today = state.menu?.today ?: week.menu?.today ?: LocalDate.now()
     val proposal = state.proposal
@@ -172,10 +174,11 @@ fun PlannerScreen(
     val busy = state.working != null || state.generating || copy.loading
     val loaded = week.weeks.ifEmpty { week.menu?.let { mapOf((week.start ?: today.weekStart()) to it) }.orEmpty() }
     val fallback = state.menu?.takeIf { loaded.isEmpty() && week.start == today.weekStart() }
-    val dates = remember(loaded.keys, fallback?.today) {
+    val dates = remember(loaded.keys, fallback?.today, proposal?.from, proposal?.to) {
         val first = loaded.keys.minOrNull()
         val last = loaded.keys.maxOrNull()
         when {
+            proposal != null -> (proposal.from.toEpochDay()..proposal.to.toEpochDay()).map(LocalDate::ofEpochDay)
             first != null && last != null -> (first.toEpochDay()..last.plusDays(6).toEpochDay()).map(LocalDate::ofEpochDay)
             fallback != null -> (fallback.today.toEpochDay()..fallback.today.weekStart().plusDays(6).toEpochDay()).map(LocalDate::ofEpochDay)
             else -> emptyList()
@@ -210,6 +213,7 @@ fun PlannerScreen(
     var applyingCopy by rememberSaveable { mutableStateOf(false) }
     var mealDraft by rememberSaveable(stateSaver = PlannerMealDraft.saver) { mutableStateOf<PlannerMealDraft?>(null) }
     var confirmMealRemoval by rememberSaveable { mutableStateOf(false) }
+    var confirmPastReplacement by rememberSaveable { mutableStateOf(false) }
     var pastCopyEpoch by rememberSaveable { mutableLongStateOf(today.plusDays(1).toEpochDay()) }
     var pastCopyMeal by rememberSaveable { mutableStateOf("lunch") }
     var fromEpoch by rememberSaveable(today) { mutableLongStateOf(today.plusDays(1).toEpochDay()) }
@@ -248,7 +252,9 @@ fun PlannerScreen(
     val targetWeek = copyTargetEpoch?.let(LocalDate::ofEpochDay) ?: maxOf(visibleDate.weekStart(), today.weekStart())
     val sourceWeek = copySourceEpoch?.let(LocalDate::ofEpochDay) ?: targetWeek.minusWeeks(1)
     val pastCopyDate = LocalDate.ofEpochDay(pastCopyEpoch).coerceIn(today.plusDays(1), today.plusDays(20))
-    val pastCopyOccupied = week.snapshot(pastCopyDate)?.slots?.any { it.date == pastCopyDate && it.meal == pastCopyMeal } == true
+    val destinationCheck = copyDestination.takeIf { it.date == pastCopyDate }
+    val destinationMenu = destinationCheck?.menu ?: week.snapshot(pastCopyDate)?.takeIf { destinationCheck == null }
+    val pastCopyTarget = destinationMenu?.slots?.firstOrNull { it.date == pastCopyDate && it.meal == pastCopyMeal }
     val copyFeedback = remember { SnackbarHostState() }
     val feedbackScope = rememberCoroutineScope()
 
@@ -258,16 +264,17 @@ fun PlannerScreen(
         if (moment == null) {
             mealDraft = null
             confirmMealRemoval = false
+            confirmPastReplacement = false
         }
     }
     fun openMeal(moment: PlannerMoment, slot: MenuSlot?) {
         select(moment)
         mealDraft = PlannerMealDraft(slot, (slot?.people ?: user.people).coerceIn(1, 20))
     }
-    fun loadedDay(date: LocalDate) = loaded.containsKey(date.weekStart()) || fallback != null && date >= fallback.today
+    fun loadedDay(date: LocalDate) = inDraft || loaded.containsKey(date.weekStart()) || fallback != null && date >= fallback.today
     fun readOnly(date: LocalDate) = !user.canWrite || date < today ||
         (proposal != null && date !in proposal.from..proposal.to)
-    fun editable(date: LocalDate) = !readOnly(date) && week.snapshot(date) != null && !state.proposalConflict
+    fun editable(date: LocalDate) = !readOnly(date) && (inDraft || week.snapshot(date) != null) && !state.proposalConflict
     fun canPlan(date: LocalDate) = editable(date) && (inDraft || date <= today.plusDays(20))
     fun canMove(moment: PlannerMoment) = editable(moment.date) &&
         (!inDraft || indexed[moment] != null) &&
@@ -305,6 +312,15 @@ fun PlannerScreen(
         pastCopyEpoch = today.plusDays(1).toEpochDay()
         pastCopyMeal = slot.meal
         panel = PlannerPanel.CopyPastMeal
+    }
+    fun copyPastMeal(slot: MenuSlot, occupied: MenuSlot?) {
+        if (destinationMenu == null) return
+        val moment = PlannerMoment(pastCopyDate, pastCopyMeal)
+        val copied = slot.copy(
+            id = occupied?.id ?: UUID.randomUUID().toString(), date = moment.date, meal = moment.meal,
+            people = slot.people ?: user.people, locked = true, version = occupied?.version ?: 0,
+        )
+        submitMeal(moment, occupied?.let { SlotVersion(it.id, it.version) }, copied)
     }
     fun startMove(slot: MenuSlot) {
         sourceId = slot.id
@@ -373,8 +389,19 @@ fun PlannerScreen(
             hadPlacement = false
         }
     }
+    LaunchedEffect(proposal?.from, proposal?.to) {
+        if (proposal != null) list.requestScrollToItem(0)
+    }
     LaunchedEffect(proposal != null) {
         if (panel == PlannerPanel.Generate && proposal != null) closePanel()
+    }
+    LaunchedEffect(panel, selected) {
+        if (panel == PlannerPanel.RandomRecipes && selected != null) {
+            actions.onLoadRandomRecipes(selected.date, selected.meal)
+        }
+    }
+    LaunchedEffect(panel, pastCopyDate) {
+        if (panel == PlannerPanel.CopyPastMeal) actions.onReadCopyDestination(pastCopyDate)
     }
     LaunchedEffect(state.mealEditOutcome, draft?.requestId) {
         val outcome = state.mealEditOutcome ?: return@LaunchedEffect
@@ -385,25 +412,29 @@ fun PlannerScreen(
                 feedbackScope.launch { copyFeedback.showSnackbar("Repas copié · $destination") }
             }
             closePanel()
-        } else mealDraft = pending.copy(requestId = null, error = outcome.error)
+        } else {
+            mealDraft = pending.copy(requestId = null, error = outcome.error)
+            if (panel == PlannerPanel.CopyPastMeal) actions.onReadCopyDestination(pastCopyDate)
+        }
     }
 
-    if (panel == PlannerPanel.Picker && selected != null && draft != null) {
+    if ((panel == PlannerPanel.Picker || panel == PlannerPanel.RandomRecipes) && selected != null && draft != null) {
         val back = { panel = PlannerPanel.None }
-        BackHandler(onBack = back)
-        Column(Modifier.fillMaxSize().background(Sunny.Cream).safeDrawingPadding()) {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)) {
-                AgendaAction("Retour", back, icon = Icons.AutoMirrored.Filled.ArrowBack)
-            }
-            Column(Modifier.padding(horizontal = 12.dp, vertical = 4.dp)) {
-                PlannerRecipePicker(recipes, selected, busy, actions.onSearchRecipes) { recipe ->
-                    mealDraft = draft.copy(
-                        chosenRecipe = MenuRecipe(recipe.id, recipe.title, recipe.dishType, recipe.minutes, recipe.image),
-                        manualInput = "", error = null,
-                    )
-                    back()
-                }
-            }
+        val choose: (RecipeSummary) -> Unit = { recipe ->
+            mealDraft = draft.copy(
+                chosenRecipe = MenuRecipe(recipe.id, recipe.title, recipe.dishType, recipe.minutes, recipe.image),
+                manualInput = "", error = null,
+            )
+            back()
+        }
+        if (panel == PlannerPanel.Picker) {
+            PlannerRecipePickerScreen(recipes, selected, busy, actions.onSearchRecipes, choose, back)
+        } else {
+            val suggestions = randomRecipes.takeIf { it.date == selected.date && it.meal == selected.meal }
+                ?: RandomMealRecipesState(loading = true)
+            PlannerRandomRecipesScreen(
+                suggestions, selected, { actions.onLoadRandomRecipes(selected.date, selected.meal) }, choose, back,
+            )
         }
     } else {
         val showSheet = when {
@@ -446,11 +477,12 @@ fun PlannerScreen(
         val mealBeingPlaced = placement?.title ?: source?.let { mealTitle(it) }
 
         val showPastCopy = showSheet && panel == PlannerPanel.CopyPastMeal
+        val showGeneration = showSheet && panel == PlannerPanel.Generate
         val showMealEditor = showSheet && !showPastCopy && draft != null && selected != null && !selecting
         Box(Modifier.fillMaxSize()) {
-            val agendaSemantics = if (showMealEditor || showPastCopy) Modifier.clearAndSetSemantics { } else Modifier
+            val agendaSemantics = if (showMealEditor || showPastCopy || showGeneration) Modifier.clearAndSetSemantics { } else Modifier
             Column(
-                Modifier.fillMaxSize().then(agendaSemantics).background(if (isHome) Sunny.Card else Sunny.Cream)
+                Modifier.fillMaxSize().then(agendaSemantics).background(if (isHome || inDraft) Sunny.Card else Sunny.Cream)
                     .statusBarsPadding().imePadding(),
             ) {
                 if (isHome) {
@@ -493,7 +525,7 @@ fun PlannerScreen(
                 }
                 Box(Modifier.weight(1f).fillMaxWidth()) {
                     PullToRefreshBox(
-                        isRefreshing = state.refreshing || (week.loading && dates.isNotEmpty()),
+                        isRefreshing = !inDraft && (state.refreshing || (week.loading && dates.isNotEmpty())),
                         onRefresh = { if (!busy && !inDraft) actions.onRefresh() },
                         modifier = Modifier.fillMaxSize(),
                     ) {
@@ -532,13 +564,13 @@ fun PlannerScreen(
                                     visibleEpoch = date.toEpochDay()
                                     actions.onVisibleDay(date)
                                 },
-                                loadingBefore = week.loadingBefore,
-                                loadingAfter = week.loadingAfter,
-                                beforeError = week.beforeError,
-                                afterError = week.afterError,
+                                loadingBefore = !inDraft && week.loadingBefore,
+                                loadingAfter = !inDraft && week.loadingAfter,
+                                beforeError = week.beforeError.takeUnless { inDraft },
+                                afterError = week.afterError.takeUnless { inDraft },
                                 isDateLoaded = ::loadedDay,
-                                boundaryEnabled = loaded.isNotEmpty() && !busy && !state.loading && !week.loading,
-                                largeCards = isHome,
+                                boundaryEnabled = !inDraft && loaded.isNotEmpty() && !busy && !state.loading && !week.loading,
+                                largeCards = isHome || inDraft,
                                 hasMealOptions = { moment, _ -> !activeCopy && editable(moment.date) },
                                 onMealOptions = ::openMeal,
                                 bottomPadding = if (isHome) 80.dp + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() else 18.dp,
@@ -554,13 +586,18 @@ fun PlannerScreen(
                         }
                     }
                     if (isHome) {
-                        if (showTodayButton) {
+                        if (showTodayButton && !homeMenuOpen) {
                             PlannerTodayButton(
                                 onClick = ::goToToday,
                                 modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding()
                                     .padding(horizontal = 80.dp, vertical = 16.dp),
                             )
                         }
+                        if (homeMenuOpen) Box(
+                            Modifier.matchParentSize()
+                                .clickable(interactionSource = null, indication = null) { homeMenuOpen = false }
+                                .clearAndSetSemantics { },
+                        )
                         PlannerHomeMenu(
                             expanded = homeMenuOpen, onExpanded = { homeMenuOpen = it },
                             canWrite = user.canWrite, canPlan = !busy && dates.isNotEmpty(),
@@ -573,7 +610,10 @@ fun PlannerScreen(
                     }
                 }
                 if (inDraft && !selecting && !state.proposalConflict) {
-                    PlannerFooter(if (state.working == "confirm") "Publication…" else "Publier", actions.onPublish, enabled = !busy)
+                    PlannerFooter(
+                        if (state.working == "confirm") "Validation…" else "Valider cette proposition",
+                        actions.onPublish, enabled = !busy, centered = true,
+                    )
                 }
                 if (!isHome) Spacer(Modifier.windowInsetsBottomHeight(WindowInsets.navigationBars))
             }
@@ -583,7 +623,24 @@ fun PlannerScreen(
                     .padding(start = 12.dp, end = 12.dp, bottom = 76.dp),
             )
 
-            if (showPastCopy && draft?.original != null) {
+            if (showGeneration) {
+                PlannerMealOverlay(busy, ::dismissSheet, heightFraction = null) {
+                    Column(
+                        Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        PlannerGeneration(generationStart, today, duration, plan, user.people, generationCount,
+                            visibleSlots, state.menu?.slots.orEmpty(), info, busy,
+                            onStart = { fromEpoch = it.toEpochDay() }, onDuration = { duration = it },
+                            onPlan = { plan = it }, onPeople = actions.onSetPeople)
+                        PlannerFooter(
+                            if (state.generating) "Création en cours…" else "Créer la proposition",
+                            { actions.onGenerate(generationStart, generationCount, plan) },
+                            enabled = info?.enoughRecipes == true && !busy, centered = true,
+                        )
+                    }
+                }
+            } else if (showPastCopy && draft?.original != null) {
                 val original = draft.original
                 val saving = busy || draft.requestId != null
                 PlannerMealOverlay(saving, ::dismissSheet, heightFraction = null) {
@@ -592,28 +649,40 @@ fun PlannerScreen(
                     ) {
                         PlannerPastMealCopy(
                             source = original, today = today, date = pastCopyDate, meal = pastCopyMeal,
-                            occupied = pastCopyOccupied, busy = saving, error = draft.error,
+                            occupied = pastCopyTarget?.let { mealTitle(it) }, busy = saving, error = draft.error ?: destinationCheck?.error,
+                            checking = destinationCheck?.loading == true || destinationMenu == null && destinationCheck?.error == null,
+                            destinationReady = destinationMenu != null,
                             onDate = {
+                                confirmPastReplacement = false
                                 pastCopyEpoch = it.toEpochDay()
                                 mealDraft = draft.copy(error = null)
                             },
                             onMeal = {
+                                confirmPastReplacement = false
                                 pastCopyMeal = it
                                 mealDraft = draft.copy(error = null)
                             },
                             onConfirm = {
-                                if (!pastCopyOccupied) {
-                                    val target = PlannerMoment(pastCopyDate, pastCopyMeal)
-                                    val copySlot = original.copy(
-                                        id = UUID.randomUUID().toString(), date = target.date, meal = target.meal,
-                                        people = draft.initialPeople, locked = true, version = 0,
-                                    )
-                                    submitMeal(target, expected = null, replacement = copySlot)
-                                }
+                                if (pastCopyTarget != null) confirmPastReplacement = true else copyPastMeal(original, null)
                             },
+                            onRetry = { actions.onReadCopyDestination(pastCopyDate) },
                             onBack = ::dismissSheet,
                         )
                     }
+                }
+                if (confirmPastReplacement && pastCopyTarget != null) {
+                    AlertDialog(
+                        onDismissRequest = { confirmPastReplacement = false },
+                        title = { Text("Remplacer le repas prévu ?") },
+                        text = { Text("« ${mealTitle(pastCopyTarget)} » sera remplacé par une copie de « ${mealTitle(original)} ».") },
+                        dismissButton = { TextButton(onClick = { confirmPastReplacement = false }) { Text("Annuler") } },
+                        confirmButton = {
+                            TextButton(onClick = {
+                                confirmPastReplacement = false
+                                copyPastMeal(original, pastCopyTarget)
+                            }) { Text("Remplacer ce repas", color = Sunny.Error) }
+                        },
+                    )
                 }
             } else if (showMealEditor) {
                 val original = draft.original
@@ -631,6 +700,7 @@ fun PlannerScreen(
                         onPeople = { mealDraft = draft.copy(people = it, error = null) },
                         onManualInput = { mealDraft = draft.copy(manualInput = it, error = null) },
                         onPick = ::openPicker,
+                        onRandom = { panel = PlannerPanel.RandomRecipes },
                         onOpen = original?.takeIf { it.recipe != null }?.let { slot ->
                             { actions.onOpenRecipe(slot.copy(people = draft.people), true) }
                         },
@@ -656,7 +726,7 @@ fun PlannerScreen(
             }
         }
 
-        if (showSheet && !showMealEditor && !showPastCopy) {
+        if (showSheet && !showMealEditor && !showPastCopy && !showGeneration) {
             PlannerActionSheet(busy, ::dismissSheet) {
                 Column(
                     Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 12.dp).padding(bottom = 8.dp),
@@ -683,14 +753,6 @@ fun PlannerScreen(
                                 actions.onMove(source, selected.date, selected.meal)
                                 closePanel()
                             }, enabled = !busy && canMove(selected))
-                        }
-                        panel == PlannerPanel.Generate -> {
-                            PlannerGeneration(generationStart, today, duration, plan, user.people, generationCount,
-                                visibleSlots, state.menu?.slots.orEmpty(), info, busy,
-                                onStart = { fromEpoch = it.toEpochDay() }, onDuration = { duration = it },
-                                onPlan = { plan = it }, onPeople = actions.onSetPeople)
-                            PlannerFooter(if (state.generating) "Création en cours…" else "Créer la proposition",
-                                { actions.onGenerate(generationStart, generationCount, plan) }, enabled = info?.enoughRecipes == true && !busy)
                         }
                         activeCopy -> {
                             PlannerCopyPanel(targetWeek, sourceWeek, copy, busy, actions.onCopyReplace,
@@ -813,33 +875,38 @@ private fun PlannerHomeMenu(
         action()
     }
 
+    BackHandler(enabled = expanded) { onExpanded(false) }
     Box(modifier) {
+        if (expanded) Surface(
+            modifier = Modifier.align(Alignment.BottomEnd).padding(bottom = 64.dp).widthIn(min = 200.dp, max = 280.dp),
+            shape = Shapes.Control, color = Sunny.Card, shadowElevation = 6.dp,
+            border = androidx.compose.foundation.BorderStroke(1.dp, Sunny.Track),
+        ) {
+            Column(Modifier.padding(vertical = 4.dp)) {
+                DropdownMenuItem(text = { Text("Recettes") }, onClick = { choose(onRecipes) },
+                    leadingIcon = { Icon(Icons.Filled.Search, null) })
+                if (canWrite) {
+                    DropdownMenuItem(text = { Text("Composer un menu") }, onClick = { choose(onGenerate) },
+                        leadingIcon = { Icon(Icons.Filled.Add, null) }, enabled = canPlan)
+                    DropdownMenuItem(text = { Text("Copier une semaine") }, onClick = { choose(onCopy) },
+                        leadingIcon = { Icon(Icons.Filled.DateRange, null) }, enabled = canPlan)
+                    DropdownMenuItem(
+                        text = { Text(if (unreadNotifications > 0) "Notifications ($unreadNotifications)" else "Notifications") },
+                        onClick = { choose(onNotifications) },
+                        leadingIcon = { Icon(Icons.Filled.Notifications, null) },
+                    )
+                    HorizontalDivider(color = Sunny.Track)
+                }
+                DropdownMenuItem(text = { Text("Compte") }, onClick = { choose(onAccount) },
+                    leadingIcon = { Icon(Icons.Filled.Person, null) })
+            }
+        }
         FloatingActionButton(
-            onClick = { onExpanded(true) },
+            onClick = { onExpanded(!expanded) },
+            modifier = Modifier.align(Alignment.BottomEnd),
             containerColor = Sunny.Butter, contentColor = Sunny.Ink, shape = Shapes.Control,
         ) {
-            Icon(Icons.Filled.Menu, contentDescription = "Ouvrir le menu")
-        }
-        DropdownMenu(
-            expanded = expanded, onDismissRequest = { onExpanded(false) }, containerColor = Sunny.Card,
-            shape = Shapes.Control,
-        ) {
-            DropdownMenuItem(text = { Text("Recettes") }, onClick = { choose(onRecipes) },
-                leadingIcon = { Icon(Icons.Filled.Search, null) })
-            if (canWrite) {
-                DropdownMenuItem(text = { Text("Composer un menu") }, onClick = { choose(onGenerate) },
-                    leadingIcon = { Icon(Icons.Filled.Add, null) }, enabled = canPlan)
-                DropdownMenuItem(text = { Text("Copier une semaine") }, onClick = { choose(onCopy) },
-                    leadingIcon = { Icon(Icons.Filled.DateRange, null) }, enabled = canPlan)
-                DropdownMenuItem(
-                    text = { Text(if (unreadNotifications > 0) "Notifications ($unreadNotifications)" else "Notifications") },
-                    onClick = { choose(onNotifications) },
-                    leadingIcon = { Icon(Icons.Filled.Notifications, null) },
-                )
-                HorizontalDivider(color = Sunny.Track)
-            }
-            DropdownMenuItem(text = { Text("Compte") }, onClick = { choose(onAccount) },
-                leadingIcon = { Icon(Icons.Filled.Person, null) })
+            Icon(Icons.Filled.Menu, contentDescription = if (expanded) "Fermer le menu" else "Ouvrir le menu")
         }
     }
 }
@@ -886,11 +953,11 @@ private fun PlannerLoading() {
 }
 
 @Composable
-private fun PlannerFooter(label: String, onClick: () -> Unit, enabled: Boolean, warning: Boolean = false) {
+private fun PlannerFooter(label: String, onClick: () -> Unit, enabled: Boolean, warning: Boolean = false, centered: Boolean = false) {
     Row(
         Modifier.fillMaxWidth().background(Sunny.Cream)
             .padding(start = 10.dp, end = 10.dp, top = 3.dp, bottom = 6.dp),
-        horizontalArrangement = Arrangement.End,
+        horizontalArrangement = if (centered) Arrangement.Center else Arrangement.End,
     ) {
         AgendaAction(label, onClick, primary = true, warning = warning, enabled = enabled)
     }
@@ -934,89 +1001,6 @@ private fun PlannerMealChange(label: String, title: String, modifier: Modifier, 
 }
 
 @Composable
-private fun PlannerRecipePicker(
-    state: RecipesState,
-    moment: PlannerMoment?,
-    busy: Boolean,
-    onSearch: (String) -> Unit,
-    onChoose: (RecipeSummary) -> Unit,
-) {
-    PlannerCard("Choisir une recette") {
-        moment?.let { PlannerSmall(mealMoment(it.date, it.meal)) }
-        OutlinedTextField(
-            state.query, onSearch, label = { Text("Rechercher une recette") },
-            singleLine = true, modifier = Modifier.fillMaxWidth(),
-            leadingIcon = { Icon(Icons.Filled.Search, null) }, shape = plannerShape,
-        )
-        val recipes = state.recipes.orEmpty()
-        val error = state.error
-        when {
-            state.loading && recipes.isEmpty() -> PlannerLoading()
-            error != null -> {
-                PlannerNotice(error, error = true)
-                AgendaAction("Réessayer", { onSearch(state.query) }, enabled = !busy)
-            }
-            recipes.isEmpty() -> PlannerSmall(if (state.query.isBlank()) "Le carnet est vide." else "Aucune recette trouvée.")
-        }
-        if (recipes.isNotEmpty()) LazyColumn(
-            Modifier.fillMaxWidth().heightIn(max = 240.dp),
-            verticalArrangement = Arrangement.spacedBy(5.dp),
-        ) {
-            items(recipes, key = RecipeSummary::id) { recipe ->
-                Row(
-                    Modifier.fillMaxWidth().heightIn(min = 48.dp).clip(plannerShape)
-                        .border(1.dp, Sunny.Track, plannerShape)
-                        .clickable(enabled = !busy, role = Role.Button) { onChoose(recipe) }
-                        .padding(horizontal = 8.dp, vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    RecipeThumb(recipe.image, "🍽️", Modifier.size(31.dp).clip(RoundedCornerShape(6.dp))
-                        .clearAndSetSemantics { }, emojiSize = 15.sp)
-                    Text(recipe.title, Modifier.weight(1f), fontSize = 13.sp, lineHeight = 16.sp,
-                        fontWeight = FontWeight.SemiBold, color = Sunny.Ink)
-                    recipe.minutes?.let { PlannerSmall("$it min") }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-internal fun <T> PlannerSelect(
-    title: String,
-    selected: T,
-    options: List<T>,
-    label: (T) -> String,
-    enabled: Boolean,
-    onSelect: (T) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    var show by remember { mutableStateOf(false) }
-    Column(modifier, verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        PlannerSmall(title)
-        OutlinedButton(
-            onClick = { show = true }, enabled = enabled,
-            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
-            shape = plannerShape, contentPadding = PaddingValues(horizontal = 8.dp),
-            colors = ButtonDefaults.outlinedButtonColors(contentColor = Sunny.Ink),
-            border = androidx.compose.foundation.BorderStroke(1.dp, Sunny.Track),
-        ) {
-            Text(label(selected), Modifier.weight(1f), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-            Icon(Icons.Filled.KeyboardArrowDown, null, Modifier.size(16.dp))
-        }
-        DropdownMenu(expanded = show, onDismissRequest = { show = false }) {
-            options.forEach { item ->
-                DropdownMenuItem(
-                    text = { Text(label(item), color = Sunny.Ink) },
-                    onClick = { onSelect(item); show = false },
-                )
-            }
-        }
-    }
-}
-
-@Composable
 internal fun PlannerStepper(value: Int, min: Int, max: Int, unit: String, onValue: (Int) -> Unit, enabled: Boolean) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
         IconButton(
@@ -1055,23 +1039,28 @@ private fun PlannerGeneration(
             "Il faut au moins ${info.minRecipes} recettes pour composer un menu. Le carnet en contient ${info.recipeCount}.",
             error = true,
         )
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            PlannerSelect(
-                "À partir du", start, List(14) { today.plusDays(it.toLong()) },
-                plannerMonthDay::format, !busy, onStart, Modifier.weight(1f),
-            )
-            PlannerSelect("Durée en jours", duration, (1..21).toList(), Int::toString, !busy, onDuration, Modifier.weight(1f))
+        PlannerDateField("Jour de départ", start, today, today.plusDays(13), !busy, onStart)
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text("Durée en jours", Modifier.weight(1f), color = Sunny.Ink)
+            PlannerStepper(duration, 1, 21, "Un jour", onDuration, !busy)
         }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            PlannerSelect(
-                "Créneaux", plan, listOf(MealPlan.LUNCH_DINNER, MealPlan.LUNCH, MealPlan.DINNER),
-                { when (it) { MealPlan.LUNCH -> "Midi"; MealPlan.DINNER -> "Soir"; else -> "Midi et soir" } },
-                !busy, onPlan, Modifier.weight(1f),
-            )
-            PlannerSelect(
-                "Personnes", people, (1..20).toList(), Int::toString,
-                !busy, onPeople, Modifier.weight(1f),
-            )
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text("Nombre de personnes", Modifier.weight(1f), color = Sunny.Ink)
+            PlannerStepper(people, 1, 20, "Une personne", onPeople, !busy)
+        }
+        Text("Créneaux", color = Sunny.InkTitle)
+        Row(Modifier.fillMaxWidth().selectableGroup(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            listOf(MealPlan.LUNCH to "Midi", MealPlan.LUNCH_DINNER to "Midi et soir", MealPlan.DINNER to "Soir")
+                .forEach { (choice, label) ->
+                    Row(
+                        Modifier.weight(1f).heightIn(min = 48.dp)
+                            .selectable(selected = plan == choice, enabled = !busy, role = Role.RadioButton) { onPlan(choice) },
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        RadioButton(selected = plan == choice, onClick = null, enabled = !busy)
+                        Text(label, Modifier.padding(start = 4.dp), fontSize = 12.sp, lineHeight = 15.sp, color = Sunny.Ink)
+                    }
+                }
         }
         PlannerSmall("${periodLabel(start, end)} · $meals repas · $kept à conserver, $replaced à revoir.")
     }

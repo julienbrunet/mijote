@@ -88,6 +88,8 @@ class MainActivity : ComponentActivity() {
             val week by vm.plannerWeek.collectAsStateWithLifecycle()
             val placement by vm.placement.collectAsStateWithLifecycle()
             val picker by vm.plannerRecipes.collectAsStateWithLifecycle()
+            val randomRecipes by vm.randomMealRecipes.collectAsStateWithLifecycle()
+            val copyDestination by vm.mealCopyDestination.collectAsStateWithLifecycle()
             val copy by vm.weekCopy.collectAsStateWithLifecycle()
             val plannerActor = when (val screen = state.screen) {
                 is Screen.Home -> screen.user.id
@@ -166,6 +168,7 @@ class MainActivity : ComponentActivity() {
                                 PlannerScreen(
                                     user = s.user, state = menu, week = displayedWeek, placement = placing, recipes = picker, copy = copy,
                                     unreadNotifications = notifications.unreadCount,
+                                    randomRecipes = randomRecipes, copyDestination = copyDestination,
                                     actions = PlannerActions(
                                         onWeek = vm::showPlannerWeek, onRefresh = vm::refreshPlannerWeek,
                                         onLoadBefore = { vm.loadPlannerBoundary(before = true, retry = it) },
@@ -174,6 +177,8 @@ class MainActivity : ComponentActivity() {
                                         onCancelPlacement = vm::cancelPlacement,
                                         onPlan = { date, meal, replace -> vm.placeRecipe(date, meal, replace, displayedWeek.snapshot(date)) },
                                         onSearchRecipes = vm::searchPlannerRecipes,
+                                        onLoadRandomRecipes = vm::loadRandomMealRecipes,
+                                        onReadCopyDestination = vm::loadMealCopyDestination,
                                         onOpenRecipe = { slot, readOnly ->
                                             slot.recipe?.let { vm.openRecipe(it.id, it.title, slotId = slot.id, slotPeople = slot.people,
                                                 slotReadOnly = readOnly) }

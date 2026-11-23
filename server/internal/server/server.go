@@ -15,6 +15,7 @@ import (
 	"github.com/julienbrunet/mijote/server/internal/images"
 	"github.com/julienbrunet/mijote/server/internal/store"
 	"github.com/julienbrunet/mijote/server/internal/sysinfo"
+	"github.com/julienbrunet/mijote/server/internal/web"
 )
 
 // APIVersions lists the REST API versions this server supports.
@@ -60,6 +61,7 @@ func New(ctx context.Context, pool *pgxpool.Pool, proxies auth.Proxies, imageDir
 	mux.Handle("GET /admin", http.RedirectHandler("/admin/", http.StatusMovedPermanently))
 	(&api.API{Store: st, Tokens: &auth.Tokens{Key: jwtKey}, Guard: guard, Proxies: proxies, Images: imgs}).Routes(mux)
 	adm.Routes(mux)
+	web.Routes(mux)
 	return securityHeaders(proxies, mux), nil
 }
 

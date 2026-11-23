@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mijote · Planning familial</title>
+<link rel="icon" href="/admin/logo.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/app/planner.css">
+<script defer src="/app/planner.js"></script>
+</head>
+<body>
+<header class="top">
+  <div class="masthead">
+    <a href="/app/" class="brand"><img src="/admin/logo.svg" alt="" width="40" height="40"><img src="/admin/wordmark.svg" width="92" height="32" alt="Mijote"></a>
+    <nav id="nav" aria-label="Navigation principale"></nav>
+  </div>
+</header>
+<div id="status" role="status" class="status" hidden></div>
+<main id="main">
+  <section class="login card">
+    <h1>Connexion</h1>
+    <form id="login">
+      <label>Identifiant<input name="username" autocomplete="username" required></label>
+      <label>Mot de passe<input name="password" type="password" autocomplete="current-password" required></label>
+      <button class="primary">Se connecter</button>
+    </form>
+    <p><a href="/admin/login">Administration</a></p>
+  </section>
+</main>
+<dialog id="panel" aria-labelledby="panel-title"></dialog>
+<noscript>Activez JavaScript pour retrouver votre menu partagé.</noscript>
+</body>
+</html>

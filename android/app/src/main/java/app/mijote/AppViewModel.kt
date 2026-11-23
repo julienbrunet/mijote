@@ -21,6 +21,7 @@ import app.mijote.data.SlotVersion
 import app.mijote.data.WeekCopy
 import app.mijote.data.weekStart
 import app.mijote.data.moveProposal
+import app.mijote.data.recentRecipeDays
 import app.mijote.data.MenuProposal
 import app.mijote.data.RecipeDetail
 import app.mijote.data.PrefsSessionStore
@@ -127,6 +128,22 @@ data class PlannerWeekState(
     }
 }
 data class PlacementRecipe(val id: String, val title: String)
+data class RandomMealRecipesState(
+    val date: LocalDate? = null,
+    val meal: String? = null,
+    val recipes: List<RecipeSummary> = emptyList(),
+    val recentDays: Map<String, Int> = emptyMap(),
+    val loading: Boolean = false,
+    val error: String? = null,
+)
+
+data class MealCopyDestination(
+    val date: LocalDate? = null,
+    val menu: Menu? = null,
+    val loading: Boolean = false,
+    val error: String? = null,
+)
+
 data class WeekCopyState(
     val preview: WeekCopy? = null, val from: LocalDate? = null, val to: LocalDate? = null,
     val replaceOccupied: Boolean = false, val loading: Boolean = false, val error: String? = null,
@@ -198,6 +215,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     val placement: StateFlow<PlacementRecipe?> = _placement.asStateFlow()
     private val _plannerRecipes = MutableStateFlow(RecipesState())
     val plannerRecipes: StateFlow<RecipesState> = _plannerRecipes.asStateFlow()
+    private val _randomMealRecipes = MutableStateFlow(RandomMealRecipesState())
+    val randomMealRecipes: StateFlow<RandomMealRecipesState> = _randomMealRecipes.asStateFlow()
+    private val _mealCopyDestination = MutableStateFlow(MealCopyDestination())
+    val mealCopyDestination: StateFlow<MealCopyDestination> = _mealCopyDestination.asStateFlow()
     private val _weekCopy = MutableStateFlow(WeekCopyState())
     val weekCopy: StateFlow<WeekCopyState> = _weekCopy.asStateFlow()
     private val cachedWeeks = LinkedHashMap<LocalDate, Menu>()
@@ -209,6 +230,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private var mealEditJob: Job? = null
     private var copyJob: Job? = null
     private var pickerJob: Job? = null
+    private var randomMealRecipesJob: Job? = null
+    private var mealCopyDestinationJob: Job? = null
     private var preferenceJob: Job? = null
     private var preferenceRevision = 0
     private data class GenerationRequest(val start: LocalDate, val meals: Int, val plan: MealPlan)
@@ -530,6 +553,72 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 toLogin("Votre session a expiré : reconnectez-vous.")
             } catch (e: IOException) {
                 _plannerRecipes.update { it.copy(loading = false, error = errorMessage(e)) }
+            }
+        }
+    }
+
+    /** Suggests active recipes that have not been planned in either meal of the last five calendar dates. */
+    fun loadRandomMealRecipes(date: LocalDate, meal: String) {
+        val actor = signedInUser()?.takeIf { it.canWrite } ?: return
+        val address = serverUrl
+        randomMealRecipesJob?.cancel()
+        val request = RandomMealRecipesState(date, meal)
+        if (meal != "lunch" && meal != "dinner") {
+            _randomMealRecipes.value = request.copy(error = "Choisissez le midi ou le soir.")
+            return
+        }
+        _randomMealRecipes.value = request.copy(loading = true)
+        randomMealRecipesJob = viewModelScope.launch {
+            fun current() = isActive && serverUrl == address &&
+                signedInUser()?.let { it.id == actor.id && it.canWrite } == true
+
+            try {
+                val catalog = session.authed { api, access -> api.recipes(access, "") }
+                if (!current()) return@launch
+                // An occurrence exactly five days earlier does not exclude a recipe.
+                val window = date.minusDays(4)..date
+                val history = session.authed { api, access -> api.menu(access, window.start, window.endInclusive) }
+                if (!current()) return@launch
+                if (date < history.today) {
+                    _randomMealRecipes.value = request.copy(error = "Ce repas est passé.")
+                    return@launch
+                }
+                val draft = _menu.value.proposal
+                val planned = if (draft == null) history.slots
+                    else history.slots.filterNot { it.date in draft.from..draft.to } + draft.slots
+                val recentDays = recentRecipeDays(planned, date)
+                val currentRecipe = planned.firstOrNull { it.date == date && it.meal == meal }?.recipe?.id
+                val (fresh, recent) = catalog.filter { meal in it.mealTypes && it.id != currentRecipe }
+                    .partition { it.id !in recentDays }
+                _randomMealRecipes.value = request.copy(
+                    recipes = fresh.shuffled() + recent.shuffled(), recentDays = recentDays,
+                )
+            } catch (e: SessionExpiredException) {
+                if (current()) toLogin("Votre session a expiré : reconnectez-vous.")
+            } catch (e: IOException) {
+                if (current()) _randomMealRecipes.value = request.copy(
+                    error = "Impossible de charger les suggestions et de vérifier les repas récents. " + errorMessage(e),
+                )
+            }
+        }
+    }
+
+    fun loadMealCopyDestination(date: LocalDate) {
+        val actor = signedInUser()?.takeIf { it.canWrite } ?: return
+        val address = serverUrl
+        mealCopyDestinationJob?.cancel()
+        _mealCopyDestination.value = MealCopyDestination(date, loading = true)
+        mealCopyDestinationJob = viewModelScope.launch {
+            fun current() = isActive && address == serverUrl && signedInUser()?.id == actor.id
+            try {
+                val menu = session.authed { api, access -> api.menu(access, date, date) }
+                if (current()) _mealCopyDestination.value = MealCopyDestination(
+                    date, menu.takeIf { date > it.today }, error = if (date <= menu.today) "Choisissez une date à venir." else null,
+                )
+            } catch (e: SessionExpiredException) {
+                if (current()) toLogin("Votre session a expiré : reconnectez-vous.")
+            } catch (e: IOException) {
+                if (current()) _mealCopyDestination.value = MealCopyDestination(date, error = errorMessage(e))
             }
         }
     }
@@ -1538,6 +1627,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         mealEditJob?.cancel()
         copyJob?.cancel()
         pickerJob?.cancel()
+        randomMealRecipesJob?.cancel()
+        mealCopyDestinationJob?.cancel()
         preferenceJob?.cancel()
         searchJob?.cancel()
         peopleJob?.cancel()
@@ -1545,6 +1636,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         visiblePlannerWeek = null
         _plannerWeek.value = PlannerWeekState(jumpSerial = _plannerWeek.value.jumpSerial + 1)
         _plannerRecipes.value = RecipesState()
+        _randomMealRecipes.value = RandomMealRecipesState()
+        _mealCopyDestination.value = MealCopyDestination()
         _placement.value = null
         _weekCopy.value = WeekCopyState()
         generationRequest = null
