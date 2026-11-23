@@ -29,7 +29,7 @@ single shared recipe base and a single shared menu, seen by every account.
 
 Roles: `admin` (one per instance, everything), `member` (read, add and edit recipes,
 plan and generate menus), `readonly` (read only). Archiving recipes is admin-only;
-renaming or deleting tags and restoring recipes happen in the web admin (`/admin/`).
+renaming or deleting tags and restoring recipes happen in the web admin (`/app/admin/`).
 
 Base URL: `https://<your-server>/api/v1`. `GET /api/versions` lists the supported
 versions (`{"versions":["v1"]}`); `GET /healthz` checks the server and its database.
@@ -38,7 +38,7 @@ Neither needs a token.
 ## 2. Getting access
 
 **Personal API token (recommended for scripts and assistants).** The admin creates it
-in the web admin, *API tokens* page (`/admin/tokens`): a name, a scope and a lifetime
+in the web admin, *API tokens* page (`/app/admin/tokens`): a name, a scope and a lifetime
 (7, 30, 90 or 365 days). The clear token (`mjt_…`) is shown once.
 
 - Scope `read`: GET and HEAD only; any other method answers `403 read_only_token`.
@@ -87,7 +87,7 @@ Every error is `{"error": "<code>", "message": "<detail>"}`. Rely on the HTTP st
 | 400 | `invalid_date` | Bad `from` / `to` in `GET /menu`. |
 | 401 | `unauthorized` | Token missing, invalid, expired or revoked. Refresh or ask for a new token. |
 | 401 | `invalid_credentials`, `invalid_refresh_token` | Sign in again. |
-| 403 | `forbidden` | Role not allowed (read-only user writing, member archiving, `/admin` without admin device session). |
+| 403 | `forbidden` | Role not allowed (read-only user writing, member archiving, `/api/v1/admin/*` without an admin device session). |
 | 403 | `read_only_token` | Token with scope `read` used to write. |
 | 404 | `not_found` | Unknown recipe, meal or account (or recipe without image). |
 | 404 | `invalid_invitation` | Invitation unknown, used, revoked or expired. |

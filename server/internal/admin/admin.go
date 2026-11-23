@@ -195,7 +195,7 @@ func New(st *store.Store, guard *auth.Guard, proxies auth.Proxies, key []byte, i
 	return a, nil
 }
 
-// Routes registers the /admin routes on mux.
+// Routes registers the administration pages under /app/admin/.
 func (a *Admin) Routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /app/admin/setup", a.setupPage)
 	mux.HandleFunc("POST /app/admin/setup", a.setup)
