@@ -2,6 +2,8 @@
 
 const main = document.getElementById("main");
 const nav = document.getElementById("nav");
+const navToggle = document.getElementById("nav-toggle");
+const profile = document.getElementById("profile");
 const panel = document.getElementById("panel");
 const statusBox = document.getElementById("status");
 const loginTemplate = main.firstElementChild.cloneNode(true);
@@ -9,6 +11,22 @@ const types = { vegetarian: "Végé", fish: "Poisson", meat: "Viande" };
 const seasons = { spring: "Printemps", summer: "Été", autumn: "Automne", winter: "Hiver" };
 const meals = { lunch: "Midi", dinner: "Soir" };
 const dateFormatter = new Intl.DateTimeFormat("fr-FR", { dateStyle: "full", timeZone: "UTC" });
+const weekdayFormatter = new Intl.DateTimeFormat("fr-FR", { weekday: "long", timeZone: "UTC" });
+const monthFormatter = new Intl.DateTimeFormat("fr-FR", { day: "numeric", month: "short", timeZone: "UTC" });
+const weekLayout = matchMedia("(min-width: 960px)");
+const roleLabels = { admin: "Administrateur", member: "Membre du foyer", readonly: "Lecture seule" };
+const icons = {
+    calendar: "M3 5h18v16H3z M3 9h18 M7 3v4 M17 3v4 M7 13h2 M12 13h2 M7 17h2 M12 17h2",
+    book: "M12 5v15 M12 5C9 3 5 3 3 5v14c3-1 6-1 9 1 3-2 6-2 9-1V5c-3-2-6-2-9 0Z",
+    inbox: "M3 13l3-6h12l3 6v6H3z M3 13h6l1 2h4l1-2h6",
+    user: "M16 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0Z M4 21v-2a5 5 0 0 1 5-5h6a5 5 0 0 1 5 5v2",
+    shield: "M12 22s7-4 7-11V5l-7-3-7 3v6c0 7 7 11 7 11Z M9 12l2 2 4-4",
+    menu: "M4 6h16 M4 12h16 M4 18h16", pencil: "M4 16l-1 5 5-1L20 8l-4-4z M14 6l4 4",
+    eye: "M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z",
+    left: "m15 5-7 7 7 7", right: "m9 5 7 7-7 7", up: "m5 15 7-7 7 7", down: "m5 9 7 7 7-7",
+    plus: "M12 5v14 M5 12h14", lunch: "M12 3v2 M12 19v2 M3 12h2 M19 12h2 M5.6 5.6 7 7 M17 17l1.4 1.4 M5.6 18.4 7 17 M17 7l1.4-1.4 M16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0Z",
+    dinner: "M20 15A9 9 0 0 1 9 4a9 9 0 1 0 11 11Z",
+};
 const slotKey = (date, meal) => date + "|" + meal;
 const mealTitle = slot => slot?.title || slot?.recipe?.title || "Créneau libre";
 const recipeMinutes = recipe => recipe.totalMinutes ?? recipe.prepMinutes ?? recipe.minutes;
@@ -16,6 +34,7 @@ const recipePath = id => "/recipes/" + encodeURIComponent(id);
 const writable = () => user?.role === "admin" || user?.role === "member";
 let session = null, refreshing = null, user = null, today = null;
 let first = null, last = null, slots = new Map(), page = "agenda", proposal = null;
+let agendaWeek = null, weekRequest = 0;
 let edgeObserver, todayObserver, loadingEdge = false, dragSource = null, statusTimer, dialogVersion = 0;
 let authGeneration = 0;
 const images = new Map();
@@ -41,6 +60,37 @@ function node(tag, attributes, ...children) {
 function button(label, action, className = "", disabled = false) {
     return node("button", { type: "button", class: className, disabled, onclick: action }, label);
 }
+
+function icon(name) {
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("aria-hidden", "true");
+    const path = document.createElementNS(svg.namespaceURI, "path");
+    path.setAttribute("d", icons[name]);
+    svg.append(path);
+    return svg;
+}
+
+function iconButton(label, symbol, action, className = "") {
+    const control = button(icon(symbol), action, "icon-button " + className);
+    control.setAttribute("aria-label", label);
+    control.title = label;
+    return control;
+}
+
+function setMobileMenu(open) {
+    navToggle.setAttribute("aria-expanded", String(open));
+    navToggle.setAttribute("aria-label", open ? "Fermer le menu" : "Ouvrir le menu");
+}
+
+navToggle.append(icon("menu"));
+navToggle.addEventListener("click", () => setMobileMenu(navToggle.getAttribute("aria-expanded") !== "true"));
+document.addEventListener("keydown", event => {
+    if (event.key === "Escape" && !panel.open && navToggle.getAttribute("aria-expanded") === "true") {
+        setMobileMenu(false);
+        navToggle.focus();
+    }
+});
 
 function notice(message, error = false) {
     statusBox.textContent = message;
@@ -70,9 +120,11 @@ async function request(path, options = {}, authenticated = true, retry = true) {
     const bearer = authenticated ? session?.accessToken : null;
     if (authenticated && !bearer) throw new Error("Connectez-vous pour continuer.");
     const headers = { Accept: options.image ? "image/*" : "application/json" };
+    const webSession = path.startsWith("/app/session/");
+    if (webSession) headers["X-Mijote-Web"] = "1";
     if (bearer) headers.Authorization = "Bearer " + bearer;
     if (options.body != null) headers["Content-Type"] = "application/json";
-    const response = await fetch("/api/v1" + path, {
+    const response = await fetch(webSession ? path : "/api/v1" + path, {
         method: options.method || "GET", headers, cache: "no-store",
         body: options.body == null ? undefined : JSON.stringify(options.body),
     });
@@ -81,8 +133,14 @@ async function request(path, options = {}, authenticated = true, retry = true) {
         if (session.accessToken === bearer) {
             if (!refreshing) {
                 const owner = session;
-                const pending = request("/auth/refresh", { method: "POST", body: { refreshToken: owner.refreshToken } }, false)
-                    .then(pair => { if (session === owner) session = pair; })
+                const pending = resumeSession().then(pair => {
+                    if (session !== owner) return;
+                    if (pair.user.id !== owner.user.id) {
+                        showLogin();
+                        throw new Error("Le compte a changé. Reconnectez-vous.");
+                    }
+                    session = pair;
+                })
                     .catch(error => {
                         if (session === owner && error.status === 401) showLogin();
                         throw error;
@@ -99,6 +157,12 @@ async function request(path, options = {}, authenticated = true, retry = true) {
     return response.status === 204 ? null : response.json();
 }
 
+function resumeSession() {
+    const refresh = () => request("/app/session/refresh", { method: "POST" }, false);
+    // A token rotates once per request. Tabs on this origin share the cookie jar.
+    return navigator.locks ? navigator.locks.request("mijote-web-session", refresh) : refresh();
+}
+
 const range = (from, to) => request("/menu?from=" + from + "&to=" + to);
 const catalog = async (query = "") => {
     const data = await request("/recipes?limit=500&q=" + encodeURIComponent(query));
@@ -108,6 +172,8 @@ const post = (path, body) => request(path, { method: "POST", body });
 const dateOf = iso => new Date(iso + "T00:00:00Z");
 const shiftDate = (iso, days) => new Date(dateOf(iso).getTime() + days * 86400000).toISOString().slice(0, 10);
 const dayDistance = (a, b) => Math.round((dateOf(a) - dateOf(b)) / 86400000);
+const weekStart = iso => shiftDate(iso, -((dateOf(iso).getUTCDay() + 6) % 7));
+const datesIn = (from, to) => Array.from({ length: dayDistance(to, from) + 1 }, (_, day) => shiftDate(from, day));
 const dateLabel = iso => {
     const label = dateFormatter.format(dateOf(iso));
     return label.charAt(0).toUpperCase() + label.slice(1);
@@ -121,7 +187,7 @@ function bindLogin() {
         const submit = form.querySelector("button");
         submit.disabled = true;
         try {
-            session = await request("/auth/login", {
+            session = await request("/app/session/login", {
                 method: "POST",
                 body: { username: fields.get("username").trim(), password: fields.get("password"), deviceName: "Planning web" },
             }, false);
@@ -140,26 +206,60 @@ function bindLogin() {
 function showLogin() {
     authGeneration++;
     refreshing = null;
-    session = user = today = first = last = proposal = dragSource = null;
+    session = user = today = first = last = proposal = dragSource = agendaWeek = null;
     slots = new Map();
     images.clear();
     page = "agenda";
     edgeObserver?.disconnect();
     todayObserver?.disconnect();
     closePanel();
+    document.body.classList.remove("signed-in");
+    setMobileMenu(false);
     nav.replaceChildren();
+    profile.replaceChildren();
     unobserveArt(main);
     main.replaceChildren(loginTemplate.cloneNode(true));
     bindLogin();
 }
 
 function showNavigation() {
-    nav.replaceChildren(
-        button("Planning", () => openAgenda().catch(error => notice(error.message, true))),
-        button("Recettes", openRecipes),
-        button("Compte", openAccount),
-    );
-    if (user.role === "admin") nav.append(node("a", { href: "/admin/" }, "Administration"));
+    document.body.classList.add("signed-in");
+    function item(label, symbol, action, destination) {
+        const control = button([icon(symbol), label], action, "nav-item");
+        control.dataset.page = destination;
+        return control;
+    }
+    nav.replaceChildren(...[
+        item("Menus", "calendar", () => openAgenda().catch(error => notice(error.message, true)), "agenda"),
+        item("Recettes", "book", openRecipes, "recipes"),
+        writable() ? item("Notifications", "inbox", () => { setMobileMenu(false); openNotices(); }, "notifications") : null,
+        item("Compte", "user", openAccount, "account"),
+    ].filter(Boolean));
+    if (writable()) nav.append(button([icon("plus"), "Composer un menu"], async () => {
+        if (!today || proposal) return;
+        setMobileMenu(false);
+        if (page !== "agenda") await openAgenda();
+        composeMenu();
+    }, "nav-item mobile-compose"));
+    if (user.role === "admin") {
+        nav.append(node("div", { class: "nav-divider", "aria-hidden": "true" }));
+        for (const [path, label, symbol] of [["", "Administration", "shield"], ["accounts", "Utilisateurs", "user"],
+            ["system", "Système", "calendar"]]) {
+            nav.append(node("a", { class: "nav-item", href: "/app/admin/" + path }, icon(symbol), label));
+        }
+    }
+    const name = user.displayName || user.username;
+    profile.replaceChildren(button([node("span", { class: "avatar", "aria-hidden": "true" }, name.charAt(0).toUpperCase()),
+        node("span", {}, node("strong", {}, name), node("small", {}, roleLabels[user.role]))], openAccount, "profile-link"));
+    markNavigation();
+}
+
+function markNavigation() {
+    setMobileMenu(false);
+    for (const item of nav.querySelectorAll("[data-page]")) {
+        if (item.dataset.page === page) item.setAttribute("aria-current", "page");
+        else item.removeAttribute("aria-current");
+    }
 }
 
 function applyMenu(menu, from, to) {
@@ -170,6 +270,7 @@ function applyMenu(menu, from, to) {
 
 async function openAgenda(initial = false) {
     page = "agenda";
+    markNavigation();
     closePanel();
     if (!today || initial) {
         const owner = user;
@@ -182,10 +283,29 @@ async function openAgenda(initial = false) {
         first = from;
         last = to;
         applyMenu(menu, from, to);
+        agendaWeek = weekStart(today);
     }
     renderAgenda();
-    if (!proposal) jumpToday();
+    if (!proposal && !weekLayout.matches) jumpToday();
+    else window.scrollTo(0, 0);
 }
+
+async function openWeek(date) {
+    const from = weekStart(date), to = shiftDate(from, 6);
+    const owner = user, current = ++weekRequest;
+    const menu = await range(from, to);
+    if (current !== weekRequest || user !== owner || page !== "agenda" || proposal) return;
+    applyMenu(menu, from, to);
+    agendaWeek = from;
+    renderAgenda();
+}
+
+weekLayout.addEventListener("change", () => {
+    if (!user || page !== "agenda") return;
+    renderAgenda();
+    if (weekLayout.matches || proposal) window.scrollTo(0, 0);
+    else jumpToday();
+});
 
 function jumpToday() {
     document.getElementById("day-" + today)?.scrollIntoView({ block: "start" });
@@ -201,7 +321,7 @@ async function extend(before) {
     const owner = user;
     try {
         const menu = await range(from, to);
-        if (user !== owner || page !== "agenda" || proposal) return;
+        if (user !== owner || page !== "agenda" || proposal || weekLayout.matches) return;
         applyMenu(menu, from, to);
         if (before) first = from; else last = to;
         renderAgenda();
@@ -217,52 +337,119 @@ function currentSlot(date, meal) {
     return proposal ? proposal.slots.find(slot => slot.date === date && slot.meal === meal) : slots.get(slotKey(date, meal));
 }
 
+function weekLabel(from, to) {
+    return monthFormatter.formatRange(dateOf(from), dateOf(to));
+}
+
+function showWeekPicker() {
+    let selected = agendaWeek;
+    showPanel("Aller à une date", dateControl("Date du planning", selected, null, null, date => { selected = date; }),
+        button("Afficher la semaine", event => run(event.currentTarget, async () => {
+            await openWeek(selected);
+            closePanel();
+        }), "primary"));
+}
+
+function weekToolbar() {
+    const previous = iconButton("Semaine précédente", "left", event => run(event.currentTarget,
+        () => openWeek(shiftDate(agendaWeek, -7))));
+    const next = iconButton("Semaine suivante", "right", event => run(event.currentTarget,
+        () => openWeek(shiftDate(agendaWeek, 7))));
+    return node("div", { class: "week-toolbar" },
+        node("div", { class: "actions" }, previous, node("strong", { class: "week-period", "aria-live": "polite" },
+            weekLabel(agendaWeek, shiftDate(agendaWeek, 6))), next),
+        node("div", { class: "actions" }, agendaWeek !== weekStart(today) ? button("Cette semaine", event =>
+            run(event.currentTarget, () => openWeek(today)), "quiet") : null,
+        button("Aller à une date", showWeekPicker)));
+}
+
+function renderWeekBoard(dates) {
+    const headers = dates.map(date => node("th", { scope: "col", class: date === today ? "is-today" : null,
+        "aria-label": dateLabel(date), id: "day-" + date },
+        node("span", {}, weekdayFormatter.format(dateOf(date))),
+        node("strong", {}, dateOf(date).getUTCDate()),
+        date === today ? node("small", {}, "Aujourd’hui") : null));
+    const services = Object.entries(meals).map(([meal, label]) => node("tr", {},
+        node("th", { scope: "row" }, icon(meal), label),
+        dates.map(date => node("td", { "data-date": date, "data-meal": meal }, mealCard(date, meal)))));
+    return node("div", { class: "week-board card" }, node("table", { class: "week-grid", "aria-label":
+        "Repas du " + weekLabel(dates[0], dates.at(-1)) },
+        node("colgroup", {}, node("col", { class: "service-column" }), node("col", { span: dates.length })),
+        node("thead", {}, node("tr", {}, node("th", { scope: "col", "aria-label": "Créneau" }), headers)),
+        node("tbody", {}, services)));
+}
+
+function renderDay(date) {
+    const header = node("div", { class: "day-head" }, node("h2", {}, dateLabel(date)),
+        date === today ? node("span", { class: "badge" }, "Aujourd’hui") : null);
+    return node("section", { class: date === today ? "day today" : "day", id: "day-" + date },
+        node("div", { class: "day-inner" }, header, node("div", { class: "slots" },
+            mealCard(date, "lunch"), mealCard(date, "dinner"))));
+}
+
 function renderAgenda() {
     if (page !== "agenda") return;
     edgeObserver?.disconnect();
     todayObserver?.disconnect();
     unobserveArt(main);
-    const toolbar = node("div", { class: "page toolbar" }, node("h1", {}, proposal ? "Proposition de menu" : "Planning"));
-    if (!proposal && today) toolbar.append(node("div", { class: "actions" },
-        writable() ? button("Composer un menu", composeMenu, "primary") : null));
-    if (proposal) toolbar.append(button("Quitter la proposition", () => {
-        if (window.confirm("Quitter la proposition ?")) { proposal = null; renderAgenda(); jumpToday(); }
+    const desktop = weekLayout.matches;
+    const title = proposal ? "Proposition de menu" : desktop ? "Menu de la semaine" : "Menus";
+    const header = node("header", { class: proposal ? "page-heading agenda-heading draft-heading" : "page-heading agenda-heading" }, node("h1", {}, title));
+    if (proposal) header.append(button("Quitter la proposition", () => {
+        if (window.confirm("Quitter la proposition ?")) {
+            proposal = null;
+            renderAgenda();
+            if (!desktop) jumpToday();
+        }
     }));
-    main.replaceChildren(toolbar);
+    else if (today && writable()) header.append(button([icon("plus"), "Composer un menu"], composeMenu, "primary"));
+    main.replaceChildren(header);
     if (!today || !first || !last) {
-        main.append(node("div", { class: "page" }, button("Charger le planning", () => openAgenda(true).catch(error => notice(error.message, true)))));
+        main.append(button("Charger le planning", () => openAgenda(true).catch(error => notice(error.message, true))));
         return;
     }
-    const days = node("div", {});
-    const from = proposal?.from || first, to = proposal?.to || last;
-    if (!proposal) days.append(edge(true));
-    for (let date = from; date <= to; date = shiftDate(date, 1)) {
-        const header = node("div", { class: "day-head" }, node("h2", {}, dateLabel(date)),
-            date === today ? node("span", { class: "badge" }, "Aujourd’hui") : null);
-        days.append(node("section", { class: date === today ? "day today" : "day", id: "day-" + date },
-            node("div", { class: "day-inner" }, header, node("div", { class: "slots" },
-                mealCard(date, "lunch"), mealCard(date, "dinner")))));
+
+    if (desktop) {
+        agendaWeek ??= weekStart(today);
+        if (!proposal) main.append(weekToolbar(), renderWeekBoard(datesIn(agendaWeek, shiftDate(agendaWeek, 6))));
+        else {
+            const dates = datesIn(proposal.from, proposal.to);
+            main.append(node("p", { class: "draft-note" }, "Brouillon privé · " + weekLabel(proposal.from, proposal.to)));
+            for (let start = 0; start < dates.length; start += 7) main.append(renderWeekBoard(dates.slice(start, start + 7)));
+        }
+    } else {
+        const days = node("div", { class: "agenda-days" },
+            !proposal ? edge(true) : null,
+            datesIn(proposal?.from || first, proposal?.to || last).map(renderDay),
+            !proposal ? edge(false) : null);
+        main.append(days);
+        if (!proposal) observeAgenda(days);
     }
-    if (!proposal) days.append(edge(false));
-    main.append(days);
     if (proposal) main.append(node("div", { class: "publish" },
         button("Valider cette proposition", event => run(event.currentTarget, publishProposal), "primary")));
-    if (!proposal) {
-        const returnToday = button("Aujourd’hui", jumpToday, "jump-today");
-        returnToday.hidden = true;
-        main.append(returnToday);
-        const currentDay = document.getElementById("day-" + today);
-        todayObserver = new IntersectionObserver(entries => { returnToday.hidden = entries[0].isIntersecting; });
-        if (currentDay) todayObserver.observe(currentDay);
-        edgeObserver = new IntersectionObserver(entries => {
-            for (const entry of entries) {
-                if (!entry.isIntersecting) continue;
-                edgeObserver.unobserve(entry.target);
-                extend(entry.target.dataset.before === "true");
-            }
-        });
-        for (const target of days.querySelectorAll(".edge")) edgeObserver.observe(target);
-    }
+}
+
+function observeAgenda(days) {
+    const returnToday = button("Aujourd’hui", jumpToday, "jump-today");
+    const currentDay = document.getElementById("day-" + today);
+    const headerHeight = document.querySelector(".sidebar").offsetHeight;
+    returnToday.hidden = true;
+    main.append(returnToday);
+    todayObserver = new IntersectionObserver(([entry]) => {
+        returnToday.hidden = entry.intersectionRatio >= 1;
+        const above = entry.boundingClientRect.top < headerHeight;
+        returnToday.replaceChildren(icon(above ? "up" : "down"), "Aujourd’hui");
+        returnToday.setAttribute("aria-label", "Revenir à aujourd’hui, vers le " + (above ? "haut" : "bas"));
+    }, { rootMargin: `-${headerHeight}px 0px 0px`, threshold: [0, 1] });
+    if (currentDay) todayObserver.observe(currentDay);
+    edgeObserver = new IntersectionObserver(entries => {
+        for (const entry of entries) {
+            if (!entry.isIntersecting) continue;
+            edgeObserver.unobserve(entry.target);
+            extend(entry.target.dataset.before === "true");
+        }
+    });
+    for (const target of days.querySelectorAll(".edge")) edgeObserver.observe(target);
 }
 
 function edge(before) {
@@ -272,20 +459,23 @@ function edge(before) {
 
 function mealCard(date, meal) {
     const slot = currentSlot(date, meal), past = date < today, editable = writable() && !past;
-    const card = node("article", { class: "slot", draggable: slot && editable ? "true" : null });
+    const available = editable && (slot || proposal || date <= shiftDate(today, 20));
+    const card = node("article", { class: slot ? "slot" : "slot empty-slot", draggable: slot && editable ? "true" : null });
     const title = slot?.recipe
         ? button(mealTitle(slot), () => openRecipe(slot.recipe.id, { people: slot.people || user.preferences.people }), "link-title")
         : node("strong", {}, slot ? mealTitle(slot) : past ? "Aucun repas" : "Créneau libre");
-    const picture = art(slot?.recipe, slot?.title ? "📝" : "🍽️");
+    const picture = art(slot?.recipe, slot?.title ? "📝" : slot ? null : "");
+    const duration = slot?.recipe && recipeMinutes(slot.recipe);
+    const summary = [meals[meal], duration != null ? duration + " min" : null].filter(Boolean).join(" · ");
     card.append(slot?.recipe
         ? node("button", { type: "button", class: "art-link", "aria-label": "Lire " + mealTitle(slot),
             onclick: () => openRecipe(slot.recipe.id, { people: slot.people || user.preferences.people }) }, picture)
         : picture,
-        node("div", { class: "slot-cap" }, node("small", { class: "muted" }, meals[meal]),
-            title,
-            editable && (slot || proposal || date <= shiftDate(today, 20))
-                ? button(slot ? "✎ Modifier" : "+ Planifier", () => openMeal(date, meal)) : null,
-            past && writable() && (slot?.recipe || slot?.title) ? button("Copier ce repas", () => openCopy(slot)) : null));
+        node("div", { class: "slot-cap" }, node("small", { class: duration != null ? "muted" : "muted meal-label" }, summary),
+            slot || !available ? title : button([icon("plus"), "Planifier"], () => openMeal(date, meal), "slot-add"),
+            slot?.people ? node("small", { class: "muted" }, slot.people + " pers.") : null,
+            past && writable() && (slot?.recipe || slot?.title) ? button("Copier ce repas", () => openCopy(slot), "slot-copy") : null));
+    if (slot && available) card.append(iconButton("Modifier le repas", "pencil", () => openMeal(date, meal), "slot-action"));
     if (editable) {
         card.addEventListener("dragstart", event => {
             if (!slot) return;
@@ -313,8 +503,9 @@ function mealCard(date, meal) {
 
 
 function art(recipe, fallback) {
-    const icon = fallback || ({ vegetarian: "🥗", fish: "🐟", meat: "🍗" }[recipe?.dishType] || "🍽️");
-    const block = node("div", { class: "art", "aria-hidden": "true" }, icon);
+    const symbol = fallback === "📝" ? node("img", { src: "/app/admin/manual-meal.jpg", alt: "" }) :
+        fallback ?? ({ vegetarian: "🥗", fish: "🐟", meat: "🍗" }[recipe?.dishType] || "🍽️");
+    const block = node("div", { class: "art", "aria-hidden": "true" }, symbol);
     if (recipe?.image) {
         block.dataset.recipe = recipe.id;
         imageObserver.observe(block);
@@ -360,6 +551,7 @@ panel.addEventListener("cancel", event => {
 panel.addEventListener("click", event => { if (event.target === panel) closePanel(); });
 
 function showPanel(title, body, footer = null, back = closePanel) {
+    panel.classList.remove("recipe-panel");
     const heading = node("h2", { id: "panel-title" }, title);
     unobserveArt(panel);
     panel.replaceChildren(node("div", { class: "panel-inner stack" },
@@ -551,10 +743,9 @@ function renderMealEditor(draft) {
     const content = [
         node("p", { class: "muted" }, dateLabel(date) + " · " + meals[meal]),
         node("section", { class: "card stack" }, node("h3", {}, original ? "Repas prévu" : "Créneau libre"),
-            original ? node("strong", {}, mealTitle(original)) : null,
-            original?.recipe ? button("Voir la recette", () => openRecipe(original.recipe.id, {
-                people: draft.people, back: () => renderMealEditor(draft),
-            })) : null,
+            original ? node("div", { class: "meal-summary" }, art(original.recipe, original.title ? "📝" : null),
+                node("strong", {}, mealTitle(original)), original.recipe ? iconButton("Voir la recette", "eye", () =>
+                    openRecipe(original.recipe.id, { people: draft.people, back: () => renderMealEditor(draft) })) : null) : null,
             countControl("Nombre de personnes", draft.people, 1, 20, value => { draft.people = value; evaluate(); })),
         replaceCard, manualCard,
         original ? node("div", { class: "edge" }, button("Supprimer ce repas", () => {
@@ -577,52 +768,64 @@ function recipeCard(recipe, onChoose = null) {
     }, art(recipe), node("div", {}, node("strong", {}, recipe.title), node("small", {}, metadata)));
 }
 
-function openPicker(draft = null) {
-    let query = "", lastData = [], timer, revision = 0;
+function recipeTile(recipe) {
+    const type = types[recipe.dishType];
+    const duration = recipeMinutes(recipe);
+    return button([art(recipe), node("div", { class: "recipe-tile-meta" },
+        node("strong", {}, recipe.title),
+        node("div", { class: "actions" }, type ? node("span", { class: "tag " + recipe.dishType }, type) : null,
+            duration != null ? node("small", { class: "muted" }, duration + " min") : null),
+        recipe.tags?.length ? node("small", { class: "muted" }, recipe.tags.slice(0, 3).join(" · ")) : null,
+    )], () => openRecipe(recipe.id), "card recipe-tile");
+}
+
+function recipeSearch(makeCard, groupClass) {
+    let query = "", items = [], timer, revision = 0;
     const typeFilters = new Set(), seasonFilters = new Set();
     const search = node("input", { type: "search", placeholder: "Titre ou étiquette", "aria-label": "Rechercher une recette" });
-    const results = node("div", { class: "stack", "aria-live": "polite" });
-    const version = showPanel("Choisir une recette", [
-        search,
+    const results = node("div", { class: groupClass, "aria-live": "polite" }, "Chargement du carnet…");
+    const controls = node("div", { class: "recipe-search" }, search,
         node("div", { class: "chips", "aria-label": "Filtres" },
-            ...Object.entries(types).map(([key, label]) => filterButton(key, label, typeFilters, render)),
-            ...Object.entries(seasons).map(([key, label]) => filterButton(key, label, seasonFilters, render))),
-        results,
-    ], null, draft ? () => renderMealEditor(draft) : closePanel);
+            Object.entries(types).map(([key, label]) => filterButton(key, label, typeFilters, render)),
+            Object.entries(seasons).map(([key, label]) => filterButton(key, label, seasonFilters, render))));
+
     function render() {
         unobserveArt(results);
-        const filtered = lastData.filter(recipe =>
+        const filtered = items.filter(recipe =>
             (!typeFilters.size || typeFilters.has(recipe.dishType)) &&
             (!seasonFilters.size || !recipe.seasons?.length || recipe.seasons.some(season => seasonFilters.has(season))));
-        results.replaceChildren(...filtered.map(recipe => recipeCard(recipe, () => {
-            if (draft) {
-                draft.selected = recipe;
-                draft.manual = "";
-                renderMealEditor(draft);
-            } else openRecipe(recipe.id);
-        })));
+        results.replaceChildren(...filtered.map(makeCard));
         if (!filtered.length) results.append(node("p", { class: "muted" }, "Aucune recette pour cette recherche."));
     }
-    async function searchRecipes() {
+    async function load() {
         const current = ++revision;
         try {
-            const items = await catalog(query);
-            if (current !== revision || version !== dialogVersion) return;
-            lastData = items;
+            const found = await catalog(query);
+            if (current !== revision || !results.isConnected) return;
+            items = found;
             render();
         } catch (error) {
-            if (current === revision && version === dialogVersion) results.replaceChildren(
-                node("p", { class: "error-text" }, error.message), button("Réessayer", searchRecipes));
+            if (current === revision && results.isConnected) results.replaceChildren(
+                node("p", { class: "error-text" }, error.message), button("Réessayer", load));
         }
     }
     search.addEventListener("input", () => {
         query = search.value;
         revision++;
         clearTimeout(timer);
-        timer = setTimeout(searchRecipes, 180);
+        timer = setTimeout(load, 180);
     });
-    results.textContent = "Chargement du carnet…";
-    searchRecipes();
+    return { controls, results, load };
+}
+
+function openPicker(draft) {
+    const { controls, results, load } = recipeSearch(recipe => recipeCard(recipe, () => {
+        draft.selected = recipe;
+        draft.manual = "";
+        renderMealEditor(draft);
+    }), "stack");
+    showPanel("Choisir une recette", [controls, results], null, () => renderMealEditor(draft));
+    load();
 }
 
 function filterButton(id, label, filters, update) {
@@ -682,7 +885,7 @@ function randomDeck(draft, order, lastUsed) {
         if (!ideas.has(tag)) ideas.set(tag, recipe => (recipe.tags || []).includes(tag));
     }
     const filters = new Set();
-    let candidates = order, seen = [], index = 0;
+    let candidates = order, index = 0;
     const deck = node("div", { class: "deck", "aria-label": "Suggestions" });
     const previous = button("Précédente", () => go(index - 1));
     const next = button("Suivante", () => go(index + 1));
@@ -719,10 +922,10 @@ function randomDeck(draft, order, lastUsed) {
         go(index);
     }
     deck.addEventListener("scroll", () => {
-        const edge = deck.getBoundingClientRect().right;
+        const edge = deck.getBoundingClientRect().left;
         const visible = [...deck.children].reduce((best, child, i) =>
-            Math.abs(child.getBoundingClientRect().right - edge) < best.distance
-                ? { index: i, distance: Math.abs(child.getBoundingClientRect().right - edge) } : best,
+            Math.abs(child.getBoundingClientRect().left - edge) < best.distance
+                ? { index: i, distance: Math.abs(child.getBoundingClientRect().left - edge) } : best,
         { index: 0, distance: Infinity });
         index = visible.index;
         update();
@@ -730,12 +933,10 @@ function randomDeck(draft, order, lastUsed) {
     showPanel("Recette au hasard", [
         node("p", { class: "muted" }, dateLabel(draft.date) + " · " + meals[draft.meal]),
         deck, node("div", { class: "actions" }, previous, counter, next),
-        node("h3", {}, "Envies pour la suite"),
+        node("h3", {}, "Filtrer les suggestions"),
         node("div", { class: "chips" }, [...ideas.keys()].map(label => filterButton(label, label, filters, () => {
-            seen = candidates.slice(0, index + 1);
-            const seenIds = new Set(seen.map(recipe => recipe.id));
-            candidates = seen.concat(order.filter(recipe => !seenIds.has(recipe.id) &&
-                (!filters.size || [...filters].some(idea => ideas.get(idea)(recipe)))));
+            candidates = order.filter(recipe => [...filters].every(idea => ideas.get(idea)(recipe)));
+            index = 0;
             render();
         }))),
     ], choose, () => renderMealEditor(draft));
@@ -825,19 +1026,17 @@ function openCopy(source) {
 
 function openRecipes() {
     page = "recipes";
+    markNavigation();
     edgeObserver?.disconnect();
     todayObserver?.disconnect();
     closePanel();
-    const section = node("section", { class: "page stack" }, node("h1", {}, "Recettes"),
-        node("div", { class: "actions" }, button("Rechercher et filtrer", () => openPicker()),
-            writable() ? button("Ajouter une recette", () => editRecipe(), "primary") : null));
-    const grid = node("div", { class: "form-grid" });
-    section.append(grid);
+    const { controls, results, load } = recipeSearch(recipeTile, "recipe-grid");
+    const heading = node("header", { class: "page-heading" }, node("h1", {}, "Recettes"),
+        writable() ? button([icon("plus"), "Ajouter une recette"], () => editRecipe(), "primary") : null);
     unobserveArt(main);
-    main.replaceChildren(section);
-    catalog().then(recipes => {
-        if (page === "recipes") grid.replaceChildren(...recipes.map(recipe => recipeCard(recipe, () => openRecipe(recipe.id))));
-    }).catch(error => notice(error.message, true));
+    main.replaceChildren(node("section", { class: "page stack" }, heading, controls, results));
+    window.scrollTo(0, 0);
+    load();
 }
 
 async function openRecipe(id, context = {}) {
@@ -870,18 +1069,22 @@ async function openRecipe(id, context = {}) {
                 wish.textContent = "Envie envoyée";
             }));
         }
-        showPanel(recipe.title, [
-            art(recipe), node("p", { class: "muted" }, [recipeMinutes(recipe) != null ? recipeMinutes(recipe) + " min" : "",
-                types[recipe.dishType], ...(recipe.tags || [])].filter(Boolean).join(" · ")),
-            countControl("Nombre de personnes", people, 1, 20, value => { people = value; refreshIngredients(); }),
-            (recipe.ingredients || []).length ? node("section", { class: "card stack" }, node("h3", {}, "Ingrédients"), ingredients) : null,
-            (recipe.steps || []).length ? node("section", { class: "card stack" }, node("h3", {}, "Préparation"),
-                node("ol", {}, recipe.steps.map(step => node("li", {}, step)))) : null,
-            recipe.notes ? node("p", { class: "card" }, recipe.notes) : null,
-            node("div", { class: "actions" }, favorite, wish,
-                writable() && available && !context.back && context.people == null ? button("Modifier la recette", () => editRecipe(recipe)) : null),
-        ], writable() && available && !context.back && context.people == null
+        showPanel(recipe.title, node("div", { class: "recipe-detail" },
+            node("div", { class: "stack" }, art(recipe),
+                node("p", { class: "muted" }, [recipeMinutes(recipe) != null ? recipeMinutes(recipe) + " min" : "",
+                    types[recipe.dishType], ...(recipe.tags || [])].filter(Boolean).join(" · ")),
+                recipe.notes ? node("p", { class: "card" }, recipe.notes) : null,
+                node("div", { class: "actions" }, favorite, wish,
+                    writable() && available && !context.back && context.people == null
+                        ? button("Modifier la recette", () => editRecipe(recipe)) : null)),
+            node("div", { class: "stack" },
+                node("section", { class: "card stack" }, node("h3", {}, "Ingrédients"),
+                    countControl("Nombre de personnes", people, 1, 20, value => { people = value; refreshIngredients(); }), ingredients),
+                (recipe.steps || []).length ? node("section", { class: "card stack" }, node("h3", {}, "Préparation"),
+                    node("ol", {}, recipe.steps.map(step => node("li", {}, step)))) : null)),
+        writable() && available && !context.back && context.people == null
             ? button("Ajouter au planning", () => planRecipe(recipe), "primary") : null, back);
+        panel.classList.add("recipe-panel");
     } catch (error) { if (version === dialogVersion) content.textContent = error.message; }
 }
 
@@ -958,24 +1161,29 @@ function editRecipe(recipe = null) {
 
 function openAccount() {
     page = "account";
+    markNavigation();
     edgeObserver?.disconnect();
     todayObserver?.disconnect();
     closePanel();
     let people = user.preferences.people;
-    const preferences = node("section", { class: "card stack" },
-        node("h2", {}, user.displayName), node("p", { class: "muted" }, "@" + user.username),
-        writable() ? countControl("Personnes par défaut", people, 1, 20, value => { people = value; }) : null,
-        writable() ? button("Enregistrer les préférences", event => run(event.currentTarget, async () => {
+    const name = user.displayName || user.username;
+    const preferences = writable() ? node("section", { class: "card stack" }, node("h2", {}, "Préférences"),
+        countControl("Personnes par défaut", people, 1, 20, value => { people = value; }),
+        button("Enregistrer les préférences", event => run(event.currentTarget, async () => {
             user = await request("/me/preferences", { method: "PUT", body: { people } });
             notice("Préférences enregistrées.");
-        }), "primary") : null,
+        }), "primary")) : null;
+    const identity = node("section", { class: "card stack" }, node("div", { class: "account-name" },
+        node("span", { class: "avatar", "aria-hidden": "true" }, name.charAt(0).toUpperCase()),
+        node("div", {}, node("h2", {}, name), node("p", { class: "muted" }, "@" + user.username + " · " + roleLabels[user.role]))),
         button("Se déconnecter", event => run(event.currentTarget, async () => {
-            await post("/auth/logout");
+            await post("/app/session/logout");
             showLogin();
         })));
     unobserveArt(main);
-    main.replaceChildren(node("section", { class: "page stack" }, node("h1", {}, "Compte"), preferences,
-        writable() ? button("Notifications de recettes", openNotices) : null));
+    main.replaceChildren(node("section", { class: "page" }, node("header", { class: "page-heading" }, node("h1", {}, "Compte")),
+        node("div", { class: "account-grid" }, identity, preferences)));
+    window.scrollTo(0, 0);
 }
 
 async function openNotices() {
@@ -997,3 +1205,13 @@ async function openNotices() {
 }
 
 bindLogin();
+resumeSession().then(async pair => {
+    if (session) return;
+    authGeneration++;
+    session = pair;
+    user = pair.user;
+    showNavigation();
+    await openAgenda(true);
+}).catch(error => {
+    if (error.status !== 401) notice(error.message, true);
+});

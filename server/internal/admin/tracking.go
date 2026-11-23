@@ -37,7 +37,7 @@ func (a *Admin) revokeAppSession(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, r, err)
 		return
 	}
-	redirect(w, r, "/admin/sessions", "revoked")
+	redirect(w, r, "/app/admin/sessions", "revoked")
 }
 
 func (a *Admin) revokeAdminSession(w http.ResponseWriter, r *http.Request) {
@@ -45,7 +45,7 @@ func (a *Admin) revokeAdminSession(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, r, err)
 		return
 	}
-	redirect(w, r, "/admin/sessions", "revoked")
+	redirect(w, r, "/app/admin/sessions", "revoked")
 }
 
 type journalPage struct {

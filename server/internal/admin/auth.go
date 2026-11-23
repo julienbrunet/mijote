@@ -50,7 +50,11 @@ func (a *Admin) csrfToken(sessionID string) string {
 }
 
 func (a *Admin) setCookie(w http.ResponseWriter, r *http.Request, name, value string, maxAge int) {
-	http.SetCookie(w, &http.Cookie{Name: name, Value: value, Path: "/admin", MaxAge: maxAge,
+	path := "/app/admin"
+	if name == cookieName {
+		path = "/app"
+	}
+	http.SetCookie(w, &http.Cookie{Name: name, Value: value, Path: path, MaxAge: maxAge,
 		HttpOnly: true, Secure: a.Proxies.IsHTTPS(r), SameSite: http.SameSiteStrictMode})
 }
 
@@ -89,22 +93,22 @@ func (a *Admin) requireSession(next http.Handler) http.Handler {
 
 func (a *Admin) toLogin(w http.ResponseWriter, r *http.Request) {
 	if setup, err := a.Store.NeedsSetup(r.Context()); err == nil && setup {
-		http.Redirect(w, r, "/admin/setup", http.StatusSeeOther)
+		http.Redirect(w, r, "/app/admin/setup", http.StatusSeeOther)
 		return
 	}
 	next := ""
-	if r.Method == http.MethodGet && r.URL.Path != "/admin/" {
+	if r.Method == http.MethodGet && r.URL.Path != "/app/admin/" {
 		next = "?next=" + url.QueryEscape(r.URL.RequestURI())
 	}
-	http.Redirect(w, r, "/admin/login"+next, http.StatusSeeOther)
+	http.Redirect(w, r, "/app/admin/login"+next, http.StatusSeeOther)
 }
 
 // safeNext only accepts a local admin path (no open redirect).
 func safeNext(next string) string {
-	if strings.HasPrefix(next, "/admin/") && !strings.HasPrefix(next, "//") && !strings.Contains(next, "\\") {
+	if strings.HasPrefix(next, "/app/admin/") && !strings.HasPrefix(next, "//") && !strings.Contains(next, "\\") {
 		return next
 	}
-	return "/admin/"
+	return "/app/admin/"
 }
 
 // ---------- Setup wizard (FR-ONB-01) ----------
@@ -114,7 +118,7 @@ func (a *Admin) setupPage(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, r, err)
 		return
 	} else if !setup {
-		http.Redirect(w, r, "/admin/login", http.StatusSeeOther)
+		http.Redirect(w, r, "/app/admin/login", http.StatusSeeOther)
 		return
 	}
 	a.render(w, r, "setup", http.StatusOK, view{Title: "Première configuration"})
@@ -133,7 +137,7 @@ func (a *Admin) setup(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if errors.Is(err, store.ErrAlreadySetUp) {
-		http.Redirect(w, r, "/admin/login", http.StatusSeeOther)
+		http.Redirect(w, r, "/app/admin/login", http.StatusSeeOther)
 		return
 	} else if msg, ok := validationMsg(err); ok {
 		a.render(w, r, "setup", http.StatusUnprocessableEntity, view{Title: "Première configuration", Error: msg})
@@ -142,7 +146,7 @@ func (a *Admin) setup(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, r, err)
 		return
 	}
-	http.Redirect(w, r, "/admin/login", http.StatusSeeOther)
+	http.Redirect(w, r, "/app/", http.StatusSeeOther)
 }
 
 // ---------- Sign-in ----------
@@ -158,8 +162,14 @@ func (a *Admin) loginPage(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if r.URL.Query().Get("restart") == "1" {
+		a.setCookie(w, r, challengeCookie, "", -1)
+	} else if _, _, _, ok := a.readChallenge(r); ok {
+		http.Redirect(w, r, "/app/admin/login/2fa?next="+url.QueryEscape(safeNext(next)), http.StatusSeeOther)
+		return
+	}
 	if setup, err := a.Store.NeedsSetup(r.Context()); err == nil && setup {
-		http.Redirect(w, r, "/admin/setup", http.StatusSeeOther)
+		http.Redirect(w, r, "/app/admin/setup", http.StatusSeeOther)
 		return
 	}
 	a.render(w, r, "login", http.StatusOK, view{Title: "Connexion", Data: loginData{next}})
@@ -204,22 +214,48 @@ func (a *Admin) login(w http.ResponseWriter, r *http.Request) {
 		return
 	} else if st.Enabled {
 		a.setCookie(w, r, challengeCookie, a.signChallenge(u.ID, safeNext(next), remember), int(challengeTTL.Seconds()))
-		http.Redirect(w, r, "/admin/login/2fa", http.StatusSeeOther)
+		http.Redirect(w, r, "/app/admin/login/2fa", http.StatusSeeOther)
 		return
 	}
 	a.openSession(w, r, u, remember, "", safeNext(next))
 }
 
 func (a *Admin) openSession(w http.ResponseWriter, r *http.Request, u store.User, remember bool, detail, next string) {
-	c := a.client(r)
-	raw, ttl, err := a.Store.StartAdminSession(r.Context(), u.ID, c, remember)
-	if err != nil {
+	if err := a.startSession(w, r, u, remember, detail); err != nil {
 		a.fail(w, r, err)
 		return
 	}
+	http.Redirect(w, r, next, http.StatusSeeOther)
+}
+
+func (a *Admin) startSession(w http.ResponseWriter, r *http.Request, u store.User, remember bool, detail string) error {
+	c := a.client(r)
+	raw, ttl, err := a.Store.StartAdminSession(r.Context(), u.ID, c, remember)
+	if err != nil {
+		return err
+	}
 	a.Store.LogAuthEvent(r.Context(), &u.ID, u.Username, "admin", "login", detail, c)
 	a.setCookie(w, r, cookieName, raw, int(ttl.Seconds()))
-	http.Redirect(w, r, next, http.StatusSeeOther)
+	return nil
+}
+
+// VerifiedBrowserLogin receives an account whose password the planner login has checked.
+func (a *Admin) VerifiedBrowserLogin(w http.ResponseWriter, r *http.Request, user store.User) error {
+	if err := a.EndBrowserSession(w, r); err != nil {
+		return err
+	}
+	if !user.IsAdmin() || a.Guard.Wait(adminGuardKey, a.client(r).IP) > 0 {
+		return nil
+	}
+	status, err := a.Store.TOTPStatus(r.Context(), user.ID)
+	if err != nil {
+		return err
+	}
+	if status.Enabled {
+		a.setCookie(w, r, challengeCookie, a.signChallenge(user.ID, "/app/admin/", false), int(challengeTTL.Seconds()))
+		return nil
+	}
+	return a.startSession(w, r, user, false, "connexion au planning web")
 }
 
 // adminByPassword checks the password against the single admin account.
@@ -242,7 +278,30 @@ func (a *Admin) logout(w http.ResponseWriter, r *http.Request) {
 	}
 	a.Store.LogAuthEvent(r.Context(), &s.user.ID, s.user.Username, "admin", "logout", "", a.client(r))
 	a.setCookie(w, r, cookieName, "", -1)
-	http.Redirect(w, r, "/admin/login", http.StatusSeeOther)
+	http.Redirect(w, r, "/app/", http.StatusSeeOther)
+}
+
+// EndBrowserSession revokes admin access when the family browser account changes or signs out.
+func (a *Admin) EndBrowserSession(w http.ResponseWriter, r *http.Request) error {
+	a.setCookie(w, r, challengeCookie, "", -1)
+	cookie, err := r.Cookie(cookieName)
+	if err != nil {
+		return nil
+	}
+	a.setCookie(w, r, cookieName, "", -1)
+	client := a.client(r)
+	user, id, err := a.Store.AdminSession(r.Context(), cookie.Value, client)
+	if errors.Is(err, store.ErrNotFound) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if err := a.Store.RevokeAdminSession(r.Context(), id, "logout"); err != nil {
+		return err
+	}
+	a.Store.LogAuthEvent(r.Context(), &user.ID, user.Username, "admin", "logout", "", client)
+	return nil
 }
 
 // ---------- Account ----------
@@ -264,7 +323,7 @@ func (a *Admin) changePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	a.Store.LogAuthEvent(r.Context(), &s.user.ID, s.user.Username, "admin", "password_changed", "", a.client(r))
-	redirect(w, r, "/admin/account", "password")
+	redirect(w, r, "/app/admin/account", "password")
 }
 
 func (a *Admin) logoutEverywhere(w http.ResponseWriter, r *http.Request) {
@@ -273,5 +332,5 @@ func (a *Admin) logoutEverywhere(w http.ResponseWriter, r *http.Request) {
 		a.fail(w, r, err)
 		return
 	}
-	redirect(w, r, "/admin/account", "everywhere")
+	redirect(w, r, "/app/admin/account", "everywhere")
 }

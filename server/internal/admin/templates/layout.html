@@ -12,11 +12,11 @@
 </head>
 <body>
 <header class="top">
-<div class="brandrow"><a class="brand" href="/admin/"><img class="logo" src="{{asset "logo.svg"}}" alt="" width="40" height="40"><img class="wordmark" src="{{asset "wordmark.svg"}}" alt="Mijote" width="84" height="28"><small>Admin</small></a></div>
+<div class="brandrow"><a class="brand" href="/app/"><img class="logo" src="{{asset "logo.svg"}}" alt="" width="40" height="40"><img class="wordmark" src="{{asset "wordmark.svg"}}" alt="Mijote" width="84" height="28"><small>Admin</small></a></div>
 {{if .User}}<nav class="main" aria-label="Menu principal">
 <a href="/app/">Planning familial</a>
 {{range .Navigation}}<a href="{{.Href}}" {{if eq .Key $.Section.Key}}class="on" aria-current="page"{{end}}>{{.Label}}</a>
-{{end}}<form class="inline" method="post" action="/admin/logout"><input type="hidden" name="csrf" value="{{.CSRF}}"><button class="link">Déconnexion</button></form>
+{{end}}<form class="inline" method="post" action="/app/admin/logout"><input type="hidden" name="csrf" value="{{.CSRF}}"><button class="link">Quitter l’administration</button></form>
 </nav>{{end}}
 </header>
 <main{{if .Wide}} class="wide"{{end}}>

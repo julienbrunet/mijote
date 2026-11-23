@@ -1,8 +1,8 @@
 {{define "content"}}{{with .Data}}
-<form method="get" action="/admin/" class="toolbar filters">
+<form method="get" action="/app/admin/" class="toolbar filters">
 <nav class="tabs" aria-label="Période">
-<a href="/admin/?user={{.UserID}}" {{if not .Past}}class="on" aria-current="page"{{end}}>À venir</a>
-<a href="/admin/?period=past&amp;user={{.UserID}}" {{if .Past}}class="on" aria-current="page"{{end}}>Passés</a>
+<a href="/app/admin/?user={{.UserID}}" {{if not .Past}}class="on" aria-current="page"{{end}}>À venir</a>
+<a href="/app/admin/?period=past&amp;user={{.UserID}}" {{if .Past}}class="on" aria-current="page"{{end}}>Passés</a>
 </nav>
 {{if .Past}}<input type="hidden" name="period" value="past">{{end}}
 <label>Planifié par<select name="user"><option value="">Tout le monde</option>{{range .Users}}<option value="{{.ID}}" {{if eq .ID $.Data.UserID}}selected{{end}}>{{.DisplayName}}</option>{{end}}</select></label>

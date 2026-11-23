@@ -50,7 +50,7 @@ func (a *Admin) accountAction(w http.ResponseWriter, r *http.Request, event, det
 	}
 	s := current(r)
 	a.Store.LogAuthEvent(r.Context(), &u.ID, u.Username, "admin", event, detail+" par "+s.user.Username, a.client(r))
-	redirect(w, r, "/admin/accounts", ok)
+	redirect(w, r, "/app/admin/accounts", ok)
 }
 
 func (a *Admin) disableAccount(w http.ResponseWriter, r *http.Request) {
@@ -164,5 +164,5 @@ func (a *Admin) revokeInvitation(w http.ResponseWriter, r *http.Request) {
 	}
 	s := current(r)
 	a.Store.LogAuthEvent(r.Context(), &s.user.ID, s.user.Username, "admin", "invite_revoked", "", a.client(r))
-	redirect(w, r, "/admin/invitations", "inv_revoked")
+	redirect(w, r, "/app/admin/invitations", "inv_revoked")
 }

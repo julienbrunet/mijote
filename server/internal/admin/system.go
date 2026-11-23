@@ -127,13 +127,13 @@ func alerts(p systemPage) []alert {
 	var out []alert
 	c := p.Counts
 	if !c.AdminTwoFA {
-		out = append(out, alert{"warn", "La double authentification du compte administrateur n'est pas activée.", "/admin/account"})
+		out = append(out, alert{"warn", "La double authentification du compte administrateur n'est pas activée.", "/app/admin/account"})
 	}
 	if c.Recipes < c.MinRecipes {
-		out = append(out, alert{"warn", fmt.Sprintf("Seulement %d recette(s) active(s) : il en faut %d pour générer des menus.", c.Recipes, c.MinRecipes), "/admin/recipes"})
+		out = append(out, alert{"warn", fmt.Sprintf("Seulement %d recette(s) active(s) : il en faut %d pour générer des menus.", c.Recipes, c.MinRecipes), "/app/admin/recipes"})
 	}
 	if c.LoginFailures24h > 0 {
-		out = append(out, alert{"warn", fmt.Sprintf("%d échec(s) de connexion ou alerte(s) de sécurité ces dernières 24 heures.", c.LoginFailures24h), "/admin/journal?failures=1"})
+		out = append(out, alert{"warn", fmt.Sprintf("%d échec(s) de connexion ou alerte(s) de sécurité ces dernières 24 heures.", c.LoginFailures24h), "/app/admin/journal?failures=1"})
 	}
 	if p.Disk.Total > 0 && p.Disk.UsedPct() >= 90 {
 		out = append(out, alert{"warn", fmt.Sprintf("Le disque du dossier des images est plein à %d %%.", p.Disk.UsedPct()), ""})
@@ -145,15 +145,15 @@ func alerts(p systemPage) []alert {
 		out = append(out, alert{"warn", fmt.Sprintf("%d image(s) de recette introuvable(s) dans le dossier des images (sauvegarde incomplète ?).", p.Missing), ""})
 	}
 	if c.UpcomingMeals == 0 {
-		out = append(out, alert{"info", "Aucun repas planifié à venir.", "/admin/"})
+		out = append(out, alert{"info", "Aucun repas planifié à venir.", "/app/admin/"})
 	} else if p.LastPlanDays < 2 {
-		out = append(out, alert{"info", "Les repas planifiés s'arrêtent le " + strings.ToLower(p.LastPlanned) + " : pensez à générer la suite.", "/admin/"})
+		out = append(out, alert{"info", "Les repas planifiés s'arrêtent le " + strings.ToLower(p.LastPlanned) + " : pensez à générer la suite.", "/app/admin/"})
 	}
 	if p.Orphans > 0 {
 		out = append(out, alert{"info", fmt.Sprintf("%d fichier(s) du dossier des images ne sont liés à aucune recette.", p.Orphans), ""})
 	}
 	if c.RecipesWithoutImage > 0 {
-		out = append(out, alert{"info", fmt.Sprintf("%d recette(s) active(s) sans image.", c.RecipesWithoutImage), "/admin/recipes"})
+		out = append(out, alert{"info", fmt.Sprintf("%d recette(s) active(s) sans image.", c.RecipesWithoutImage), "/app/admin/recipes"})
 	}
 	return out
 }

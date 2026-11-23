@@ -116,6 +116,57 @@ func expect(t *testing.T, res *http.Response, status int, what string) {
 
 var csrfRe = regexp.MustCompile(`name="csrf" value="([0-9a-f]+)"`)
 
+func TestPlannerBrowserSession(t *testing.T) {
+	pool := testDB(t)
+	h, err := New(context.Background(), pool, nil, t.TempDir(), "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(h)
+	defer srv.Close()
+	browser := newClient(t, srv.URL)
+	for path, destination := range map[string]string{
+		"/app/": "/app/admin/setup", "/admin/": "/app/", "/admin/system?x=1": "/app/admin/system?x=1",
+	} {
+		res, _ := browser.do("GET", path, "", "")
+		if res.Header.Get("Location") != destination {
+			t.Fatalf("%s redirects to %q, want %q", path, res.Header.Get("Location"), destination)
+		}
+	}
+	res, _ := browser.form("/app/admin/setup", url.Values{"username": {"julien"}, "password": {"secret-pass"}, "confirm": {"secret-pass"}})
+	expect(t, res, http.StatusSeeOther, "setup")
+	credentials := map[string]string{"username": "julien", "password": "secret-pass"}
+	res, _ = browser.json("/app/session/login", credentials)
+	expect(t, res, http.StatusForbidden, "login requires the browser request header")
+	res, tokens := browser.json("/app/session/login", credentials, "X-Mijote-Web", "1")
+	expect(t, res, http.StatusOK, "login from the shared web entry")
+	if _, present := tokens["refreshToken"]; present {
+		t.Fatal("the browser response exposed a refresh token")
+	}
+	var refresh *http.Cookie
+	for _, cookie := range res.Cookies() {
+		if cookie.Name == "mijote_web_refresh" {
+			refresh = cookie
+		}
+	}
+	if refresh == nil || !refresh.HttpOnly || refresh.Path != "/app/session" || refresh.SameSite != http.SameSiteStrictMode {
+		t.Fatal("missing scoped HttpOnly session cookie")
+	}
+	res, _ = browser.do("GET", "/app/admin/system", "", "")
+	expect(t, res, http.StatusOK, "the admin can open settings from the same login")
+	res, tokens = browser.json("/app/session/refresh", nil, "X-Mijote-Web", "1")
+	expect(t, res, http.StatusOK, "reload planner")
+	access := tokens["accessToken"].(string)
+	res, _ = browser.do("GET", "/api/v1/menu", "", "", "Authorization", "Bearer "+access)
+	expect(t, res, http.StatusOK, "planner API after reload")
+	res, _ = browser.do("POST", "/app/session/logout", "", "", "X-Mijote-Web", "1", "Authorization", "Bearer "+access)
+	expect(t, res, http.StatusNoContent, "sign out")
+	res, _ = browser.json("/app/session/refresh", nil, "X-Mijote-Web", "1")
+	expect(t, res, http.StatusUnauthorized, "planner session ended")
+	res, _ = browser.do("GET", "/app/admin/system", "", "")
+	expect(t, res, http.StatusSeeOther, "admin session ended")
+}
+
 func TestAuthFlow(t *testing.T) {
 	pool := testDB(t)
 	ctx := context.Background()
@@ -129,13 +180,13 @@ func TestAuthFlow(t *testing.T) {
 
 	// Setup wizard.
 	web := newClient(t, srv.URL)
-	res, _ := web.do("GET", "/admin/", "", "")
-	if loc := res.Header.Get("Location"); loc != "/admin/setup" {
+	res, _ := web.do("GET", "/app/admin/", "", "")
+	if loc := res.Header.Get("Location"); loc != "/app/admin/setup" {
 		t.Fatalf("fresh instance redirects to %q", loc)
 	}
-	res, _ = web.form("/admin/setup", url.Values{"username": {"julien"}, "password": {"secret-pass"}, "confirm": {"secret-pass"}})
+	res, _ = web.form("/app/admin/setup", url.Values{"username": {"julien"}, "password": {"secret-pass"}, "confirm": {"secret-pass"}})
 	expect(t, res, http.StatusSeeOther, "setup")
-	res, _ = web.form("/admin/setup", url.Values{"username": {"evil"}, "password": {"secret-pass"}, "confirm": {"secret-pass"}})
+	res, _ = web.form("/app/admin/setup", url.Values{"username": {"evil"}, "password": {"secret-pass"}, "confirm": {"secret-pass"}})
 	if _, err := st.UserByUsername(ctx, "evil"); err != store.ErrNotFound {
 		t.Fatal("setup accepted a second admin")
 	}
@@ -158,16 +209,16 @@ func TestAuthFlow(t *testing.T) {
 	expect(t, res, http.StatusUnauthorized, "access after reuse revoked the family")
 
 	// Admin: password-only login, CSRF, two-factor setup.
-	res, _ = web.form("/admin/login", url.Values{"password": {"wrong"}})
+	res, _ = web.form("/app/admin/login", url.Values{"password": {"wrong"}})
 	expect(t, res, http.StatusUnauthorized, "admin wrong password")
-	res, _ = web.form("/admin/login", url.Values{"password": {"secret-pass"}})
+	res, _ = web.form("/app/admin/login", url.Values{"password": {"secret-pass"}})
 	expect(t, res, http.StatusSeeOther, "admin login")
-	res, page := web.do("GET", "/admin/account", "", "")
+	res, page := web.do("GET", "/app/admin/account", "", "")
 	expect(t, res, http.StatusOK, "account page")
 	csrf := csrfRe.FindStringSubmatch(page)[1]
-	res, _ = web.form("/admin/2fa/setup", url.Values{})
+	res, _ = web.form("/app/admin/2fa/setup", url.Values{})
 	expect(t, res, http.StatusForbidden, "POST without CSRF")
-	res, _ = web.form("/admin/2fa/setup", url.Values{"csrf": {csrf}})
+	res, _ = web.form("/app/admin/2fa/setup", url.Values{"csrf": {csrf}})
 	expect(t, res, http.StatusSeeOther, "2fa setup")
 	u, _ := st.Admin(ctx)
 	key, _, err := st.TOTPPending(ctx, u.ID, u.Username)
@@ -176,28 +227,38 @@ func TestAuthFlow(t *testing.T) {
 	}
 	secret, _ := auth.Base32.DecodeString(key)
 	step := time.Now().Unix() / 30
-	res, page = web.form("/admin/2fa/enable", url.Values{"csrf": {csrf}, "code": {auth.TOTPCode(secret, step)}})
+	res, page = web.form("/app/admin/2fa/enable", url.Values{"csrf": {csrf}, "code": {auth.TOTPCode(secret, step)}})
 	expect(t, res, http.StatusOK, "2fa enable")
 	backup := regexp.MustCompile(`<code>([a-z2-7]{5}-[a-z2-7]{5})</code>`).FindStringSubmatch(page)
 	if backup == nil {
 		t.Fatal("backup codes not shown")
 	}
+	// The common browser login grants access to the planner before the admin step-up.
+	browser := newClient(t, srv.URL)
+	res, _ = browser.json("/app/session/login", map[string]string{"username": "julien", "password": "secret-pass"}, "X-Mijote-Web", "1")
+	expect(t, res, http.StatusOK, "planner login with two-factor enabled")
+	res, _ = browser.do("GET", "/app/admin/system", "", "")
+	expect(t, res, http.StatusSeeOther, "admin requires the code")
+	res, _ = browser.do("GET", res.Header.Get("Location"), "", "")
+	if loc := res.Header.Get("Location"); !strings.HasPrefix(loc, "/app/admin/login/2fa?next=") {
+		t.Fatalf("planner admin access redirects to %q", loc)
+	}
 
 	// Two-step login: the replayed code is refused, a backup code works once.
 	other := newClient(t, srv.URL)
-	res, _ = other.form("/admin/login", url.Values{"password": {"secret-pass"}})
-	if loc := res.Header.Get("Location"); loc != "/admin/login/2fa" {
+	res, _ = other.form("/app/admin/login", url.Values{"password": {"secret-pass"}})
+	if loc := res.Header.Get("Location"); loc != "/app/admin/login/2fa" {
 		t.Fatalf("login with 2fa redirects to %q", loc)
 	}
-	res, _ = other.do("GET", "/admin/account", "", "")
+	res, _ = other.do("GET", "/app/admin/account", "", "")
 	expect(t, res, http.StatusSeeOther, "no session before the code")
-	res, _ = other.form("/admin/login/2fa", url.Values{"code": {auth.TOTPCode(secret, step)}})
+	res, _ = other.form("/app/admin/login/2fa", url.Values{"code": {auth.TOTPCode(secret, step)}})
 	expect(t, res, http.StatusUnauthorized, "replayed code")
-	res, _ = other.form("/admin/login/2fa", url.Values{"code": {backup[1]}})
+	res, _ = other.form("/app/admin/login/2fa", url.Values{"code": {backup[1]}})
 	expect(t, res, http.StatusSeeOther, "backup code")
-	res, _ = other.do("GET", "/admin/sessions", "", "")
+	res, _ = other.do("GET", "/app/admin/sessions", "", "")
 	expect(t, res, http.StatusOK, "sessions page")
-	res, page = other.do("GET", "/admin/journal", "", "")
+	res, page = other.do("GET", "/app/admin/journal", "", "")
 	if !strings.Contains(page, "Jeton réutilisé") || !strings.Contains(page, "Code de secours utilisé") {
 		t.Fatal("journal is missing events")
 	}
@@ -225,13 +286,13 @@ func TestInvitationFlow(t *testing.T) {
 	st := store.New(pool)
 
 	web := newClient(t, srv.URL)
-	web.form("/admin/setup", url.Values{"username": {"julien"}, "password": {"secret-pass"}, "confirm": {"secret-pass"}})
-	web.form("/admin/login", url.Values{"password": {"secret-pass"}})
-	_, page := web.do("GET", "/admin/invitations", "", "")
+	web.form("/app/admin/setup", url.Values{"username": {"julien"}, "password": {"secret-pass"}, "confirm": {"secret-pass"}})
+	web.form("/app/admin/login", url.Values{"password": {"secret-pass"}})
+	_, page := web.do("GET", "/app/admin/invitations", "", "")
 	csrf := csrfRe.FindStringSubmatch(page)[1]
 
 	create := func(days string) string {
-		res, page := web.form("/admin/invitations", url.Values{"csrf": {csrf}, "days": {days}})
+		res, page := web.form("/app/admin/invitations", url.Values{"csrf": {csrf}, "days": {days}})
 		expect(t, res, http.StatusOK, "create invitation")
 		m := regexp.MustCompile(`value="http[^"]*/invite/([a-z2-7]+)"`).FindStringSubmatch(page)
 		if m == nil {
@@ -280,9 +341,9 @@ func TestInvitationFlow(t *testing.T) {
 
 	// Revoked and expired codes are refused.
 	revoked := create("1")
-	_, page = web.do("GET", "/admin/invitations", "", "")
-	id := regexp.MustCompile(`/admin/invitations/([0-9a-f-]+)/revoke`).FindStringSubmatch(page)[1]
-	res, _ = web.form("/admin/invitations/"+id+"/revoke", url.Values{"csrf": {csrf}})
+	_, page = web.do("GET", "/app/admin/invitations", "", "")
+	id := regexp.MustCompile(`/app/admin/invitations/([0-9a-f-]+)/revoke`).FindStringSubmatch(page)[1]
+	res, _ = web.form("/app/admin/invitations/"+id+"/revoke", url.Values{"csrf": {csrf}})
 	expect(t, res, http.StatusSeeOther, "revoke")
 	res, _ = redeem(revoked, "bob", "bob-password")
 	expect(t, res, http.StatusNotFound, "revoked code")
@@ -295,21 +356,21 @@ func TestInvitationFlow(t *testing.T) {
 
 	// Accounts: a member can be disabled (sessions closed), reactivated, and get a new password.
 	lea, _ := st.UserByUsername(ctx, "lea")
-	res, _ = web.form("/admin/accounts/"+lea.ID+"/disable", url.Values{"csrf": {csrf}})
+	res, _ = web.form("/app/admin/accounts/"+lea.ID+"/disable", url.Values{"csrf": {csrf}})
 	expect(t, res, http.StatusSeeOther, "disable")
 	res, _ = app.do("GET", "/api/v1/me", "", "", "Authorization", "Bearer "+tok["accessToken"].(string))
 	expect(t, res, http.StatusUnauthorized, "disabled account loses its session")
 	res, _ = app.json("/api/v1/auth/login", map[string]string{"username": "lea", "password": "lea-password"})
 	expect(t, res, http.StatusUnauthorized, "disabled account cannot sign in")
-	web.form("/admin/accounts/"+lea.ID+"/enable", url.Values{"csrf": {csrf}})
-	res, _ = web.form("/admin/accounts/"+lea.ID+"/password", url.Values{"csrf": {csrf}, "password": {"new-password"}})
+	web.form("/app/admin/accounts/"+lea.ID+"/enable", url.Values{"csrf": {csrf}})
+	res, _ = web.form("/app/admin/accounts/"+lea.ID+"/password", url.Values{"csrf": {csrf}, "password": {"new-password"}})
 	expect(t, res, http.StatusSeeOther, "reset password")
 	res, _ = app.json("/api/v1/auth/login", map[string]string{"username": "lea", "password": "new-password"})
 	expect(t, res, http.StatusOK, "sign in with the new password")
 	admin, _ := st.Admin(ctx)
-	res, _ = web.form("/admin/accounts/"+admin.ID+"/disable", url.Values{"csrf": {csrf}})
+	res, _ = web.form("/app/admin/accounts/"+admin.ID+"/disable", url.Values{"csrf": {csrf}})
 	expect(t, res, http.StatusUnprocessableEntity, "admin cannot be disabled")
-	res, _ = web.form("/admin/accounts/"+lea.ID+"/disable", url.Values{})
+	res, _ = web.form("/app/admin/accounts/"+lea.ID+"/disable", url.Values{})
 	expect(t, res, http.StatusForbidden, "account action without CSRF")
 }
 
@@ -338,9 +399,9 @@ func TestRecipes(t *testing.T) {
 	st := store.New(pool)
 
 	web := newClient(t, srv.URL)
-	web.form("/admin/setup", url.Values{"username": {"julien"}, "password": {"secret-pass"}, "confirm": {"secret-pass"}})
-	web.form("/admin/login", url.Values{"password": {"secret-pass"}})
-	_, page := web.do("GET", "/admin/recipes", "", "")
+	web.form("/app/admin/setup", url.Values{"username": {"julien"}, "password": {"secret-pass"}, "confirm": {"secret-pass"}})
+	web.form("/app/admin/login", url.Values{"password": {"secret-pass"}})
+	_, page := web.do("GET", "/app/admin/recipes", "", "")
 	csrf := csrfRe.FindStringSubmatch(page)[1]
 
 	// A member and the admin sign in to the app.
@@ -430,19 +491,19 @@ func TestRecipes(t *testing.T) {
 	}
 
 	// Web admin: archived list, restore, create and edit through the form.
-	_, page = web.do("GET", "/admin/recipes?archived=1", "", "")
+	_, page = web.do("GET", "/app/admin/recipes?archived=1", "", "")
 	if !strings.Contains(page, "Gratin 2") {
 		t.Fatal("archived recipe missing from the admin")
 	}
-	res, _ = web.form("/admin/recipes/"+id+"/restore", url.Values{"csrf": {csrf}})
+	res, _ = web.form("/app/admin/recipes/"+id+"/restore", url.Values{"csrf": {csrf}})
 	expect(t, res, http.StatusSeeOther, "restore")
-	res, _ = web.form("/admin/recipes/"+id+"/restore", url.Values{})
+	res, _ = web.form("/app/admin/recipes/"+id+"/restore", url.Values{})
 	expect(t, res, http.StatusForbidden, "restore without CSRF")
 
 	form := url.Values{"csrf": {csrf}, "title": {"Tarte"}, "dish_type": {"fish"}, "meal": {"dinner"}, "tags": {"four, rapide"},
 		"ing_qty": {"1,5", "", ""}, "ing_unit": {"dl", "", ""}, "ing_name": {"lait", "sel", ""}, "ing_note": {"", "", ""},
 		"steps": {"Mélanger\r\nCuire"}, "prep_minutes": {"10"}}
-	res, _ = web.form("/admin/recipes", form)
+	res, _ = web.form("/app/admin/recipes", form)
 	expect(t, res, http.StatusSeeOther, "create from the form")
 	newURL := res.Header.Get("Location")
 	_, page = web.do("GET", strings.SplitN(newURL, "?", 2)[0], "", "")
@@ -450,14 +511,14 @@ func TestRecipes(t *testing.T) {
 		t.Fatal("form values not shown again")
 	}
 	form.Set("title", "")
-	res, page = web.form("/admin/recipes", form)
+	res, page = web.form("/app/admin/recipes", form)
 	expect(t, res, http.StatusUnprocessableEntity, "missing title")
 	if !strings.Contains(page, "Le titre est obligatoire") || !strings.Contains(page, `value="1,5"`) {
 		t.Fatal("error not shown with the submitted values")
 	}
 	form.Set("title", "Tarte")
 	form.Set("ing_qty", "abc")
-	res, _ = web.form("/admin/recipes", form)
+	res, _ = web.form("/app/admin/recipes", form)
 	expect(t, res, http.StatusUnprocessableEntity, "unreadable quantity")
 
 	// Tags: rename, conflict, delete.
@@ -474,17 +535,17 @@ func TestRecipes(t *testing.T) {
 	if four.Recipes != 1 {
 		t.Fatalf("tag counts: %+v", tags)
 	}
-	res, _ = web.form("/admin/tags/"+quick.ID+"/rename", url.Values{"csrf": {csrf}, "name": {"FOUR"}})
+	res, _ = web.form("/app/admin/tags/"+quick.ID+"/rename", url.Values{"csrf": {csrf}, "name": {"FOUR"}})
 	expect(t, res, http.StatusUnprocessableEntity, "tag name taken")
-	res, _ = web.form("/admin/tags/"+quick.ID+"/rename", url.Values{"csrf": {csrf}, "name": {"express"}})
+	res, _ = web.form("/app/admin/tags/"+quick.ID+"/rename", url.Values{"csrf": {csrf}, "name": {"express"}})
 	expect(t, res, http.StatusSeeOther, "rename tag")
-	res, _ = web.form("/admin/tags/"+four.ID+"/delete", url.Values{"csrf": {csrf}})
+	res, _ = web.form("/app/admin/tags/"+four.ID+"/delete", url.Values{"csrf": {csrf}})
 	expect(t, res, http.StatusSeeOther, "delete tag")
 	_, got := app.api("GET", "/api/v1/tags", member, nil)
 	if n := len(got["tags"].([]any)); n != 2 { // "été" (now unused) and "express"
 		t.Fatalf("tags after cleanup: %v", got)
 	}
-	res, _ = web.do("GET", "/admin/tags", "", "")
+	res, _ = web.do("GET", "/app/admin/tags", "", "")
 	expect(t, res, http.StatusOK, "tags page")
 }
 
@@ -500,9 +561,9 @@ func TestRecipeImages(t *testing.T) {
 	defer srv.Close()
 	st := store.New(pool)
 	web := newClient(t, srv.URL)
-	web.form("/admin/setup", url.Values{"username": {"julien"}, "password": {"secret-pass"}, "confirm": {"secret-pass"}})
-	web.form("/admin/login", url.Values{"password": {"secret-pass"}})
-	_, page := web.do("GET", "/admin/recipes", "", "")
+	web.form("/app/admin/setup", url.Values{"username": {"julien"}, "password": {"secret-pass"}, "confirm": {"secret-pass"}})
+	web.form("/app/admin/login", url.Values{"password": {"secret-pass"}})
+	_, page := web.do("GET", "/app/admin/recipes", "", "")
 	csrf := csrfRe.FindStringSubmatch(page)[1]
 	app := newClient(t, srv.URL)
 	_, tok := app.json("/api/v1/auth/login", map[string]string{"username": "julien", "password": "secret-pass"})
@@ -551,7 +612,7 @@ func TestRecipeImages(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, first)); !os.IsNotExist(err) {
 		t.Fatal("previous thumbnail not deleted")
 	}
-	res, _ = web.do("GET", "/admin/recipes/"+id+"/image", "", "")
+	res, _ = web.do("GET", "/app/admin/recipes/"+id+"/image", "", "")
 	expect(t, res, http.StatusOK, "admin image")
 
 	// Admin upload through the form, then removal.
@@ -561,9 +622,9 @@ func TestRecipeImages(t *testing.T) {
 	fw, _ := w.CreateFormFile("image", "p.png")
 	fw.Write(pic(100, 100))
 	w.Close()
-	res, _ = web.do("POST", "/admin/recipes/"+id+"/image", w.FormDataContentType(), mp.String())
+	res, _ = web.do("POST", "/app/admin/recipes/"+id+"/image", w.FormDataContentType(), mp.String())
 	expect(t, res, http.StatusSeeOther, "admin upload")
-	res, _ = web.form("/admin/recipes/"+id+"/image/remove", url.Values{"csrf": {csrf}})
+	res, _ = web.form("/app/admin/recipes/"+id+"/image/remove", url.Values{"csrf": {csrf}})
 	expect(t, res, http.StatusSeeOther, "admin remove")
 	res, _ = app.do("GET", img, "", "", "Authorization", "Bearer "+token)
 	expect(t, res, http.StatusNotFound, "no image after removal")
@@ -600,14 +661,14 @@ func TestAPITokens(t *testing.T) {
 	st := store.New(pool)
 
 	web := newClient(t, srv.URL)
-	web.form("/admin/setup", url.Values{"username": {"julien"}, "password": {"secret-pass"}, "confirm": {"secret-pass"}})
-	web.form("/admin/login", url.Values{"password": {"secret-pass"}})
-	_, page := web.do("GET", "/admin/tokens", "", "")
+	web.form("/app/admin/setup", url.Values{"username": {"julien"}, "password": {"secret-pass"}, "confirm": {"secret-pass"}})
+	web.form("/app/admin/login", url.Values{"password": {"secret-pass"}})
+	_, page := web.do("GET", "/app/admin/tokens", "", "")
 	csrf := csrfRe.FindStringSubmatch(page)[1]
 
 	create := func(name, scope string) string {
 		t.Helper()
-		res, page := web.form("/admin/tokens", url.Values{"csrf": {csrf}, "name": {name}, "scope": {scope}, "days": {"30"}})
+		res, page := web.form("/app/admin/tokens", url.Values{"csrf": {csrf}, "name": {name}, "scope": {scope}, "days": {"30"}})
 		expect(t, res, http.StatusOK, "create token")
 		m := regexp.MustCompile(`mjt_[A-Za-z0-9_-]+`).FindString(page)
 		if m == "" {
@@ -615,7 +676,7 @@ func TestAPITokens(t *testing.T) {
 		}
 		return m
 	}
-	res, _ := web.form("/admin/tokens", url.Values{"csrf": {csrf}, "name": {" "}, "scope": {"read"}, "days": {"30"}})
+	res, _ := web.form("/app/admin/tokens", url.Values{"csrf": {csrf}, "name": {" "}, "scope": {"read"}, "days": {"30"}})
 	expect(t, res, http.StatusUnprocessableEntity, "name is required")
 
 	reader, writer := create("lecture", "read"), create("écriture", "write")
@@ -639,12 +700,12 @@ func TestAPITokens(t *testing.T) {
 	expect(t, res, http.StatusUnauthorized, "unknown token")
 
 	// The page never shows the secret again, and revoking takes effect at once.
-	_, page = web.do("GET", "/admin/tokens", "", "")
+	_, page = web.do("GET", "/app/admin/tokens", "", "")
 	if strings.Contains(page, writer) {
 		t.Fatal("clear token listed after creation")
 	}
-	id := regexp.MustCompile(`/admin/tokens/([0-9a-f-]+)/revoke`).FindStringSubmatch(page)[1]
-	res, _ = web.form("/admin/tokens/"+id+"/revoke", url.Values{"csrf": {csrf}})
+	id := regexp.MustCompile(`/app/admin/tokens/([0-9a-f-]+)/revoke`).FindStringSubmatch(page)[1]
+	res, _ = web.form("/app/admin/tokens/"+id+"/revoke", url.Values{"csrf": {csrf}})
 	expect(t, res, http.StatusSeeOther, "revoke")
 	// The newest token (writer) is the first listed, hence the one revoked.
 	res, _ = app.api("GET", "/api/v1/me", writer, nil)
@@ -675,7 +736,7 @@ func TestMenuGeneration(t *testing.T) {
 	defer srv.Close()
 
 	web := newClient(t, srv.URL)
-	web.form("/admin/setup", url.Values{"username": {"julien"}, "password": {"secret-pass"}, "confirm": {"secret-pass"}})
+	web.form("/app/admin/setup", url.Values{"username": {"julien"}, "password": {"secret-pass"}, "confirm": {"secret-pass"}})
 	app := newClient(t, srv.URL)
 	_, tok := app.json("/api/v1/auth/login", map[string]string{"username": "julien", "password": "secret-pass"})
 	access := tok["accessToken"].(string)
@@ -872,9 +933,9 @@ func TestReadonlyRoleAndSharedMenus(t *testing.T) {
 	st := store.New(pool)
 
 	web := newClient(t, srv.URL)
-	web.form("/admin/setup", url.Values{"username": {"julien"}, "password": {"secret-pass"}, "confirm": {"secret-pass"}})
-	web.form("/admin/login", url.Values{"password": {"secret-pass"}})
-	_, page := web.do("GET", "/admin/recipes", "", "")
+	web.form("/app/admin/setup", url.Values{"username": {"julien"}, "password": {"secret-pass"}, "confirm": {"secret-pass"}})
+	web.form("/app/admin/login", url.Values{"password": {"secret-pass"}})
+	_, page := web.do("GET", "/app/admin/recipes", "", "")
 	csrf := csrfRe.FindStringSubmatch(page)[1]
 
 	app := newClient(t, srv.URL)
@@ -957,7 +1018,7 @@ func TestReadonlyRoleAndSharedMenus(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	web.form("/admin/accounts/"+roUser.ID+"/role", url.Values{"csrf": {csrf}, "role": {"member"}})
+	web.form("/app/admin/accounts/"+roUser.ID+"/role", url.Values{"csrf": {csrf}, "role": {"member"}})
 	updated, _ := st.GetUser(ctx, roUser.ID)
 	if updated.Role != "member" {
 		t.Fatalf("expected member, got %s", updated.Role)
@@ -968,7 +1029,7 @@ func TestReadonlyRoleAndSharedMenus(t *testing.T) {
 	expect(t, res, http.StatusCreated, "member can add slot")
 
 	// Switch back to readonly.
-	web.form("/admin/accounts/"+roUser.ID+"/role", url.Values{"csrf": {csrf}, "role": {"readonly"}})
+	web.form("/app/admin/accounts/"+roUser.ID+"/role", url.Values{"csrf": {csrf}, "role": {"readonly"}})
 	updated, _ = st.GetUser(ctx, roUser.ID)
 	if updated.Role != "readonly" {
 		t.Fatalf("expected readonly, got %s", updated.Role)
@@ -990,7 +1051,7 @@ func TestAppAdmin(t *testing.T) {
 	st := store.New(pool)
 
 	web := newClient(t, srv.URL)
-	web.form("/admin/setup", url.Values{"username": {"julien"}, "password": {"secret-pass"}, "confirm": {"secret-pass"}})
+	web.form("/app/admin/setup", url.Values{"username": {"julien"}, "password": {"secret-pass"}, "confirm": {"secret-pass"}})
 	app := newClient(t, srv.URL)
 	_, tok := app.json("/api/v1/auth/login", map[string]string{"username": "julien", "password": "secret-pass"})
 	access := tok["accessToken"].(string)
@@ -1076,16 +1137,16 @@ func TestAdminMealList(t *testing.T) {
 	st := store.New(pool)
 
 	web := newClient(t, srv.URL)
-	web.form("/admin/setup", url.Values{"username": {"julien"}, "password": {"secret-pass"}, "confirm": {"secret-pass"}})
-	web.form("/admin/login", url.Values{"password": {"secret-pass"}})
+	web.form("/app/admin/setup", url.Values{"username": {"julien"}, "password": {"secret-pass"}, "confirm": {"secret-pass"}})
+	web.form("/app/admin/login", url.Values{"password": {"secret-pass"}})
 
 	// The invitation page shows the steps, then the link with a copy button and a single QR code.
-	_, page := web.do("GET", "/admin/invitations", "", "")
+	_, page := web.do("GET", "/app/admin/invitations", "", "")
 	csrf := csrfRe.FindStringSubmatch(page)[1]
 	if !strings.Contains(page, "Créer une invitation") || strings.Contains(page, "data-copy") {
 		t.Fatal("invitation page before creation")
 	}
-	res, page := web.form("/admin/invitations", url.Values{"csrf": {csrf}, "days": {"7"}, "role": {"member"}})
+	res, page := web.form("/app/admin/invitations", url.Values{"csrf": {csrf}, "days": {"7"}, "role": {"member"}})
 	expect(t, res, http.StatusOK, "create invitation")
 	if strings.Count(page, "data:image/png;base64,") != 1 || !strings.Contains(page, `data-copy="#invite-link"`) ||
 		!strings.Contains(page, `id="invite-link"`) {
@@ -1094,12 +1155,12 @@ func TestAdminMealList(t *testing.T) {
 	code := regexp.MustCompile(`value="http[^"]*/invite/([a-z2-7]+)"`).FindStringSubmatch(page)[1]
 
 	// The copy button script is served from 'self' (the CSP forbids inline scripts).
-	res, js := web.do("GET", "/admin/admin.js", "", "")
+	res, js := web.do("GET", "/app/admin/admin.js", "", "")
 	expect(t, res, http.StatusOK, "admin script")
 	if !strings.HasPrefix(res.Header.Get("Content-Type"), "text/javascript") || !strings.Contains(js, "data-copy") {
 		t.Fatalf("admin script: %s", res.Header.Get("Content-Type"))
 	}
-	res, _ = web.do("GET", "/admin/admin.js", "", "", "If-None-Match", res.Header.Get("ETag"))
+	res, _ = web.do("GET", "/app/admin/admin.js", "", "", "If-None-Match", res.Header.Get("ETag"))
 	expect(t, res, http.StatusNotModified, "admin script cached")
 
 	app := newClient(t, srv.URL)
@@ -1123,28 +1184,28 @@ func TestAdminMealList(t *testing.T) {
 	expect(t, res, http.StatusCreated, "manual meal")
 
 	// The home page shows the upcoming meals as cards; the former address redirects there.
-	res, _ = web.do("GET", "/admin/meals?period=past", "", "")
-	if res.StatusCode != http.StatusMovedPermanently || res.Header.Get("Location") != "/admin/?period=past" {
+	res, _ = web.do("GET", "/app/admin/meals?period=past", "", "")
+	if res.StatusCode != http.StatusMovedPermanently || res.Header.Get("Location") != "/app/admin/?period=past" {
 		t.Fatalf("old meal list address: %d %s", res.StatusCode, res.Header.Get("Location"))
 	}
-	res, page = web.do("GET", "/admin/", "", "")
+	res, page = web.do("GET", "/app/admin/", "", "")
 	expect(t, res, http.StatusOK, "meal list")
 	if !strings.Contains(page, "Pique-nique") || !strings.Contains(page, "Léa") || !strings.Contains(page, "Aujourd&#39;hui") ||
-		strings.Count(page, `href="/admin/recipes/`) != 2 || !strings.Contains(page, `class="on" aria-current="page">Accueil</a>`) {
+		strings.Count(page, `href="/app/admin/recipes/`) != 2 || !strings.Contains(page, `class="on" aria-current="page">Accueil</a>`) {
 		t.Fatalf("upcoming meals incomplete:\n%s", page)
 	}
 	leaUser, _ := st.UserByUsername(ctx, "lea")
-	_, page = web.do("GET", "/admin/?user="+leaUser.ID, "", "")
-	if !strings.Contains(page, "Pique-nique") || strings.Contains(page, `href="/admin/recipes/`) {
+	_, page = web.do("GET", "/app/admin/?user="+leaUser.ID, "", "")
+	if !strings.Contains(page, "Pique-nique") || strings.Contains(page, `href="/app/admin/recipes/`) {
 		t.Fatal("filter by planner")
 	}
-	_, page = web.do("GET", "/admin/?period=past", "", "")
-	if strings.Count(page, `href="/admin/recipes/`) != 1 || strings.Contains(page, "Pique-nique") || strings.Contains(page, "/admin/meals/") {
+	_, page = web.do("GET", "/app/admin/?period=past", "", "")
+	if strings.Count(page, `href="/app/admin/recipes/`) != 1 || strings.Contains(page, "Pique-nique") || strings.Contains(page, "/app/admin/meals/") {
 		t.Fatal("past meals")
 	}
-	res, _ = web.do("GET", "/admin/?user=not-a-uuid", "", "")
+	res, _ = web.do("GET", "/app/admin/?user=not-a-uuid", "", "")
 	expect(t, res, http.StatusOK, "unknown planner")
-	res, _ = newClient(t, srv.URL).do("GET", "/admin/meals/x", "", "")
+	res, _ = newClient(t, srv.URL).do("GET", "/app/admin/meals/x", "", "")
 	expect(t, res, http.StatusSeeOther, "meal page needs a session")
 }
 
@@ -1161,17 +1222,17 @@ func TestAdminHomeSystemAndNavigation(t *testing.T) {
 
 	// The version is not disclosed before signing in; the footer links to the repository.
 	web := newClient(t, srv.URL)
-	web.form("/admin/setup", url.Values{"username": {"julien"}, "password": {"secret-pass"}, "confirm": {"secret-pass"}})
-	_, page := web.do("GET", "/admin/login", "", "")
+	web.form("/app/admin/setup", url.Values{"username": {"julien"}, "password": {"secret-pass"}, "confirm": {"secret-pass"}})
+	_, page := web.do("GET", "/app/admin/login", "", "")
 	if strings.Contains(page, "1.2.3") || !strings.Contains(page, "https://github.com/julienbrunet/mijote") ||
-		!strings.Contains(page, "/admin/wordmark.svg?v=") {
+		!strings.Contains(page, "/app/admin/wordmark.svg?v=") {
 		t.Fatal("login page footer and brand")
 	}
-	web.form("/admin/login", url.Values{"password": {"secret-pass"}})
+	web.form("/app/admin/login", url.Values{"password": {"secret-pass"}})
 
 	// Static files of the admin.
 	for name, ctype := range map[string]string{"admin.css": "text/css", "logo.svg": "image/svg+xml", "wordmark.svg": "image/svg+xml"} {
-		res, _ := web.do("GET", "/admin/"+name, "", "")
+		res, _ := web.do("GET", "/app/admin/"+name, "", "")
 		expect(t, res, http.StatusOK, name)
 		if !strings.HasPrefix(res.Header.Get("Content-Type"), ctype) || res.Header.Get("ETag") == "" {
 			t.Fatalf("%s: %s", name, res.Header.Get("Content-Type"))
@@ -1180,17 +1241,17 @@ func TestAdminHomeSystemAndNavigation(t *testing.T) {
 
 	// Every page of the navigation renders, with its section highlighted and its tabs.
 	for path, want := range map[string][]string{
-		"/admin/":              {`aria-current="page">Accueil</a>`, "Prochains repas"},
-		"/admin/recipes":       {`aria-current="page">Recettes</a>`, `href="/admin/recipes/stats"`},
-		"/admin/tags":          {`aria-current="page">Étiquettes</a>`},
-		"/admin/recipes/stats": {`aria-current="page">Statistiques</a>`, "Équilibre des types de plat"},
-		"/admin/accounts":      {`aria-current="page">Utilisateurs</a>`, `href="/admin/journal"`},
-		"/admin/invitations":   {`aria-current="page">Invitations</a>`},
-		"/admin/sessions":      {`aria-current="page">Sessions</a>`},
-		"/admin/journal":       {`aria-current="page">Journal des connexions</a>`},
-		"/admin/system":        {`aria-current="page">Système</a>`, "1.2.3", "Base de données", "Dossier des images"},
-		"/admin/account":       {`aria-current="page">Profil admin</a>`, `href="/admin/tokens"`},
-		"/admin/tokens":        {`aria-current="page">Jetons d&#39;API</a>`},
+		"/app/admin/":              {`aria-current="page">Accueil</a>`, "Prochains repas"},
+		"/app/admin/recipes":       {`aria-current="page">Recettes</a>`, `href="/app/admin/recipes/stats"`},
+		"/app/admin/tags":          {`aria-current="page">Étiquettes</a>`},
+		"/app/admin/recipes/stats": {`aria-current="page">Statistiques</a>`, "Équilibre des types de plat"},
+		"/app/admin/accounts":      {`aria-current="page">Utilisateurs</a>`, `href="/app/admin/journal"`},
+		"/app/admin/invitations":   {`aria-current="page">Invitations</a>`},
+		"/app/admin/sessions":      {`aria-current="page">Sessions</a>`},
+		"/app/admin/journal":       {`aria-current="page">Journal des connexions</a>`},
+		"/app/admin/system":        {`aria-current="page">Système</a>`, "1.2.3", "Base de données", "Dossier des images"},
+		"/app/admin/account":       {`aria-current="page">Profil admin</a>`, `href="/app/admin/tokens"`},
+		"/app/admin/tokens":        {`aria-current="page">Jetons d&#39;API</a>`},
 	} {
 		res, page := web.do("GET", path, "", "")
 		expect(t, res, http.StatusOK, path)
@@ -1221,36 +1282,36 @@ func TestAdminHomeSystemAndNavigation(t *testing.T) {
 	slotID := slot["id"].(string)
 
 	// The home page shows the meal as a card with its actions.
-	_, page = web.do("GET", "/admin/", "", "")
+	_, page = web.do("GET", "/app/admin/", "", "")
 	csrf := csrfRe.FindStringSubmatch(page)[1]
-	if !strings.Contains(page, "Demain") || !strings.Contains(page, "Plat B") || !strings.Contains(page, `href="/admin/meals/`+slotID+`"`) ||
-		!strings.Contains(page, `action="/admin/meals/`+slotID+`/delete"`) {
+	if !strings.Contains(page, "Demain") || !strings.Contains(page, "Plat B") || !strings.Contains(page, `href="/app/admin/meals/`+slotID+`"`) ||
+		!strings.Contains(page, `action="/app/admin/meals/`+slotID+`/delete"`) {
 		t.Fatalf("meal card:\n%s", page)
 	}
 
 	// Change the recipe, turn it into a manual meal, draw another recipe, then remove it.
-	res, page = web.do("GET", "/admin/meals/"+slotID, "", "")
+	res, page = web.do("GET", "/app/admin/meals/"+slotID, "", "")
 	expect(t, res, http.StatusOK, "meal page")
 	if !strings.Contains(page, "Pour le soir") || !strings.Contains(page, "Plat F") {
 		t.Fatal("meal page lists the recipes")
 	}
-	res, _ = web.form("/admin/meals/"+slotID+"/recipe", url.Values{"csrf": {csrf}, "recipe": {ids[2]}})
+	res, _ = web.form("/app/admin/meals/"+slotID+"/recipe", url.Values{"csrf": {csrf}, "recipe": {ids[2]}})
 	expect(t, res, http.StatusSeeOther, "set recipe")
 	slots, _ := st.MenuSlots(ctx, today.AddDate(0, 0, 1), today.AddDate(0, 0, 1))
 	if len(slots) != 1 || slots[0].Recipe == nil || slots[0].Recipe.ID != ids[2] || !slots[0].Locked {
 		t.Fatalf("recipe not set: %+v", slots)
 	}
-	res, _ = web.form("/admin/meals/"+slotID+"/recipe", url.Values{"csrf": {csrf}, "recipe": {"not-a-recipe"}})
+	res, _ = web.form("/app/admin/meals/"+slotID+"/recipe", url.Values{"csrf": {csrf}, "recipe": {"not-a-recipe"}})
 	expect(t, res, http.StatusUnprocessableEntity, "unknown recipe")
-	res, _ = web.form("/admin/meals/"+slotID+"/title", url.Values{"csrf": {csrf}, "title": {"Pizza"}})
+	res, _ = web.form("/app/admin/meals/"+slotID+"/title", url.Values{"csrf": {csrf}, "title": {"Pizza"}})
 	expect(t, res, http.StatusSeeOther, "manual meal")
-	res, _ = web.form("/admin/meals/"+slotID+"/title", url.Values{"csrf": {csrf}, "title": {"  "}})
+	res, _ = web.form("/app/admin/meals/"+slotID+"/title", url.Values{"csrf": {csrf}, "title": {"  "}})
 	expect(t, res, http.StatusUnprocessableEntity, "blank title")
-	_, page = web.do("GET", "/admin/?ok=meal_saved", "", "")
+	_, page = web.do("GET", "/app/admin/?ok=meal_saved", "", "")
 	if !strings.Contains(page, "Pizza") || !strings.Contains(page, "repas libre") || !strings.Contains(page, "Repas modifié.") {
 		t.Fatal("manual meal on the home page")
 	}
-	res, page = web.form("/admin/meals/"+slotID+"/swap", url.Values{"csrf": {csrf}})
+	res, page = web.form("/app/admin/meals/"+slotID+"/swap", url.Values{"csrf": {csrf}})
 	expect(t, res, http.StatusUnprocessableEntity, "swap below the minimum recipe count")
 	if !strings.Contains(page, "6 sur les 10") {
 		t.Fatal("swap error message")
@@ -1260,29 +1321,29 @@ func TestAdminHomeSystemAndNavigation(t *testing.T) {
 			"title": "Extra " + string(rune('A'+i)), "dishType": "vegetarian", "mealTypes": []string{"lunch"}})
 		expect(t, res, http.StatusCreated, "create recipe")
 	}
-	res, _ = web.form("/admin/meals/"+slotID+"/swap", url.Values{"csrf": {csrf}})
+	res, _ = web.form("/app/admin/meals/"+slotID+"/swap", url.Values{"csrf": {csrf}})
 	expect(t, res, http.StatusSeeOther, "swap")
 	slots, _ = st.MenuSlots(ctx, today.AddDate(0, 0, 1), today.AddDate(0, 0, 1))
 	if len(slots) != 1 || slots[0].Recipe == nil || slots[0].Title != nil {
 		t.Fatalf("swap: %+v", slots)
 	}
-	res, _ = web.form("/admin/meals/"+slotID+"/delete", url.Values{})
+	res, _ = web.form("/app/admin/meals/"+slotID+"/delete", url.Values{})
 	expect(t, res, http.StatusForbidden, "delete needs the CSRF token")
-	res, _ = web.form("/admin/meals/"+slotID+"/delete", url.Values{"csrf": {csrf}})
+	res, _ = web.form("/app/admin/meals/"+slotID+"/delete", url.Values{"csrf": {csrf}})
 	expect(t, res, http.StatusSeeOther, "delete")
-	res, _ = web.form("/admin/meals/"+slotID+"/delete", url.Values{"csrf": {csrf}})
+	res, _ = web.form("/app/admin/meals/"+slotID+"/delete", url.Values{"csrf": {csrf}})
 	expect(t, res, http.StatusNotFound, "already deleted")
-	res, _ = web.do("GET", "/admin/meals/"+slotID, "", "")
+	res, _ = web.do("GET", "/app/admin/meals/"+slotID, "", "")
 	expect(t, res, http.StatusNotFound, "deleted meal page")
 
 	// Usage statistics: the past meal counts, the others were never served.
-	_, page = web.do("GET", "/admin/recipes/stats?period=30", "", "")
+	_, page = web.do("GET", "/app/admin/recipes/stats?period=30", "", "")
 	if !strings.Contains(page, "9 recette(s) active(s) n'ont encore jamais été servies") || !strings.Contains(page, "1 repas · 100 %") {
 		t.Fatalf("stats:\n%s", page)
 	}
 
 	// The system page counts the content and warns about the admin's missing 2FA.
-	_, page = web.do("GET", "/admin/system", "", "")
+	_, page = web.do("GET", "/app/admin/system", "", "")
 	for _, w := range []string{"<b>10</b><span>Recettes</span>", "<b>1</b><span>Repas passés</span>", "double authentification",
 		"Instance installée le", "PostgreSQL", "Aucun repas planifié à venir."} {
 		if !strings.Contains(page, w) {
@@ -1308,7 +1369,7 @@ func TestFavorites(t *testing.T) {
 	st := store.New(pool)
 
 	web := newClient(t, srv.URL)
-	web.form("/admin/setup", url.Values{"username": {"julien"}, "password": {"secret-pass"}, "confirm": {"secret-pass"}})
+	web.form("/app/admin/setup", url.Values{"username": {"julien"}, "password": {"secret-pass"}, "confirm": {"secret-pass"}})
 	app := newClient(t, srv.URL)
 	_, tok := app.json("/api/v1/auth/login", map[string]string{"username": "julien", "password": "secret-pass"})
 	admin := tok["accessToken"].(string)

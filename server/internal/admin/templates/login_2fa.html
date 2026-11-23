@@ -1,6 +1,7 @@
-{{define "content"}}<form class="card" method="post" action="/admin/login/2fa">
+{{define "content"}}<form class="card" method="post" action="/app/admin/login/2fa">
+<input type="hidden" name="next" value="{{.Data.Next}}">
 <label>Code de l'application d'authentification, ou code de secours
 <input type="text" name="code" inputmode="numeric" autocomplete="one-time-code" required autofocus></label>
 <button>Valider</button>
-<p class="muted"><a href="/admin/login">Recommencer</a></p>
+<p class="muted"><a href="/app/admin/login?restart=1">Recommencer</a></p>
 </form>{{end}}
