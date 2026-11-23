@@ -42,8 +42,8 @@ internal fun PlannerRecipePickerScreen(
     state: RecipesState, moment: PlannerMoment, busy: Boolean,
     onSearch: (String) -> Unit, onChoose: (RecipeSummary) -> Unit, onBack: () -> Unit,
 ) {
-    var types by rememberSaveable { mutableStateOf(arrayListOf<String>()) }
-    var seasons by rememberSaveable { mutableStateOf(arrayListOf<String>()) }
+    var types by rememberSaveable { mutableStateOf<List<String>>(emptyList()) }
+    var seasons by rememberSaveable { mutableStateOf<List<String>>(emptyList()) }
     val catalog = state.recipes.orEmpty()
     val results = remember(catalog, types, seasons) {
         catalog.filter { (types.isEmpty() || it.dishType in types) &&
@@ -73,7 +73,10 @@ internal fun PlannerRecipePickerScreen(
                 if (types.isNotEmpty() || seasons.isNotEmpty()) "Aucune recette ne correspond aux filtres."
                 else if (state.query.isNotBlank()) "Aucune recette trouvée." else "Le carnet est vide.",
                 if (types.isNotEmpty() || seasons.isNotEmpty()) {
-                    { types = arrayListOf(); seasons = arrayListOf() }
+                    {
+                        types = emptyList()
+                        seasons = emptyList()
+                    }
                 } else null,
                 "Réinitialiser les filtres",
             )
@@ -111,8 +114,8 @@ internal fun PlannerRandomRecipesScreen(
     state: RandomMealRecipesState, moment: PlannerMoment,
     onRetry: () -> Unit, onChoose: (RecipeSummary) -> Unit, onBack: () -> Unit,
 ) {
-    var selected by rememberSaveable(moment.date.toEpochDay(), moment.meal) { mutableStateOf(arrayListOf<String>()) }
-    var seen by rememberSaveable(moment.date.toEpochDay(), moment.meal) { mutableStateOf(arrayListOf<String>()) }
+    var selected by rememberSaveable(moment.date.toEpochDay(), moment.meal) { mutableStateOf<List<String>>(emptyList()) }
+    var seen by rememberSaveable(moment.date.toEpochDay(), moment.meal) { mutableStateOf<List<String>>(emptyList()) }
     val ideas = remember(state.recipes) {
         val tags = state.recipes.flatMap(RecipeSummary::tags).distinctBy { it.lowercase() }
             .groupBy { it.lowercase() }.values.map { it.first() }
@@ -160,7 +163,7 @@ internal fun PlannerRandomRecipesScreen(
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 5.dp), pageSpacing = 10.dp,
                 ) { index -> RandomRecipeCard(cards[index], state.recentDays[cards[index].id]) }
                 else Box(Modifier.weight(1f).fillMaxWidth()) {
-                    RecipeOptionsStatus("Aucune recette ne correspond à ces envies.", { selected = arrayListOf() }, "Effacer les envies")
+                    RecipeOptionsStatus("Aucune recette ne correspond à ces envies.", { selected = emptyList() }, "Effacer les envies")
                 }
                 Row(
                     Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp),
@@ -180,7 +183,7 @@ internal fun PlannerRandomRecipesScreen(
                     Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         ideas.forEach { idea ->
                             RecipeOptionChip(idea.label, idea.id in selected) {
-                                seen = ArrayList(cards.take(page + 1).map(RecipeSummary::id))
+                                seen = cards.take(page + 1).map(RecipeSummary::id)
                                 selected = toggled(selected, idea.id)
                             }
                         }
@@ -259,4 +262,4 @@ private fun RecipeOptionsStatus(text: String, retry: (() -> Unit)? = null, actio
 }
 
 private fun toggled(values: List<String>, value: String) =
-    ArrayList(if (value in values) values - value else values + value)
+    if (value in values) values - value else values + value
