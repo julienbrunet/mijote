@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -14,7 +15,6 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -23,6 +23,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
@@ -31,13 +32,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -55,39 +55,36 @@ internal fun PlannerMealEditor(
     stagedManual: String?,
     people: Int,
     manualInput: String,
-    removed: Boolean,
     canPlanRecipe: Boolean,
     canEdit: Boolean,
     busy: Boolean,
     dirty: Boolean,
+    saveLabel: String,
     error: String?,
     scrollState: ScrollState = rememberScrollState(),
     onPeople: (Int) -> Unit,
     onManualInput: (String) -> Unit,
-    onValidateManual: () -> Unit,
     onPick: () -> Unit,
     onOpen: (() -> Unit)?,
     onRemove: () -> Unit,
+    onBack: () -> Unit,
     onSave: () -> Unit,
 ) {
     val enabled = canEdit && !busy
     val originalTitle = original?.title
     val replacementRecipe = stagedRecipe?.takeUnless { it.id == recipe?.id }
     val replacementManual = stagedManual?.takeUnless { it == originalTitle }
-    val trimmedInput = manualInput.trim()
-    val pendingManualInput = trimmedInput != (stagedManual ?: originalTitle).orEmpty() &&
-        (trimmedInput.isNotEmpty() || stagedRecipe == null && !removed)
     val showPeople = original != null || replacementRecipe != null || replacementManual != null
     val heading = when {
         !canEdit -> "Repas"
         original == null -> "Ajouter un repas"
         else -> "Modifier le repas"
     }
-    Column(Modifier.fillMaxSize().background(Sunny.Cream).imePadding()) {
+    Column(Modifier.fillMaxSize().background(Sunny.Cream).imePadding().padding(top = 12.dp)) {
         AgendaHeader(heading, mealMoment(moment.date, moment.meal).replaceFirstChar { it.uppercase() })
         Column(
             Modifier.weight(1f).fillMaxWidth().verticalScroll(scrollState)
-                .padding(horizontal = 12.dp, vertical = 10.dp),
+                .padding(start = 12.dp, top = 8.dp, end = 12.dp, bottom = 12.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             AgendaCard {
@@ -109,7 +106,7 @@ internal fun PlannerMealEditor(
                     ) {
                         Text("Nombre de personnes", Modifier.weight(1f),
                             fontSize = 14.sp, lineHeight = 18.sp, color = Sunny.Ink)
-                        if (canEdit) PlannerStepper(people, 1, 20, "Une personne", onPeople, enabled && !removed)
+                        if (canEdit) PlannerStepper(people, 1, 20, "Une personne", onPeople, enabled)
                         else Text(people.toString(), fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = Sunny.Ink)
                     }
                 }
@@ -140,47 +137,46 @@ internal fun PlannerMealEditor(
                         original != null -> "Remplacer par un repas libre"
                         else -> "Ajouter un repas libre"
                     },
-                    stagedTitle = replacementManual,
-                    pendingInput = pendingManualInput,
+                    highlighted = replacementManual != null,
                     enabled = enabled,
-                    onManualInput = onManualInput, onValidate = onValidateManual,
+                    onManualInput = onManualInput,
                 )
                 if (original != null) {
-                    if (removed) {
-                        Text(
-                            "Retrait du repas à enregistrer",
-                            Modifier.semantics { liveRegion = LiveRegionMode.Polite }.padding(10.dp),
-                            fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Sunny.Ink,
-                        )
-                    } else {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
                         TextButton(
                             onClick = onRemove, enabled = enabled, modifier = Modifier.heightIn(min = 48.dp),
-                            colors = ButtonDefaults.textButtonColors(contentColor = Sunny.Ink),
+                            colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.onErrorContainer),
                         ) {
                             Icon(Icons.Filled.Delete, contentDescription = null, modifier = Modifier.size(17.dp))
-                            Text("Retirer ce repas", Modifier.padding(start = 6.dp), fontWeight = FontWeight.SemiBold)
+                            Text("Supprimer ce repas", Modifier.padding(start = 6.dp), fontWeight = FontWeight.SemiBold)
                         }
                     }
                 }
             }
         }
-        if (canEdit) {
-            HorizontalDivider(color = Sunny.Track)
-            Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp)) {
-                if (error != null) {
-                    Text(
-                        error,
-                        Modifier.fillMaxWidth().clip(Shapes.Control).background(Sunny.ErrorBg)
-                            .semantics { liveRegion = LiveRegionMode.Polite }.padding(10.dp),
-                        fontSize = 13.sp, lineHeight = 17.sp, color = Sunny.Ink,
-                    )
-                }
-                Row(
-                    Modifier.fillMaxWidth().padding(top = if (error == null) 0.dp else 6.dp),
-                    horizontalArrangement = Arrangement.End,
-                ) {
+        HorizontalDivider(color = Sunny.Track)
+        Column(
+            Modifier.fillMaxWidth().padding(start = 12.dp, top = 8.dp, end = 12.dp, bottom = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            if (error != null) {
+                Text(
+                    error,
+                    Modifier.fillMaxWidth().clip(Shapes.Control).background(Sunny.ErrorBg)
+                        .semantics { liveRegion = LiveRegionMode.Polite }.padding(10.dp),
+                    fontSize = 13.sp, lineHeight = 17.sp, color = Sunny.Ink,
+                )
+            }
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                AgendaAction("Retour", onBack, enabled = !busy)
+                if (canEdit) {
+                    Spacer(Modifier.weight(1f))
                     AgendaAction(
-                        if (busy) "Enregistrement…" else "Enregistrer",
+                        if (busy) "Enregistrement…" else saveLabel,
                         onSave, primary = true, enabled = enabled && dirty,
                     )
                 }
@@ -225,56 +221,30 @@ private fun MealEditorRecipe(recipe: RecipeSummary, onOpen: (() -> Unit)?, busy:
 private fun MealEditorManual(
     input: String,
     label: String,
-    stagedTitle: String?,
-    pendingInput: Boolean,
+    highlighted: Boolean,
     enabled: Boolean,
     onManualInput: (String) -> Unit,
-    onValidate: () -> Unit,
 ) {
-    val trimmed = input.trim()
-    val valid = trimmed.codePointCount(0, trimmed.length) in 1..100
-    val focus = LocalFocusManager.current
-    val validate = {
-        onValidate()
-        focus.clearFocus()
-    }
-    MealEditorChangeCard(highlighted = stagedTitle != null || pendingInput) {
+    val title = input.trim()
+    val tooLong = title.codePointCount(0, title.length) > 100
+    MealEditorChangeCard(highlighted = highlighted) {
         AgendaSectionTitle(label)
-        if (stagedTitle != null) {
-            Text("À enregistrer · $stagedTitle", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Sunny.Ink)
-        }
-        Row(
-            Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            OutlinedTextField(
-                value = input,
-                onValueChange = onManualInput,
-                modifier = Modifier.weight(1f),
-                label = { Text("Intitulé du repas") },
-                enabled = enabled,
-                singleLine = true,
-                shape = Shapes.Control,
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = Sunny.InkTitle,
-                    unfocusedBorderColor = Sunny.Slate,
-                    focusedLabelColor = Sunny.Ink,
-                    unfocusedLabelColor = Sunny.InkTitle,
-                    cursorColor = Sunny.Ink,
-                ),
-                keyboardOptions = KeyboardOptions(
-                    capitalization = KeyboardCapitalization.Sentences,
-                    imeAction = ImeAction.Done,
-                ),
-                keyboardActions = KeyboardActions(onDone = { if (enabled && valid) validate() }),
-            )
-            AgendaAction("Valider", validate, enabled = enabled && valid)
-        }
-        if (trimmed.isNotEmpty() && !valid) {
-            Text("100 caractères maximum.", fontSize = 12.sp, color = Sunny.InkTitle)
-        } else if (pendingInput) {
-            Text("Validez l’intitulé avant d’enregistrer.", fontSize = 12.sp, color = Sunny.InkTitle)
-        }
+        OutlinedTextField(
+            value = input,
+            onValueChange = onManualInput,
+            modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Intitulé du repas" },
+            placeholder = { Text("Intitulé du repas") },
+            isError = tooLong,
+            supportingText = if (tooLong) { { Text("100 caractères maximum.") } } else null,
+            enabled = enabled,
+            singleLine = true,
+            shape = Shapes.Control,
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = Sunny.InkTitle,
+                unfocusedBorderColor = Sunny.Slate,
+                cursorColor = Sunny.Ink,
+            ),
+            keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
+        )
     }
 }

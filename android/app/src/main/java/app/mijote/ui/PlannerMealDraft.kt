@@ -14,22 +14,25 @@ internal data class PlannerMealDraft(
     val initialPeople: Int,
     val people: Int = initialPeople,
     val manualInput: String = original?.title.orEmpty(),
-    val manualTitle: String? = null,
     val chosenRecipe: MenuRecipe? = null,
-    val removed: Boolean = false,
     val requestId: String? = null,
     val error: String? = null,
 ) {
-    val recipe get() = if (removed || manualTitle != null) null else chosenRecipe ?: original?.recipe
-    val title get() = if (removed || chosenRecipe != null) null else manualTitle ?: original?.title
+    val manualTitle get() = manualInput.trim().ifEmpty { null }
+    val recipe get() = if (manualTitle != null) null else chosenRecipe ?: original?.recipe
+    val title get() = manualTitle ?: original?.title?.takeIf { chosenRecipe == null }
     val contentChanged get() = recipe?.id != original?.recipe?.id || title != original?.title
-    val dirty get() = when {
-        removed -> original != null
-        original == null && recipe == null && title == null -> false
-        else -> contentChanged || people != initialPeople
+    val canSave get() = (original != null || recipe != null || title != null) &&
+        (contentChanged || people != initialPeople) &&
+        title?.let { it.codePointCount(0, it.length) <= 100 } != false
+    val saveLabel get() = when {
+        title != null && title != original?.title -> "Enregistrer le repas libre"
+        recipe != null && recipe?.id != original?.recipe?.id ->
+            if (original == null) "Planifier la recette" else "Changer de recette"
+        else -> "Enregistrer"
     }
 
-    fun replacement(moment: PlannerMoment): MenuSlot? = if (removed) null else MenuSlot(
+    fun replacement(moment: PlannerMoment): MenuSlot = MenuSlot(
         id = original?.id ?: UUID.randomUUID().toString(),
         date = moment.date,
         meal = moment.meal,
@@ -52,8 +55,8 @@ internal data class PlannerMealDraft(
                         )
                     },
                     "initialPeople" to draft.initialPeople, "people" to draft.people,
-                    "manualInput" to draft.manualInput, "manualTitle" to draft.manualTitle,
-                    "chosenRecipe" to draft.chosenRecipe?.savedState(), "removed" to draft.removed,
+                    "manualInput" to draft.manualInput,
+                    "chosenRecipe" to draft.chosenRecipe?.savedState(),
                     "requestId" to draft.requestId, "error" to draft.error,
                 )
             },
@@ -71,10 +74,9 @@ internal data class PlannerMealDraft(
                     )
                 }
                 PlannerMealDraft(
-                    original, state.getInt("initialPeople"), state.getInt("people"),
-                    state.getString("manualInput").orEmpty(), state.getString("manualTitle"),
-                    state.getBundle("chosenRecipe")?.savedRecipe(), state.getBoolean("removed"),
-                    state.getString("requestId"), state.getString("error"),
+                    original = original, initialPeople = state.getInt("initialPeople"), people = state.getInt("people"),
+                    manualInput = state.getString("manualInput").orEmpty(), chosenRecipe = state.getBundle("chosenRecipe")?.savedRecipe(),
+                    requestId = state.getString("requestId"), error = state.getString("error"),
                 )
             },
         )

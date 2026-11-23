@@ -59,6 +59,7 @@ import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 import java.util.UUID
+import kotlinx.coroutines.launch
 
 private val plannerMonthDay = DateTimeFormatter.ofPattern("d MMMM", Locale.FRENCH)
 private val plannerShape = RoundedCornerShape(12.dp)
@@ -149,7 +150,7 @@ data class PlannerActions(
     val onNotifications: () -> Unit = {},
 )
 
-private enum class PlannerPanel { None, Picker, Move, Generate, Copy, Discard }
+private enum class PlannerPanel { None, Picker, Move, Generate, Copy, CopyPastMeal, Discard }
 internal data class PlannerMoment(val date: LocalDate, val meal: String)
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -208,6 +209,9 @@ fun PlannerScreen(
     var moveSnapshot by remember { mutableStateOf<MenuSlot?>(null) }
     var applyingCopy by rememberSaveable { mutableStateOf(false) }
     var mealDraft by rememberSaveable(stateSaver = PlannerMealDraft.saver) { mutableStateOf<PlannerMealDraft?>(null) }
+    var confirmMealRemoval by rememberSaveable { mutableStateOf(false) }
+    var pastCopyEpoch by rememberSaveable { mutableLongStateOf(today.plusDays(1).toEpochDay()) }
+    var pastCopyMeal by rememberSaveable { mutableStateOf("lunch") }
     var fromEpoch by rememberSaveable(today) { mutableLongStateOf(today.plusDays(1).toEpochDay()) }
     var duration by rememberSaveable(info?.horizonDays) { mutableIntStateOf((info?.horizonDays ?: 7).coerceIn(1, 21)) }
     var plan by rememberSaveable { mutableStateOf(MealPlan.LUNCH_DINNER) }
@@ -243,11 +247,18 @@ fun PlannerScreen(
     val showTodayButton = isHome && focusedHomeDate == today && dates.isNotEmpty() && !todayVisible
     val targetWeek = copyTargetEpoch?.let(LocalDate::ofEpochDay) ?: maxOf(visibleDate.weekStart(), today.weekStart())
     val sourceWeek = copySourceEpoch?.let(LocalDate::ofEpochDay) ?: targetWeek.minusWeeks(1)
+    val pastCopyDate = LocalDate.ofEpochDay(pastCopyEpoch).coerceIn(today.plusDays(1), today.plusDays(20))
+    val pastCopyOccupied = week.snapshot(pastCopyDate)?.slots?.any { it.date == pastCopyDate && it.meal == pastCopyMeal } == true
+    val copyFeedback = remember { SnackbarHostState() }
+    val feedbackScope = rememberCoroutineScope()
 
     fun select(moment: PlannerMoment?) {
         dayEpoch = moment?.date?.toEpochDay()
         mealChoice = moment?.meal
-        if (moment == null) mealDraft = null
+        if (moment == null) {
+            mealDraft = null
+            confirmMealRemoval = false
+        }
     }
     fun openMeal(moment: PlannerMoment, slot: MenuSlot?) {
         select(moment)
@@ -282,16 +293,18 @@ fun PlannerScreen(
         panel = PlannerPanel.Picker
         actions.onSearchRecipes("")
     }
-    fun saveMeal(moment: PlannerMoment, draft: PlannerMealDraft) {
-        if (!draft.dirty || draft.requestId != null) return
-        if (draft.manualInput.isNotBlank() && draft.manualInput.trim() != draft.title) {
-            mealDraft = draft.copy(error = "Validez l’intitulé du repas libre avant d’enregistrer.")
-            return
-        }
+    fun submitMeal(moment: PlannerMoment, expected: SlotVersion?, replacement: MenuSlot?) {
+        val draft = mealDraft ?: return
+        if (draft.requestId != null || busy) return
         val requestId = UUID.randomUUID().toString()
         mealDraft = draft.copy(requestId = requestId, error = null)
-        val expected = draft.original?.let { SlotVersion(it.id, it.version) }
-        actions.onSaveMeal(requestId, moment.date, moment.meal, expected, draft.replacement(moment))
+        actions.onSaveMeal(requestId, moment.date, moment.meal, expected, replacement)
+    }
+    fun startPastCopy(slot: MenuSlot) {
+        openMeal(PlannerMoment(slot.date, slot.meal), slot)
+        pastCopyEpoch = today.plusDays(1).toEpochDay()
+        pastCopyMeal = slot.meal
+        panel = PlannerPanel.CopyPastMeal
     }
     fun startMove(slot: MenuSlot) {
         sourceId = slot.id
@@ -366,8 +379,13 @@ fun PlannerScreen(
     LaunchedEffect(state.mealEditOutcome, draft?.requestId) {
         val outcome = state.mealEditOutcome ?: return@LaunchedEffect
         val pending = mealDraft?.takeIf { it.requestId == outcome.requestId } ?: return@LaunchedEffect
-        if (outcome.error == null) closePanel()
-        else mealDraft = pending.copy(requestId = null, error = outcome.error)
+        if (outcome.error == null) {
+            if (panel == PlannerPanel.CopyPastMeal) {
+                val destination = mealMoment(pastCopyDate, pastCopyMeal)
+                feedbackScope.launch { copyFeedback.showSnackbar("Repas copié · $destination") }
+            }
+            closePanel()
+        } else mealDraft = pending.copy(requestId = null, error = outcome.error)
     }
 
     if (panel == PlannerPanel.Picker && selected != null && draft != null) {
@@ -381,7 +399,7 @@ fun PlannerScreen(
                 PlannerRecipePicker(recipes, selected, busy, actions.onSearchRecipes) { recipe ->
                     mealDraft = draft.copy(
                         chosenRecipe = MenuRecipe(recipe.id, recipe.title, recipe.dishType, recipe.minutes, recipe.image),
-                        manualTitle = null, manualInput = "", removed = false, error = null,
+                        manualInput = "", error = null,
                     )
                     back()
                 }
@@ -427,10 +445,14 @@ fun PlannerScreen(
         val error = week.error ?: state.error
         val mealBeingPlaced = placement?.title ?: source?.let { mealTitle(it) }
 
-        val showMealEditor = showSheet && draft != null && selected != null && !selecting
+        val showPastCopy = showSheet && panel == PlannerPanel.CopyPastMeal
+        val showMealEditor = showSheet && !showPastCopy && draft != null && selected != null && !selecting
         Box(Modifier.fillMaxSize()) {
-            val agendaSemantics = if (showMealEditor) Modifier.clearAndSetSemantics { } else Modifier
-            Column(Modifier.fillMaxSize().then(agendaSemantics).background(Sunny.Cream).statusBarsPadding().imePadding()) {
+            val agendaSemantics = if (showMealEditor || showPastCopy) Modifier.clearAndSetSemantics { } else Modifier
+            Column(
+                Modifier.fillMaxSize().then(agendaSemantics).background(if (isHome) Sunny.Card else Sunny.Cream)
+                    .statusBarsPadding().imePadding(),
+            ) {
                 if (isHome) {
                     Row(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 6.dp)) {
                         BrandTitle(logoSize = 38.dp, textSize = 32)
@@ -501,6 +523,7 @@ fun PlannerScreen(
                                     else openMeal(moment, slot)
                                 },
                                 onKeyboardMove = ::startMove,
+                                onCopyPast = if (isHome && user.canWrite && !busy && !showSheet) ::startPastCopy else null,
                                 onDrop = { slot, moment -> startMove(slot); select(moment) },
                                 onBoundary = { before, retry ->
                                     if (before) actions.onLoadBefore(retry) else actions.onLoadAfter(retry)
@@ -554,46 +577,86 @@ fun PlannerScreen(
                 }
                 if (!isHome) Spacer(Modifier.windowInsetsBottomHeight(WindowInsets.navigationBars))
             }
+            if (isHome) SnackbarHost(
+                copyFeedback,
+                Modifier.align(Alignment.BottomCenter).navigationBarsPadding()
+                    .padding(start = 12.dp, end = 12.dp, bottom = 76.dp),
+            )
 
-            if (showSheet && draft != null && selected != null && !selecting) {
+            if (showPastCopy && draft?.original != null) {
+                val original = draft.original
+                val saving = busy || draft.requestId != null
+                PlannerMealOverlay(saving, ::dismissSheet, heightFraction = null) {
+                    Column(
+                        Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(12.dp),
+                    ) {
+                        PlannerPastMealCopy(
+                            source = original, today = today, date = pastCopyDate, meal = pastCopyMeal,
+                            occupied = pastCopyOccupied, busy = saving, error = draft.error,
+                            onDate = {
+                                pastCopyEpoch = it.toEpochDay()
+                                mealDraft = draft.copy(error = null)
+                            },
+                            onMeal = {
+                                pastCopyMeal = it
+                                mealDraft = draft.copy(error = null)
+                            },
+                            onConfirm = {
+                                if (!pastCopyOccupied) {
+                                    val target = PlannerMoment(pastCopyDate, pastCopyMeal)
+                                    val copySlot = original.copy(
+                                        id = UUID.randomUUID().toString(), date = target.date, meal = target.meal,
+                                        people = draft.initialPeople, locked = true, version = 0,
+                                    )
+                                    submitMeal(target, expected = null, replacement = copySlot)
+                                }
+                            },
+                            onBack = ::dismissSheet,
+                        )
+                    }
+                }
+            } else if (showMealEditor) {
                 val original = draft.original
                 val canEditMeal = !readOnly(selected.date)
                 val saving = busy || draft.requestId != null
                 PlannerMealOverlay(saving, ::dismissSheet) {
                     PlannerMealEditor(
                         moment = selected, original = original, recipe = original?.recipe?.asSummary(),
-                        stagedRecipe = draft.chosenRecipe?.takeIf { it.id != original?.recipe?.id }?.asSummary(),
-                        stagedManual = draft.manualTitle?.takeIf { it != original?.title },
-                        people = draft.people, manualInput = draft.manualInput, removed = draft.removed,
+                        stagedRecipe = draft.recipe?.takeIf { it.id != original?.recipe?.id }?.asSummary(),
+                        stagedManual = draft.title?.takeIf { it != original?.title },
+                        people = draft.people, manualInput = draft.manualInput,
                         canPlanRecipe = canEditMeal && (inDraft || selected.date <= today.plusDays(20)),
-                        canEdit = canEditMeal, busy = saving, dirty = draft.dirty,
+                        canEdit = canEditMeal, busy = saving, dirty = draft.canSave, saveLabel = draft.saveLabel,
                         error = draft.error, scrollState = mealEditorScroll,
                         onPeople = { mealDraft = draft.copy(people = it, error = null) },
                         onManualInput = { mealDraft = draft.copy(manualInput = it, error = null) },
-                        onValidateManual = {
-                            val title = draft.manualInput.trim()
-                            if (title.codePointCount(0, title.length) in 1..100) {
-                                mealDraft = draft.copy(
-                                    manualTitle = title, chosenRecipe = null, removed = false, error = null,
-                                )
-                            }
-                        },
                         onPick = ::openPicker,
                         onOpen = original?.takeIf { it.recipe != null }?.let { slot ->
                             { actions.onOpenRecipe(slot.copy(people = draft.people), true) }
                         },
-                        onRemove = {
-                            mealDraft = draft.copy(
-                                removed = true, manualInput = "", manualTitle = null, chosenRecipe = null, error = null,
+                        onRemove = { confirmMealRemoval = true },
+                        onSave = {
+                            if (draft.canSave) submitMeal(
+                                selected, original?.let { SlotVersion(it.id, it.version) }, draft.replacement(selected),
                             )
                         },
-                        onSave = { saveMeal(selected, draft) },
+                        onBack = ::dismissSheet,
+                    )
+                }
+                if (confirmMealRemoval && canEditMeal && original != null) {
+                    PlannerMealRemovalConfirmation(
+                        title = mealTitle(original),
+                        onDismiss = { confirmMealRemoval = false },
+                        onConfirm = {
+                            confirmMealRemoval = false
+                            submitMeal(selected, SlotVersion(original.id, original.version), replacement = null)
+                        },
                     )
                 }
             }
         }
 
-        if (showSheet && !showMealEditor) {
+        if (showSheet && !showMealEditor && !showPastCopy) {
             PlannerActionSheet(busy, ::dismissSheet) {
                 Column(
                     Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 12.dp).padding(bottom = 8.dp),
@@ -667,7 +730,28 @@ private fun PlannerActionSheet(busy: Boolean, onDismiss: () -> Unit, content: @C
 }
 
 @Composable
-private fun PlannerMealOverlay(saving: Boolean, onDismiss: () -> Unit, content: @Composable () -> Unit) {
+private fun PlannerMealRemovalConfirmation(title: String, onDismiss: () -> Unit, onConfirm: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = Sunny.Card,
+        title = { AgendaSectionTitle("Supprimer ce repas ?") },
+        text = { Text("« $title » sera retiré du planning.", color = Sunny.Ink) },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Annuler", color = Sunny.Ink) } },
+        confirmButton = {
+            TextButton(onClick = onConfirm) {
+                Text("Supprimer", color = MaterialTheme.colorScheme.onErrorContainer, fontWeight = FontWeight.Bold)
+            }
+        },
+    )
+}
+
+@Composable
+private fun PlannerMealOverlay(
+    saving: Boolean,
+    onDismiss: () -> Unit,
+    heightFraction: Float? = 0.90f,
+    content: @Composable () -> Unit,
+) {
     BackHandler { if (!saving) onDismiss() }
     Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.36f))) {
         Box(
@@ -677,7 +761,8 @@ private fun PlannerMealOverlay(saving: Boolean, onDismiss: () -> Unit, content: 
         )
         Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
             Surface(
-                modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth().fillMaxHeight(0.90f)
+                modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth()
+                    .then(if (heightFraction != null) Modifier.fillMaxHeight(heightFraction) else Modifier)
                     .semantics { paneTitle = "Fiche repas" }
                     .pointerInput(Unit) {
                         // Pointer events inside the panel must stay above the dismissible scrim.
@@ -898,7 +983,7 @@ private fun PlannerRecipePicker(
 }
 
 @Composable
-private fun <T> PlannerSelect(
+internal fun <T> PlannerSelect(
     title: String,
     selected: T,
     options: List<T>,

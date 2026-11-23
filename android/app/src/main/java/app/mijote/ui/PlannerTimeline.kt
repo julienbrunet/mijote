@@ -59,6 +59,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.changedToUp
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -174,9 +175,13 @@ internal fun PlannerTimeline(
     hasMealOptions: (PlannerMoment, MenuSlot) -> Boolean = { _, _ -> false },
     onMealOptions: (PlannerMoment, MenuSlot) -> Unit = { _, _ -> },
     bottomPadding: Dp = 18.dp,
+    onCopyPast: ((MenuSlot) -> Unit)? = null,
 ) {
     val gesture = remember { TimelineDrag() }
     val currentCanDrag by rememberUpdatedState(canDrag)
+    val currentEnabled by rememberUpdatedState(isEnabled)
+    val currentCopyPast by rememberUpdatedState(onCopyPast)
+    val currentToday by rememberUpdatedState(today)
     val currentSlots by rememberUpdatedState(slots)
     val currentCanDrop by rememberUpdatedState(canDrop)
     val currentDrop by rememberUpdatedState(onDrop)
@@ -257,17 +262,33 @@ internal fun PlannerTimeline(
                 val source = gesture.cells.values.firstOrNull { cell ->
                     val slot = currentSlots[cell.moment]
                     slot != null && cell.touchBounds.contains(rootPoint) &&
-                        gesture.optionsBounds[cell.moment]?.contains(rootPoint) != true && currentCanDrag(cell.moment, slot)
+                        gesture.optionsBounds[cell.moment]?.contains(rootPoint) != true &&
+                        (currentCanDrag(cell.moment, slot) ||
+                            currentCopyPast != null && slot.isCopyablePast(currentToday) && currentEnabled(cell.moment, slot))
                 } ?: return@awaitEachGesture
                 val held = awaitLongPressOrCancellation(down.id) ?: return@awaitEachGesture
                 val slot = currentSlots[source.moment] ?: return@awaitEachGesture
 
                 val heldRootPoint = gesture.origin + held.position
-                if (!currentCanDrag(source.moment, slot) ||
+                val copyPast = currentCopyPast?.takeIf {
+                    slot.isCopyablePast(currentToday) && currentEnabled(source.moment, slot)
+                }
+                if ((copyPast == null && !currentCanDrag(source.moment, slot)) ||
                     gesture.optionsBounds[source.moment]?.contains(heldRootPoint) == true
                 ) return@awaitEachGesture
                 held.consume()
                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                if (copyPast != null) {
+                    copyPast(slot)
+                    // Consume the remainder of the hold so lifting does not open the original meal.
+                    var pressed = held
+                    while (pressed.pressed) {
+                        pressed = awaitPointerEvent(PointerEventPass.Initial)
+                            .changes.firstOrNull { it.id == held.id } ?: break
+                        pressed.consume()
+                    }
+                    return@awaitEachGesture
+                }
                 gesture.begin(source.copy(slot = slot), heldRootPoint)
                 try {
                     val completed = drag(held.id) { change ->
@@ -284,10 +305,13 @@ internal fun PlannerTimeline(
             }
         },
     ) {
+        val listInset = if (largeCards) 0.dp else 12.dp
+        val dayInset = if (largeCards) 20.dp else 8.dp
+        val boundaryInset = if (largeCards) 12.dp else 0.dp
         LazyColumn(
             state = listState,
             userScrollEnabled = gesture.source == null,
-            contentPadding = PaddingValues(start = 12.dp, top = 8.dp, end = 12.dp, bottom = bottomPadding),
+            contentPadding = PaddingValues(start = listInset, top = 8.dp, end = listInset, bottom = bottomPadding),
             verticalArrangement = Arrangement.spacedBy(if (largeCards) 20.dp else 16.dp),
             modifier = Modifier.fillMaxSize(),
         ) {
@@ -296,16 +320,20 @@ internal fun PlannerTimeline(
                 val loaded = isDateLoaded(date)
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (index == 0 && (loadingBefore || beforeError != null)) {
-                        TimelineBoundary(loadingBefore, beforeError, boundaryEnabled) { onBoundary(true, true) }
+                        TimelineBoundary(loadingBefore, beforeError, boundaryEnabled, Modifier.padding(horizontal = boundaryInset)) {
+                            onBoundary(true, true)
+                        }
                     }
                     val isToday = date == today
-                    val dayBackground = if (isToday) {
-                        Modifier.background(Sunny.Card, agendaTodayShape)
+                    val dayBackground = when {
+                        !isToday -> Modifier
+                        largeCards -> Modifier.background(Sunny.Cream)
+                        else -> Modifier.background(Sunny.Card, agendaTodayShape)
                             .border(1.dp, Sunny.Track, agendaTodayShape)
-                    } else Modifier
+                    }
                     Column(
                         Modifier.fillMaxWidth().then(dayBackground)
-                            .padding(horizontal = 8.dp, vertical = if (isToday) 8.dp else 0.dp),
+                            .padding(horizontal = dayInset, vertical = if (isToday) 8.dp else 0.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         TimelineDayHeader(date, today)
@@ -317,6 +345,7 @@ internal fun PlannerTimeline(
                             val moving = gesture.source
                             val placeholder = moving?.moment == moment
                             val accessibleMove = slot?.takeIf { loaded && canDrag(moment, it) }
+                            val accessibleCopy = slot?.takeIf { enabled && it.isCopyablePast(today) }
                             val optionsSlot = slot?.takeIf { loaded && hasMealOptions(moment, it) }
                             DisposableEffect(moment) {
                                 onDispose { gesture.cells.remove(moment) }
@@ -333,6 +362,9 @@ internal fun PlannerTimeline(
                                 enabled = enabled && moving == null, large = largeCards,
                                 onClick = { onSelect(moment, slot) },
                                 onKeyboardMove = accessibleMove?.let { { onKeyboardMove(it) } },
+                                onKeyboardCopy = accessibleCopy?.let { mealToCopy ->
+                                    onCopyPast?.let { copy -> { copy(mealToCopy) } }
+                                },
                                 onOptions = optionsSlot?.let { { onMealOptions(moment, it) } },
                                 onOptionsBounds = { gesture.optionsBounds[moment] = it },
                                 modifier = cardModifier.onGloballyPositioned { coords ->
@@ -358,7 +390,9 @@ internal fun PlannerTimeline(
                         }
                     }
                     if (index == dates.lastIndex && (loadingAfter || afterError != null)) {
-                        TimelineBoundary(loadingAfter, afterError, boundaryEnabled) { onBoundary(false, true) }
+                        TimelineBoundary(loadingAfter, afterError, boundaryEnabled, Modifier.padding(horizontal = boundaryInset)) {
+                            onBoundary(false, true)
+                        }
                     }
                 }
             }
@@ -404,6 +438,8 @@ private fun TimelineDayHeader(date: LocalDate, today: LocalDate) {
     }
 }
 
+private fun MenuSlot.isCopyablePast(today: LocalDate): Boolean = date < today && (recipe != null || manual)
+
 private fun agendaTitle(slot: MenuSlot?, readOnly: Boolean, loaded: Boolean) = when {
     !loaded -> "Chargement du créneau…"
     slot == null -> if (readOnly) "Aucun repas" else "Créneau libre"
@@ -424,6 +460,7 @@ private fun TimelineMealCard(
     modifier: Modifier,
     large: Boolean,
     onKeyboardMove: (() -> Unit)? = null,
+    onKeyboardCopy: (() -> Unit)? = null,
     onOptions: (() -> Unit)? = null,
     onOptionsBounds: (Rect) -> Unit = {},
 ) {
@@ -458,8 +495,11 @@ private fun TimelineMealCard(
             if (hover) stateDescription = "Destination"
             else if (copied) stateDescription = "À copier"
             else if (slot?.locked == true) stateDescription = "Conservé lors de la génération"
-            if (onKeyboardMove != null && enabled) {
-                customActions = listOf(CustomAccessibilityAction("Déplacer le repas") { onKeyboardMove(); true })
+            if (enabled && (onKeyboardMove != null || onKeyboardCopy != null)) {
+                customActions = listOfNotNull(
+                    onKeyboardMove?.let { CustomAccessibilityAction("Déplacer le repas") { it(); true } },
+                    onKeyboardCopy?.let { CustomAccessibilityAction("Copier ce repas") { it(); true } },
+                )
             }
         }
     val captionLabel: @Composable (Modifier) -> Unit = { modifier ->
@@ -585,15 +625,21 @@ private fun TimelineMealArt(slot: MenuSlot, modifier: Modifier, emojiSize: andro
 }
 
 @Composable
-private fun TimelineBoundary(loading: Boolean, error: String?, enabled: Boolean, onRetry: () -> Unit) {
+private fun TimelineBoundary(
+    loading: Boolean,
+    error: String?,
+    enabled: Boolean,
+    modifier: Modifier,
+    onRetry: () -> Unit,
+) {
     if (loading) Row(
-        Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
+        modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically,
     ) {
         CircularProgressIndicator(Modifier.size(18.dp), color = Sunny.PeachDeep, strokeWidth = 2.dp)
         Text("Chargement des autres dates…", color = Sunny.InkTitle, fontSize = 12.sp)
     } else if (error != null) Column(
-        Modifier.fillMaxWidth().clip(agendaShape).background(Sunny.ErrorBg).padding(horizontal = 10.dp),
+        modifier.fillMaxWidth().clip(agendaShape).background(Sunny.ErrorBg).padding(horizontal = 10.dp),
     ) {
         Text(error, color = Sunny.Ink, fontSize = 12.sp, modifier = Modifier.padding(top = 9.dp))
         TextButton(onClick = onRetry, enabled = enabled, modifier = Modifier.heightIn(min = 48.dp)) {

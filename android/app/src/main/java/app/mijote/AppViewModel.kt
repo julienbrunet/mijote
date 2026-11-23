@@ -852,7 +852,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 version = current?.version ?: 0,
             )
         }
-        val changed = "Ce créneau a changé. Fermez la fiche et ouvrez-la à nouveau."
+        val changed = if (expected == null) "Ce créneau est déjà occupé. Choisissez un autre créneau."
+            else "Ce créneau a changé. Fermez la fiche et ouvrez-la à nouveau."
         val chooseContent = "Choisissez une recette ou saisissez un intitulé."
         if (draft != null) {
             val current = draft.slots.firstOrNull { it.date == date && it.meal == meal }
