@@ -1,8 +1,11 @@
 package app.mijote.ui
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
@@ -19,6 +22,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
@@ -26,7 +30,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-/** Shared heading for the three destinations in the main navigation. */
+/** Shared heading for agenda and recipe screens. */
 @Composable
 internal fun AgendaHeader(
     title: String,
@@ -45,6 +49,22 @@ internal fun AgendaHeader(
         }
         actions()
     }
+}
+
+@Composable
+internal fun AgendaCard(content: @Composable ColumnScope.() -> Unit) {
+    Column(
+        Modifier.fillMaxWidth().clip(Shapes.Control).background(Sunny.Card)
+            .border(1.dp, Sunny.Track, Shapes.Control).padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+        content = content,
+    )
+}
+
+@Composable
+internal fun AgendaSectionTitle(title: String) {
+    Text(title, Modifier.semantics { heading() }, fontSize = 17.sp, lineHeight = 21.sp,
+        fontWeight = FontWeight.Bold, color = Sunny.Ink)
 }
 
 @Composable

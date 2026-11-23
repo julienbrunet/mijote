@@ -1,17 +1,48 @@
 package app.mijote.ui
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.*
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
@@ -22,125 +53,193 @@ import app.mijote.data.RecipeDraft
 import app.mijote.data.parseIngredient
 import app.mijote.data.text
 
+private val editorControlShape = RoundedCornerShape(12.dp)
+private val dishTypes = listOf("meat" to DishType.MEAT, "fish" to DishType.FISH, "vegetarian" to DishType.VEGETARIAN)
+private val mealTypes = listOf("lunch" to "Midi", "dinner" to "Soir")
 private val seasons = listOf("spring" to "Printemps", "summer" to "Été", "autumn" to "Automne", "winter" to "Hiver")
 
-/**
- * Creates or edits a recipe by hand (FR-REC-06, FR-REC-11). Ingredients and steps are typed one
- * per line; ingredient lines are parsed on the device into quantity, unit and name (FR-REC-21),
- * with a preview of what will be saved. Quantities are for one person.
- */
+/** Creates or edits a recipe, with an ingredient preview normalized to one person. */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun RecipeEditorScreen(state: EditorState, onChange: (RecipeDraft) -> Unit, onSave: () -> Unit, onBack: () -> Unit) {
-    val d = state.draft
-    Column(Modifier.fillMaxSize().background(Sunny.Butter).imePadding()) {
-        Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
-            Box(
-                Modifier.fillMaxWidth().background(Sunny.Card, RoundedCornerShape(bottomStart = 40.dp, bottomEnd = 40.dp)),
-            ) {
-                Column(Modifier.statusBarsPadding().padding(start = 12.dp, end = 22.dp, top = 8.dp, bottom = 22.dp)) {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Retour", tint = Sunny.Ink)
-                    }
-                    Box(Modifier.padding(start = 10.dp, top = 8.dp)) {
-                        ScreenTitle(if (state.id == null) "Nouvelle recette" else "Modifier la recette",
-                            "Quantités pour une personne", size = 30)
-                    }
-                }
-            }
-            Column(Modifier.padding(horizontal = 20.dp).padding(top = 16.dp, bottom = 18.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                SunnyCard {
-                    Field(d.title, { onChange(d.copy(title = it)) }, "Titre", singleLine = true)
-                    Label("TYPE DE PLAT")
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        DishType.entries.forEach { t ->
-                            val code = when (t) { DishType.MEAT -> "meat"; DishType.FISH -> "fish"; DishType.VEGETARIAN -> "vegetarian" }
-                            Chip(t.label, d.dishType == code, Modifier.weight(1f)) { onChange(d.copy(dishType = code)) }
-                        }
-                    }
-                    Label("REPAS")
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf("lunch" to "Midi", "dinner" to "Soir").forEach { (code, label) ->
-                            Chip(label, code in d.mealTypes, Modifier.weight(1f)) {
-                                onChange(d.copy(mealTypes = if (code in d.mealTypes) d.mealTypes - code else d.mealTypes + code))
+    val draft = state.draft
+    val safe = WindowInsets.safeDrawing
+    Column(Modifier.fillMaxSize().background(Sunny.Cream).imePadding()) {
+        Row(
+            Modifier.fillMaxWidth().windowInsetsPadding(safe.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
+                .padding(horizontal = 12.dp, vertical = 4.dp),
+        ) {
+            AgendaAction("Retour", onBack, enabled = !state.saving, icon = Icons.AutoMirrored.Filled.ArrowBack)
+        }
+        Column(
+            Modifier.weight(1f).windowInsetsPadding(safe.only(WindowInsetsSides.Horizontal))
+                .verticalScroll(rememberScrollState()).padding(bottom = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            AgendaHeader(if (state.id == null) "Nouvelle recette" else "Modifier la recette")
+            Column(Modifier.padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                AgendaCard {
+                    AgendaSectionTitle("Informations")
+                    EditorField(draft.title, { onChange(draft.copy(title = it)) }, "Titre de la recette")
+                    EditorLabel("Type de plat")
+                    FlowRow(
+                        Modifier.selectableGroup(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        dishTypes.forEach { (code, dishType) ->
+                            EditorChoice(dishType.label, draft.dishType == code, singleChoice = true) {
+                                onChange(draft.copy(dishType = code))
                             }
                         }
                     }
-                    Label("TEMPS (MINUTES)")
-                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Box(Modifier.weight(1f)) { Field(d.prepMinutes, { onChange(d.copy(prepMinutes = it.filter(Char::isDigit).take(5))) }, "Préparation", singleLine = true, number = true) }
-                        Box(Modifier.weight(1f)) { Field(d.cookMinutes, { onChange(d.copy(cookMinutes = it.filter(Char::isDigit).take(5))) }, "Cuisson", singleLine = true, number = true) }
-                    }
-                    Label("SAISONS (AUCUNE = TOUTE L'ANNÉE)")
-                    seasons.chunked(2).forEach { pair ->
-                        Row(Modifier.padding(bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            pair.forEach { (code, label) ->
-                                Chip(label, code in d.seasons, Modifier.weight(1f)) {
-                                    onChange(d.copy(seasons = if (code in d.seasons) d.seasons - code else d.seasons + code))
-                                }
+                    EditorLabel("Repas")
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        mealTypes.forEach { (code, label) ->
+                            EditorChoice(label, code in draft.mealTypes) { selected ->
+                                val updated = if (selected) draft.mealTypes + code else draft.mealTypes - code
+                                onChange(draft.copy(mealTypes = updated))
                             }
                         }
                     }
-                    Field(d.tags, { onChange(d.copy(tags = it)) }, "Tags, séparés par des virgules", singleLine = true)
                 }
-                SunnyCard {
-                    Label("INGRÉDIENTS, UN PAR LIGNE")
-                    Field(d.ingredients, { onChange(d.copy(ingredients = it)) }, "Par ex. 200 g de farine")
-                    val parsed = d.ingredients.lines().map { it.trim() }.filter { it.isNotEmpty() }.map(::parseIngredient)
+                AgendaCard {
+                    AgendaSectionTitle("Temps en minutes")
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        EditorField(
+                            draft.prepMinutes, { onChange(draft.copy(prepMinutes = it.filter(Char::isDigit).take(5))) },
+                            "Préparation", Modifier.weight(1f), number = true,
+                        )
+                        EditorField(
+                            draft.cookMinutes, { onChange(draft.copy(cookMinutes = it.filter(Char::isDigit).take(5))) },
+                            "Cuisson", Modifier.weight(1f), number = true,
+                        )
+                    }
+                }
+                AgendaCard {
+                    AgendaSectionTitle("Ingrédients")
+                    Text("Quantités pour une personne.", fontSize = 13.sp, lineHeight = 17.sp, color = Sunny.InkTitle)
+                    EditorField(draft.ingredients, { onChange(draft.copy(ingredients = it)) }, "Un ingrédient par ligne",
+                        multiline = true, example = "200 g de farine")
+                    val parsed = remember(draft.ingredients) {
+                        draft.ingredients.lineSequence().map(String::trim).filter(String::isNotEmpty)
+                            .map(::parseIngredient).toList()
+                    }
                     if (parsed.isNotEmpty()) {
-                        Text("Compris comme :", fontSize = 12.sp, color = Sunny.InkSoft, modifier = Modifier.padding(top = 10.dp))
-                        parsed.forEach { Text("•  ${it.text(1)}", fontSize = 13.sp, color = Sunny.InkTitle) }
+                        HorizontalDivider(color = Sunny.Track)
+                        EditorLabel("Aperçu des quantités")
+                        parsed.forEach {
+                            Text("•  ${it.text(1)}", fontSize = 13.sp, lineHeight = 17.sp, color = Sunny.Ink)
+                        }
                     }
                 }
-                SunnyCard {
-                    Label("ÉTAPES, UNE PAR LIGNE")
-                    Field(d.steps, { onChange(d.copy(steps = it)) }, "Par ex. Préchauffer le four à 180 °C")
+                AgendaCard {
+                    AgendaSectionTitle("Préparation")
+                    EditorField(draft.steps, { onChange(draft.copy(steps = it)) }, "Une étape par ligne",
+                        multiline = true, example = "Préchauffer le four à 180 °C")
                 }
-                SunnyCard {
-                    Label("NOTES")
-                    Field(d.notes, { onChange(d.copy(notes = it)) }, "Moins de sel, cuisson plus longue…")
+                AgendaCard {
+                    AgendaSectionTitle("Notes")
+                    EditorField(draft.notes, { onChange(draft.copy(notes = it)) }, "Notes de la recette",
+                        multiline = true, example = "Moins de sel, cuisson plus longue…")
+                }
+                AgendaCard {
+                    AgendaSectionTitle("Saisons et tags")
+                    Text("Sans saison sélectionnée, la recette convient toute l’année.",
+                        fontSize = 13.sp, lineHeight = 17.sp, color = Sunny.InkTitle)
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        seasons.forEach { (code, label) ->
+                            EditorChoice(label, code in draft.seasons) { selected ->
+                                val updated = if (selected) draft.seasons + code else draft.seasons - code
+                                onChange(draft.copy(seasons = updated))
+                            }
+                        }
+                    }
+                    EditorField(draft.tags, { onChange(draft.copy(tags = it)) }, "Tags, séparés par des virgules")
                 }
             }
         }
-        Column(Modifier.fillMaxWidth().background(Sunny.Cream).navigationBarsPadding().padding(horizontal = 14.dp, vertical = 6.dp)) {
-            ErrorText(state.error)
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                Button(
-                    onClick = onSave, enabled = !state.saving, shape = Shapes.Control,
-                    modifier = Modifier.heightIn(min = 48.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Sunny.Butter, contentColor = Sunny.Ink),
-                ) {
-                    Text(when {
-                        state.saving -> "Enregistrement…"
-                        state.id == null -> "Ajouter la recette"
-                        else -> "Enregistrer"
-                    })
+        Column(Modifier.fillMaxWidth().windowInsetsPadding(safe.only(WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal))) {
+            HorizontalDivider(color = Sunny.Track)
+            if (state.error != null) {
+                Box(Modifier.padding(horizontal = 12.dp).semantics { liveRegion = LiveRegionMode.Polite }) {
+                    ErrorText(state.error)
                 }
+            }
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.End,
+            ) {
+                val label = when {
+                    state.saving -> "Enregistrement…"
+                    state.id == null -> "Ajouter la recette"
+                    else -> "Enregistrer"
+                }
+                AgendaAction(label, onSave, primary = true, enabled = !state.saving)
             }
         }
     }
 }
 
 @Composable
-private fun Label(text: String) {
-    Text(text, fontSize = 11.sp, letterSpacing = 1.sp, fontWeight = FontWeight.SemiBold, color = Sunny.InkSoft,
-        modifier = Modifier.padding(top = 16.dp, bottom = 8.dp))
+private fun EditorLabel(text: String) {
+    Text(text, fontSize = 14.sp, lineHeight = 18.sp, fontWeight = FontWeight.SemiBold, color = Sunny.Ink)
 }
 
 @Composable
-private fun Field(value: String, onChange: (String) -> Unit, label: String, singleLine: Boolean = false, number: Boolean = false) {
-    TextField(
-        value = value, onValueChange = onChange, label = { Text(label) }, singleLine = singleLine,
-        minLines = if (singleLine) 1 else 3,
+private fun EditorChoice(label: String, selected: Boolean, singleChoice: Boolean = false, onChange: (Boolean) -> Unit) {
+    val fill = if (selected) Sunny.Butter else Sunny.Card
+    val choice = if (singleChoice) {
+        Modifier.selectable(selected, role = Role.RadioButton) { onChange(true) }
+    } else {
+        Modifier.toggleable(selected, role = Role.Checkbox, onValueChange = onChange)
+    }
+    Row(
+        Modifier.heightIn(min = 48.dp).clip(editorControlShape).background(fill)
+            .border(1.dp, if (selected) Sunny.Butter else Sunny.Slate, editorControlShape)
+            .then(choice).padding(horizontal = 10.dp, vertical = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(5.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (selected) Icon(Icons.Filled.Check, contentDescription = null, tint = Sunny.Ink, modifier = Modifier.size(16.dp))
+        Text(label, fontSize = 13.sp, lineHeight = 17.sp, fontWeight = FontWeight.SemiBold, color = Sunny.Ink)
+    }
+}
+
+@Composable
+private fun EditorField(
+    value: String,
+    onChange: (String) -> Unit,
+    label: String,
+    modifier: Modifier = Modifier,
+    multiline: Boolean = false,
+    number: Boolean = false,
+    example: String? = null,
+) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = onChange,
+        label = { Text(label) },
+        placeholder = example?.let { { Text(it) } },
+        singleLine = !multiline,
+        minLines = if (multiline) 3 else 1,
         keyboardOptions = KeyboardOptions(
             capitalization = if (number) KeyboardCapitalization.None else KeyboardCapitalization.Sentences,
             keyboardType = if (number) KeyboardType.Number else KeyboardType.Text,
         ),
-        colors = TextFieldDefaults.colors(
-            focusedContainerColor = Color.Transparent, unfocusedContainerColor = Color.Transparent,
-            focusedIndicatorColor = Sunny.PeachDeep, unfocusedIndicatorColor = Sunny.Track,
-            focusedLabelColor = Sunny.PeachDeep, unfocusedLabelColor = Sunny.InkSoft, cursorColor = Sunny.PeachDeep,
+        shape = editorControlShape,
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedContainerColor = Sunny.Card, unfocusedContainerColor = Sunny.Card,
+            focusedTextColor = Sunny.Ink, unfocusedTextColor = Sunny.Ink,
+            focusedLabelColor = Sunny.Ink, unfocusedLabelColor = Sunny.InkTitle,
+            focusedBorderColor = Sunny.InkTitle, unfocusedBorderColor = Sunny.Slate, cursorColor = Sunny.Ink,
         ),
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
     )
 }

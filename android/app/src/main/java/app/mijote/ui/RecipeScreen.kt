@@ -5,7 +5,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
@@ -47,7 +46,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -77,7 +75,7 @@ fun RecipeScreen(
     if (confirmArchive) AlertDialog(
         onDismissRequest = { confirmArchive = false },
         containerColor = Sunny.Cream,
-        title = { RecipeSectionTitle("Archiver cette recette ?") },
+        title = { AgendaSectionTitle("Archiver cette recette ?") },
         text = { Text("Elle disparaît de la liste et n’est plus proposée dans les nouveaux menus. " +
             "Elle reste dans les menus passés et peut être restaurée depuis l’administration web.", color = Sunny.Ink) },
         confirmButton = {
@@ -175,7 +173,7 @@ fun RecipeScreen(
                             }
                             else -> "Partagez votre envie avec les personnes qui créent les menus."
                         }
-                        RecipeDetailCard {
+                        AgendaCard {
                             Text(hint, color = Sunny.InkTitle, fontSize = 13.sp, lineHeight = 18.sp)
                         }
                     }
@@ -211,7 +209,7 @@ private fun RecipeOverview(recipe: RecipeDetail) {
         recipe.cookMinutes?.let { "Cuisson" to it },
         recipe.totalMinutes?.let { "Total" to it },
     )
-    if (dishType != null || times.isNotEmpty()) RecipeDetailCard {
+    if (dishType != null || times.isNotEmpty()) AgendaCard {
         dishType?.let { DishTag(it.label, it.colors) }
         if (times.isNotEmpty()) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -235,8 +233,8 @@ private fun RecipeInstructions(recipe: RecipeDetail, defaultPeople: Int, onMealP
         onMealPeople?.invoke(value)
     }
 
-    if (recipe.ingredients.isNotEmpty()) RecipeDetailCard {
-        RecipeSectionTitle("Ingrédients")
+    if (recipe.ingredients.isNotEmpty()) AgendaCard {
+        AgendaSectionTitle("Ingrédients")
         Row(
             Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -259,8 +257,8 @@ private fun RecipeInstructions(recipe: RecipeDetail, defaultPeople: Int, onMealP
             Text("•  ${it.text(people)}", fontSize = 15.sp, color = Sunny.Ink, lineHeight = 20.sp)
         }
     }
-    if (recipe.steps.isNotEmpty()) RecipeDetailCard {
-        RecipeSectionTitle("Préparation")
+    if (recipe.steps.isNotEmpty()) AgendaCard {
+        AgendaSectionTitle("Préparation")
         recipe.steps.forEachIndexed { index, step ->
             if (index > 0) HorizontalDivider(color = Sunny.Track)
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -272,27 +270,11 @@ private fun RecipeInstructions(recipe: RecipeDetail, defaultPeople: Int, onMealP
         }
     }
     recipe.notes?.let { notes ->
-        RecipeDetailCard {
-            RecipeSectionTitle("Notes")
+        AgendaCard {
+            AgendaSectionTitle("Notes")
             Text(notes, fontSize = 15.sp, color = Sunny.Ink, lineHeight = 21.sp)
         }
     }
-}
-
-@Composable
-private fun RecipeDetailCard(content: @Composable ColumnScope.() -> Unit) {
-    Column(
-        Modifier.fillMaxWidth().clip(Shapes.Control).background(Sunny.Card)
-            .border(1.dp, Sunny.Track, Shapes.Control).padding(12.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-        content = content,
-    )
-}
-
-@Composable
-private fun RecipeSectionTitle(title: String) {
-    Text(title, Modifier.semantics { heading() }, fontSize = 17.sp, lineHeight = 21.sp,
-        fontWeight = FontWeight.Bold, color = Sunny.Ink)
 }
 
 @Composable
