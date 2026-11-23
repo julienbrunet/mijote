@@ -17,7 +17,6 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -87,13 +86,10 @@ fun PreferencesScreen(
     }
 
     Column(modifier.fillMaxSize().background(Sunny.Cream).statusBarsPadding()) {
-        if (onBack == null) AgendaHeader("Compte")
-        else Row(verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onBack, modifier = Modifier.size(48.dp)) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Retour", tint = Sunny.Ink)
-            }
-            AgendaHeader("Compte")
+        if (onBack != null) Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)) {
+            AgendaAction("Retour", onBack, icon = Icons.AutoMirrored.Filled.ArrowBack)
         }
+        AgendaHeader("Compte")
 
         Column(
             Modifier.weight(1f).fillMaxWidth()

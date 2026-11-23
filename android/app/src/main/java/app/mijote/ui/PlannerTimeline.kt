@@ -1,5 +1,6 @@
 package app.mijote.ui
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -9,15 +10,13 @@ import androidx.compose.foundation.gestures.awaitLongPressOrCancellation
 import androidx.compose.foundation.gestures.drag
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -31,17 +30,17 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -59,27 +58,28 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.changedToUp
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.CustomAccessibilityAction
-import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.heading
-import androidx.compose.ui.semantics.progressBarRangeInfo
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.semantics.setProgress
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import app.mijote.R
 import app.mijote.data.MenuSlot
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -90,12 +90,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
 
 private val agendaDate = DateTimeFormatter.ofPattern("EEEE d MMMM", Locale.FRENCH)
-private val agendaScrubDate = DateTimeFormatter.ofPattern("EEE d MMM yyyy", Locale.FRENCH)
 private val agendaMeals = listOf("lunch", "dinner")
 private val agendaCardHeight = 76.dp
-private val agendaScrubberWidth = 52.dp
-private val agendaGripHeight = 70.dp
-private val agendaThumbHeight = 44.dp
 private val agendaShape = RoundedCornerShape(17.dp)
 private val agendaTodayShape = RoundedCornerShape(20.dp)
 
@@ -109,6 +105,7 @@ private data class TimelineCell(
 @Stable
 private class TimelineDrag {
     val cells = mutableMapOf<PlannerMoment, TimelineCell>()
+    val optionsBounds = mutableMapOf<PlannerMoment, Rect>()
     var viewport = Rect.Zero
     var origin = Offset.Zero
     var position by mutableStateOf(Offset.Zero)
@@ -134,8 +131,6 @@ private class TimelineDrag {
         target = null
     }
 }
-
-private data class TimelinePreview(val date: LocalDate, val thumbTop: Int)
 
 private data class TimelineRange(
     val firstVisible: LocalDate?,
@@ -171,9 +166,12 @@ internal fun PlannerTimeline(
     afterError: String? = null,
     isDateLoaded: (LocalDate) -> Boolean = { true },
     boundaryEnabled: Boolean = true,
+    largeCards: Boolean = false,
+    hasMealOptions: (PlannerMoment, MenuSlot) -> Boolean = { _, _ -> false },
+    onMealOptions: (PlannerMoment, MenuSlot) -> Unit = { _, _ -> },
+    bottomPadding: Dp = 18.dp,
 ) {
     val gesture = remember { TimelineDrag() }
-    var preview by remember { mutableStateOf<TimelinePreview?>(null) }
     val currentCanDrag by rememberUpdatedState(canDrag)
     val currentSlots by rememberUpdatedState(slots)
     val currentCanDrop by rememberUpdatedState(canDrop)
@@ -254,15 +252,19 @@ internal fun PlannerTimeline(
                 if (!gesture.viewport.contains(rootPoint)) return@awaitEachGesture
                 val source = gesture.cells.values.firstOrNull { cell ->
                     val slot = currentSlots[cell.moment]
-                    slot != null && cell.touchBounds.contains(rootPoint) && currentCanDrag(cell.moment, slot)
+                    slot != null && cell.touchBounds.contains(rootPoint) &&
+                        gesture.optionsBounds[cell.moment]?.contains(rootPoint) != true && currentCanDrag(cell.moment, slot)
                 } ?: return@awaitEachGesture
                 val held = awaitLongPressOrCancellation(down.id) ?: return@awaitEachGesture
                 val slot = currentSlots[source.moment] ?: return@awaitEachGesture
 
-                if (!currentCanDrag(source.moment, slot)) return@awaitEachGesture
+                val heldRootPoint = gesture.origin + held.position
+                if (!currentCanDrag(source.moment, slot) ||
+                    gesture.optionsBounds[source.moment]?.contains(heldRootPoint) == true
+                ) return@awaitEachGesture
                 held.consume()
                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                gesture.begin(source.copy(slot = slot), gesture.origin + held.position)
+                gesture.begin(source.copy(slot = slot), heldRootPoint)
                 try {
                     val completed = drag(held.id) { change ->
                         change.consume()
@@ -281,8 +283,8 @@ internal fun PlannerTimeline(
         LazyColumn(
             state = listState,
             userScrollEnabled = gesture.source == null,
-            contentPadding = PaddingValues(start = 8.dp, top = 7.dp, end = agendaScrubberWidth, bottom = 18.dp),
-            verticalArrangement = Arrangement.spacedBy(18.dp),
+            contentPadding = PaddingValues(start = 10.dp, top = 7.dp, end = 10.dp, bottom = bottomPadding),
+            verticalArrangement = Arrangement.spacedBy(if (largeCards) 22.dp else 18.dp),
             modifier = Modifier.fillMaxSize(),
         ) {
             items(dates.size, key = { dates[it].toEpochDay() }) { index ->
@@ -300,7 +302,7 @@ internal fun PlannerTimeline(
                     Column(
                         Modifier.fillMaxWidth().then(dayBackground)
                             .padding(horizontal = 7.dp, vertical = if (isToday) 7.dp else 0.dp),
-                        verticalArrangement = Arrangement.spacedBy(7.dp),
+                        verticalArrangement = Arrangement.spacedBy(if (largeCards) 11.dp else 7.dp),
                     ) {
                         TimelineDayHeader(date, today)
                         agendaMeals.forEach { meal ->
@@ -311,16 +313,24 @@ internal fun PlannerTimeline(
                             val moving = gesture.source
                             val placeholder = moving?.moment == moment
                             val accessibleMove = slot?.takeIf { loaded && canDrag(moment, it) }
+                            val optionsSlot = slot?.takeIf { loaded && hasMealOptions(moment, it) }
                             DisposableEffect(moment) {
                                 onDispose { gesture.cells.remove(moment) }
+                            }
+                            if (optionsSlot != null) {
+                                DisposableEffect(moment) {
+                                    onDispose { gesture.optionsBounds.remove(moment) }
+                                }
                             }
                             TimelineMealCard(
                                 moment = moment, slot = slot,
                                 active = selected == moment, readOnly = readOnly, loaded = loaded,
                                 copied = moment in copyChanges, hover = gesture.target == moment,
-                                enabled = enabled && moving == null,
+                                enabled = enabled && moving == null, large = largeCards,
                                 onClick = { onSelect(moment, slot) },
                                 onKeyboardMove = accessibleMove?.let { { onKeyboardMove(it) } },
+                                onOptions = optionsSlot?.let { { onMealOptions(moment, it) } },
+                                onOptionsBounds = { gesture.optionsBounds[moment] = it },
                                 modifier = Modifier.fillMaxWidth().onGloballyPositioned { coords ->
                                     if (loaded) {
                                         val origin = coords.localToRoot(Offset.Zero)
@@ -339,27 +349,13 @@ internal fun PlannerTimeline(
                 }
             }
         }
-        TimelineScrubber(
-            dates, listState, enabled = gesture.source == null,
-            modifier = Modifier.align(Alignment.CenterEnd).width(agendaScrubberWidth).fillMaxHeight(),
-            onPreview = { date, top -> preview = date?.let { TimelinePreview(it, top) } },
-        )
-        preview?.let { item ->
-            Text(
-                agendaScrubDate.format(item.date),
-                Modifier.align(Alignment.TopEnd).padding(end = agendaScrubberWidth)
-                    .offset { IntOffset(0, item.thumbTop) }
-                    .shadow(4.dp, agendaShape).background(Sunny.Ink, agendaShape)
-                    .padding(horizontal = 11.dp, vertical = 8.dp).clearAndSetSemantics { },
-                color = Sunny.Card, fontSize = 12.sp, lineHeight = 15.sp, fontWeight = FontWeight.SemiBold,
-            )
-        }
         gesture.source?.let { source ->
             val density = LocalDensity.current
             val width = with(density) { source.cardBounds.width.toDp() }
             TimelineMealCard(
                 moment = source.moment, slot = source.slot, active = false, readOnly = false,
                 loaded = true, copied = false, hover = false, enabled = false, onClick = {},
+                large = largeCards,
                 modifier = Modifier.offset {
                     val maxX = (gesture.viewport.right - gesture.origin.x - source.cardBounds.width).coerceAtLeast(0f)
                     val x = (gesture.position.x - gesture.origin.x - gesture.grabOffset.x).coerceIn(0f, maxX)
@@ -412,7 +408,10 @@ private fun TimelineMealCard(
     enabled: Boolean,
     onClick: () -> Unit,
     modifier: Modifier,
+    large: Boolean,
     onKeyboardMove: (() -> Unit)? = null,
+    onOptions: (() -> Unit)? = null,
+    onOptionsBounds: (Rect) -> Unit = {},
 ) {
     val title = agendaTitle(slot, readOnly, loaded)
     val label = if (moment.meal == "lunch") "Midi" else "Soir"
@@ -421,6 +420,9 @@ private fun TimelineMealCard(
         slot?.recipe?.minutes != null -> "${slot.recipe.minutes} min"
         else -> null
     }
+    val hasArt = slot != null && (slot.recipe != null || slot.manual)
+    val fullPhoto = large && hasArt
+    val actionInset = if (onOptions == null) 12.dp else 58.dp
     val border = when {
         active || hover -> Sunny.Ink
         copied -> DishColors.veggie.second
@@ -432,53 +434,89 @@ private fun TimelineMealCard(
         slot == null -> Sunny.Cream
         else -> Sunny.Card
     }
-    Row(
-        modifier.heightIn(min = agendaCardHeight).clip(agendaShape).background(background)
-            .border(if (active || hover || copied) 2.dp else 1.dp, border, agendaShape)
-            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
-            .semantics {
-                contentDescription = listOfNotNull(mealMoment(moment.date, moment.meal), title, info).joinToString(" · ")
-                selected = active
-                if (hover) stateDescription = "Destination"
-                else if (copied) stateDescription = "À copier"
-                else if (slot?.locked == true) stateDescription = "Conservé lors de la génération"
-                if (onKeyboardMove != null && enabled) {
-                    customActions = listOf(CustomAccessibilityAction("Déplacer le repas") { onKeyboardMove(); true })
+    val action = Modifier.fillMaxWidth().clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+        .semantics {
+            contentDescription = listOfNotNull(mealMoment(moment.date, moment.meal), title, info).joinToString(" · ")
+            selected = active
+            if (hover) stateDescription = "Destination"
+            else if (copied) stateDescription = "À copier"
+            else if (slot?.locked == true) stateDescription = "Conservé lors de la génération"
+            if (onKeyboardMove != null && enabled) {
+                customActions = listOf(CustomAccessibilityAction("Déplacer le repas") { onKeyboardMove(); true })
+            }
+        }
+    val caption: @Composable () -> Unit = {
+        Text(
+            listOfNotNull(label, info).joinToString(" · "),
+            color = Sunny.InkTitle, fontSize = 12.sp, lineHeight = 15.sp, fontWeight = FontWeight.SemiBold,
+        )
+        Text(
+            if (hover && slot == null) "Déposer ici" else title,
+            color = if (slot == null && !hover) Sunny.InkTitle else Sunny.Ink,
+            fontSize = if (large) 18.sp else 15.sp,
+            lineHeight = if (large) 23.sp else 19.sp,
+            fontWeight = if (large) FontWeight.Bold else FontWeight.SemiBold,
+            maxLines = if (large) 3 else 2, overflow = TextOverflow.Ellipsis,
+        )
+    }
+
+    Box(modifier.clip(agendaShape).background(background)
+        .border(if (active || hover || copied) 2.dp else 1.dp, border, agendaShape)) {
+        Column(action) {
+            if (fullPhoto && slot != null) {
+                TimelineMealArt(slot, Modifier.fillMaxWidth().aspectRatio(2.05f), 50.sp)
+            }
+            Row(
+                Modifier.fillMaxWidth().heightIn(min = if (fullPhoto) 64.dp else agendaCardHeight)
+                    .padding(start = 12.dp, end = actionInset, top = 9.dp, bottom = 9.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (!fullPhoto && hasArt && slot != null) {
+                    TimelineMealArt(slot, Modifier.size(42.dp).clip(RoundedCornerShape(12.dp)), 21.sp)
+                }
+                Column(Modifier.weight(1f).clearAndSetSemantics { }, verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    caption()
+                }
+                when {
+                    active || hover || copied -> Icon(Icons.Filled.Check, null, Modifier.size(19.dp), tint = Sunny.Ink)
+                    slot?.locked == true -> Icon(Icons.Filled.Lock, null, Modifier.size(15.dp), tint = Sunny.InkTitle)
+                    slot == null && loaded && enabled -> Icon(Icons.Filled.Add, null, Modifier.size(20.dp), tint = Sunny.Ink)
                 }
             }
-            .padding(horizontal = 11.dp, vertical = 9.dp),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        if (slot != null && (slot.recipe != null || slot.manual)) {
-            val emoji = when (slot.recipe?.dishType) {
-                "meat" -> "🍗"
-                "fish" -> "🐟"
-                "vegetarian" -> "🥗"
-                else -> "📝"
+        }
+        if (onOptions != null) {
+            IconButton(
+                onClick = onOptions,
+                enabled = enabled,
+                modifier = Modifier.align(if (fullPhoto) Alignment.BottomEnd else Alignment.CenterEnd)
+                    .padding(end = 5.dp, bottom = if (fullPhoto) 8.dp else 0.dp)
+                    .size(48.dp)
+                    .onGloballyPositioned { onOptionsBounds(it.boundsInRoot()) },
+            ) {
+                Icon(Icons.Filled.MoreVert, "Options du repas · $title", tint = Sunny.Ink)
             }
-            RecipeThumb(
-                slot.recipe?.image, emoji, Modifier.size(42.dp).clip(RoundedCornerShape(12.dp))
-                    .clearAndSetSemantics { }, emojiSize = 21.sp,
-            )
         }
-        Column(Modifier.weight(1f).clearAndSetSemantics { }, verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            Text(
-                listOfNotNull(label, info).joinToString(" · "),
-                color = Sunny.InkTitle, fontSize = 11.sp, lineHeight = 14.sp, fontWeight = FontWeight.SemiBold,
-            )
-            Text(
-                if (hover && slot == null) "Déposer ici" else title,
-                color = if (slot == null && !hover) Sunny.InkTitle else Sunny.Ink,
-                fontSize = 15.sp, lineHeight = 19.sp, fontWeight = FontWeight.SemiBold,
-                maxLines = 2, overflow = TextOverflow.Ellipsis,
-            )
+    }
+}
+
+@Composable
+private fun TimelineMealArt(slot: MenuSlot, modifier: Modifier, emojiSize: androidx.compose.ui.unit.TextUnit) {
+    val artwork = modifier.clearAndSetSemantics { }
+    if (slot.manual) {
+        Image(
+            painterResource(R.drawable.manual_meal), contentDescription = null,
+            contentScale = ContentScale.Crop, modifier = artwork,
+        )
+    } else {
+        val recipe = slot.recipe
+        val emoji = when (recipe?.dishType) {
+            "meat" -> "🍗"
+            "fish" -> "🐟"
+            "vegetarian" -> "🥗"
+            else -> "🍽️"
         }
-        when {
-            active || hover || copied -> Icon(Icons.Filled.Check, null, Modifier.size(19.dp), tint = Sunny.Ink)
-            slot?.locked == true -> Icon(Icons.Filled.Lock, null, Modifier.size(15.dp), tint = Sunny.InkTitle)
-            slot == null && loaded && enabled -> Icon(Icons.Filled.Add, null, Modifier.size(20.dp), tint = Sunny.Ink)
-        }
+        RecipeThumb(recipe?.image, emoji, artwork, emojiSize = emojiSize)
     }
 }
 
@@ -496,125 +534,6 @@ private fun TimelineBoundary(loading: Boolean, error: String?, enabled: Boolean,
         Text(error, color = Sunny.Ink, fontSize = 12.sp, modifier = Modifier.padding(top = 9.dp))
         TextButton(onClick = onRetry, enabled = enabled, modifier = Modifier.heightIn(min = 48.dp)) {
             Text("Réessayer", color = Sunny.Ink, fontWeight = FontWeight.Bold)
-        }
-    }
-}
-
-/** Date-oriented thumb with a large touch region, independent of variable card heights. */
-@Composable
-private fun TimelineScrubber(
-    dates: List<LocalDate>,
-    listState: LazyListState,
-    enabled: Boolean,
-    modifier: Modifier,
-    onPreview: (LocalDate?, Int) -> Unit,
-) {
-    val currentDates by rememberUpdatedState(dates)
-    val currentPreview by rememberUpdatedState(onPreview)
-    val last = dates.lastIndex
-    val ready = enabled && last > 0
-    var dragging by remember { mutableStateOf(false) }
-    var draggedFraction by remember { mutableFloatStateOf(0f) }
-    val listFraction by remember(listState, last) {
-        derivedStateOf {
-            val visible = listState.layoutInfo.visibleItemsInfo
-            val index = listState.firstVisibleItemIndex
-            when {
-                last <= 0 || visible.isEmpty() -> 0f
-                !listState.canScrollForward -> 1f
-                else -> {
-                    val itemHeight = visible.firstOrNull { it.index == index }?.size ?: 1
-                    ((index + listState.firstVisibleItemScrollOffset / itemHeight.coerceAtLeast(1).toFloat()) / last)
-                        .coerceIn(0f, 1f)
-                }
-            }
-        }
-    }
-    val actualFraction by rememberUpdatedState(if (dragging) draggedFraction else listFraction)
-    val shownDate = dates.getOrNull(
-        (if (dragging) draggedFraction * last else listState.firstVisibleItemIndex.toFloat()).roundToInt(),
-    )
-    val seek: (Int) -> Boolean = { index ->
-        if (ready) {
-            listState.requestScrollToItem(index.coerceIn(0, last))
-            true
-        } else false
-    }
-
-    BoxWithConstraints(
-        modifier.semantics {
-            contentDescription = "Parcourir les dates"
-            if (shownDate != null) stateDescription = agendaScrubDate.format(shownDate)
-            if (ready) {
-                progressBarRangeInfo = ProgressBarRangeInfo((actualFraction * last).coerceIn(0f, last.toFloat()), 0f..last.toFloat(), last - 1)
-                setProgress { seek(it.roundToInt()) }
-                customActions = listOf(
-                    CustomAccessibilityAction("Reculer d’une semaine") { seek(listState.firstVisibleItemIndex - 7) },
-                    CustomAccessibilityAction("Avancer d’une semaine") { seek(listState.firstVisibleItemIndex + 7) },
-                )
-            }
-        }.pointerInput(listState, ready) {
-            if (!ready) return@pointerInput
-            awaitEachGesture {
-                val down = awaitFirstDown()
-                down.consume()
-                val gripSize = agendaGripHeight.toPx().coerceAtMost(size.height.toFloat())
-                val thumbInset = (gripSize - agendaThumbHeight.toPx().coerceAtMost(gripSize)) / 2f
-                val travel = (size.height - gripSize).coerceAtLeast(1f)
-                val currentTop = actualFraction * travel
-                val onThumb = down.position.y in currentTop..currentTop + gripSize
-                val grip = if (onThumb) down.position.y - currentTop else gripSize / 2f
-                var lastSeek = -1
-
-                fun seekByFinger(y: Float, scroll: Boolean) {
-                    val fraction = ((y - grip) / travel).coerceIn(0f, 1f)
-                    draggedFraction = fraction
-                    val window = currentDates
-                    if (window.isEmpty()) return
-                    val index = (fraction * window.lastIndex).roundToInt().coerceIn(window.indices)
-                    if (scroll && lastSeek != index) {
-                        listState.requestScrollToItem(index)
-                        lastSeek = index
-                    }
-                    currentPreview(window[index], (fraction * travel + thumbInset).roundToInt())
-                }
-
-                dragging = true
-                try {
-                    seekByFinger(down.position.y, scroll = !onThumb)
-                    drag(down.id) { change ->
-                        change.consume()
-                        seekByFinger(change.position.y, scroll = true)
-                    }
-                } finally {
-                    dragging = false
-                    currentPreview(null, 0)
-                }
-            }
-        },
-    ) {
-        // Keep the full-width touch band and its tall thumb grip while drawing a thinner rail.
-        val gripHeight = agendaGripHeight.coerceAtMost(maxHeight)
-        val thumbHeight = agendaThumbHeight.coerceAtMost(gripHeight)
-        val travel = (maxHeight - gripHeight).coerceAtLeast(0.dp)
-        Box(
-            Modifier.align(Alignment.Center).padding(vertical = (gripHeight - thumbHeight) / 2)
-                .width(3.dp).fillMaxHeight().background(Sunny.Slate.copy(alpha = 0.25f), CircleShape),
-        )
-        Box(
-            Modifier.align(Alignment.TopCenter).offset(y = travel * actualFraction)
-                .height(gripHeight).fillMaxWidth(),
-            contentAlignment = Alignment.Center,
-        ) {
-            val thumbColor = when {
-                dragging -> Sunny.Ink
-                ready -> Sunny.InkTitle
-                else -> Sunny.Slate.copy(alpha = 0.38f)
-            }
-            Box(
-                Modifier.size(width = if (dragging) 12.dp else 9.dp, height = thumbHeight)
-                    .background(thumbColor, CircleShape),
-            )
         }
     }
 }

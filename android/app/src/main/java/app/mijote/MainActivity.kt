@@ -17,7 +17,10 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -37,7 +40,6 @@ import app.mijote.ui.LoginScreen
 import app.mijote.ui.MijoteTheme
 import app.mijote.ui.NotificationsScreen
 import app.mijote.ui.PlannerActions
-import app.mijote.ui.PlannerBottomBar
 import app.mijote.ui.PlannerScreen
 import app.mijote.ui.PreferencesScreen
 import app.mijote.ui.RecipeEditorScreen
@@ -106,18 +108,16 @@ class MainActivity : ComponentActivity() {
                     is Screen.Invite -> InviteScreen(s.serverUrl, s.code, state.busy, state.error,
                         onSubmit = vm::redeemInvitation, onBack = vm::backFromInvite)
                     is Screen.Preferences -> plannerState.SaveableStateProvider("account-preferences") {
-                        BackHandler(onBack = vm::closePreferences)
-                        val openTab: (Tab) -> Unit = { target -> vm.closePreferences(); vm.selectTab(target) }
-                        Column(Modifier.fillMaxSize().background(Sunny.Cream)) {
-                            PreferencesScreen(s.user, vm.serverUrl, vm.currentVersion, check.checking, check.message ?: state.error,
-                                onPeople = vm::setPeople, onCheckUpdate = vm::checkForUpdate, onChangeServer = vm::leaveServer,
-                                onLogout = vm::logout, onInvitations = { vm.openAdmin(AdminSection.INVITATIONS) },
-                                onAccounts = { vm.openAdmin(AdminSection.ACCOUNTS) },
-                                notificationCount = notifications.unreadCount, onNotifications = vm::openNotifications,
-                                wishSettings = wishSettings, onWishLimit = vm::setWishLimit,
-                                onReloadWishSettings = vm::loadWishSettings, modifier = Modifier.weight(1f))
-                            PlannerBottomBar(null, { openTab(Tab.MENUS) }, { openTab(Tab.RECIPES) }, {})
-                        }
+                        val back = vm::closePreferences
+                        BackHandler(onBack = back)
+                        PreferencesScreen(s.user, vm.serverUrl, vm.currentVersion, check.checking, check.message ?: state.error,
+                            onPeople = vm::setPeople, onCheckUpdate = vm::checkForUpdate, onChangeServer = vm::leaveServer,
+                            onLogout = vm::logout, onBack = back,
+                            onInvitations = { vm.openAdmin(AdminSection.INVITATIONS) },
+                            onAccounts = { vm.openAdmin(AdminSection.ACCOUNTS) },
+                            notificationCount = notifications.unreadCount, onNotifications = vm::openNotifications,
+                            wishSettings = wishSettings, onWishLimit = vm::setWishLimit,
+                            onReloadWishSettings = vm::loadWishSettings)
                     }
                     is Screen.Admin -> {
                         BackHandler(onBack = vm::closeAdmin)
@@ -138,11 +138,14 @@ class MainActivity : ComponentActivity() {
                         val placing = placement
                         val showPlanner = placing != null || tab != Tab.RECIPES || menu.proposal != null
                         val selectRecipes = { vm.selectTab(Tab.RECIPES) }
+                        val backToAgenda = { vm.selectTab(Tab.MENUS) }
                         when {
                             edited != null -> BackHandler(onBack = vm::closeEditor)
                             shown != null && placing == null -> BackHandler(onBack = vm::closeRecipe)
                             notifications.open && placing == null -> BackHandler(onBack = vm::closeNotifications)
-                            !showPlanner -> BackHandler { vm.selectTab(Tab.MENUS) }
+                            !showPlanner -> BackHandler {
+                                if (filterSheet) filterSheet = false else backToAgenda()
+                            }
                         }
                         when {
                             edited != null -> RecipeEditorScreen(edited, onChange = vm::updateDraft, onSave = vm::saveRecipe, onBack = vm::closeEditor)
@@ -190,7 +193,10 @@ class MainActivity : ComponentActivity() {
                                     ),
                                 )
                             }
-                            else -> Column(Modifier.fillMaxSize().background(Sunny.Cream)) {
+                            else -> Column(Modifier.fillMaxSize().background(Sunny.Cream).safeDrawingPadding()) {
+                                Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)) {
+                                    AgendaAction("Retour", backToAgenda, icon = Icons.AutoMirrored.Filled.ArrowBack)
+                                }
                                 Box(Modifier.weight(1f).fillMaxWidth()) {
                                     RecipesTab(recipes, canWrite = s.user.canWrite, listState = recipeListState,
                                         onQuery = { vm.searchRecipes(it, debounce = true) },
@@ -206,7 +212,6 @@ class MainActivity : ComponentActivity() {
                                     AgendaAction(filters, { filterSheet = true })
                                     if (s.user.canWrite) AgendaAction("Ajouter une recette", { vm.editRecipe(new = true) }, primary = true)
                                 }
-                                PlannerBottomBar(Tab.RECIPES, { vm.selectTab(Tab.MENUS) }, selectRecipes, vm::openPreferences)
                             }
                         }
                     }
