@@ -155,7 +155,6 @@ internal fun PlannerTimeline(
     slots: Map<PlannerMoment, MenuSlot>,
     listState: LazyListState,
     selected: PlannerMoment?,
-    copyChanges: Set<PlannerMoment>,
     isReadOnly: (LocalDate) -> Boolean,
     isEnabled: (PlannerMoment, MenuSlot?) -> Boolean,
     canDrag: (PlannerMoment, MenuSlot) -> Boolean,
@@ -358,7 +357,7 @@ internal fun PlannerTimeline(
                             TimelineMealCard(
                                 moment = moment, slot = slot,
                                 active = selected == moment, readOnly = readOnly, loaded = loaded,
-                                copied = moment in copyChanges, hover = gesture.target == moment,
+                                hover = gesture.target == moment,
                                 enabled = enabled && moving == null, large = largeCards,
                                 onClick = { onSelect(moment, slot) },
                                 onKeyboardMove = accessibleMove?.let { { onKeyboardMove(it) } },
@@ -402,7 +401,7 @@ internal fun PlannerTimeline(
             val width = with(density) { source.cardBounds.width.toDp() }
             TimelineMealCard(
                 moment = source.moment, slot = source.slot, active = false, readOnly = false,
-                loaded = true, copied = false, hover = false, enabled = false, onClick = {},
+                loaded = true, hover = false, enabled = false, onClick = {},
                 large = largeCards,
                 modifier = Modifier.offset {
                     val maxX = (gesture.viewport.right - gesture.origin.x - source.cardBounds.width).coerceAtLeast(0f)
@@ -453,7 +452,6 @@ private fun TimelineMealCard(
     active: Boolean,
     readOnly: Boolean,
     loaded: Boolean,
-    copied: Boolean,
     hover: Boolean,
     enabled: Boolean,
     onClick: () -> Unit,
@@ -477,12 +475,10 @@ private fun TimelineMealCard(
     val actionInset = if (onOptions == null) 12.dp else 58.dp
     val border = when {
         active || hover -> Sunny.Ink
-        copied -> DishColors.veggie.second
         else -> Sunny.Track
     }
     val background = when {
         active || hover -> Sunny.ButterLight
-        copied -> DishColors.veggie.first
         slot == null -> Sunny.Cream
         else -> Sunny.Card
     }
@@ -493,7 +489,6 @@ private fun TimelineMealCard(
             contentDescription = listOfNotNull(mealMoment(moment.date, moment.meal), title, info).joinToString(" · ")
             selected = active
             if (hover) stateDescription = "Destination"
-            else if (copied) stateDescription = "À copier"
             else if (slot?.locked == true) stateDescription = "Conservé lors de la génération"
             if (enabled && (onKeyboardMove != null || onKeyboardCopy != null)) {
                 customActions = listOfNotNull(
@@ -521,7 +516,7 @@ private fun TimelineMealCard(
     }
     val indicators: @Composable () -> Unit = {
         when {
-            active || hover || copied -> Icon(Icons.Filled.Check, null, Modifier.size(16.dp), tint = Sunny.Ink)
+            active || hover -> Icon(Icons.Filled.Check, null, Modifier.size(16.dp), tint = Sunny.Ink)
             slot?.locked == true -> Icon(Icons.Filled.Lock, null, Modifier.size(14.dp), tint = Sunny.InkTitle)
             !large && slot == null && loaded && enabled ->
                 Icon(Icons.Filled.Add, null, Modifier.size(20.dp), tint = Sunny.Ink)
@@ -529,7 +524,7 @@ private fun TimelineMealCard(
     }
 
     Box(modifier.clip(agendaShape).background(background)
-        .border(if (active || hover || copied) 2.dp else 1.dp, border, agendaShape)) {
+        .border(if (active || hover) 2.dp else 1.dp, border, agendaShape)) {
         Column(action) {
             if (large) {
                 val photo = Modifier.fillMaxWidth().aspectRatio(1.8f)

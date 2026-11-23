@@ -18,7 +18,6 @@ import app.mijote.data.Menu
 import app.mijote.data.MenuSlot
 import app.mijote.data.MenuRecipe
 import app.mijote.data.SlotVersion
-import app.mijote.data.WeekCopy
 import app.mijote.data.weekStart
 import app.mijote.data.moveProposal
 import app.mijote.data.recentRecipeDays
@@ -144,11 +143,6 @@ data class MealCopyDestination(
     val error: String? = null,
 )
 
-data class WeekCopyState(
-    val preview: WeekCopy? = null, val from: LocalDate? = null, val to: LocalDate? = null,
-    val replaceOccupied: Boolean = false, val loading: Boolean = false, val error: String? = null,
-)
-
 /** Recipe detail screen: [recipe] is null while loading. */
 data class RecipeState(
     val id: String, val title: String, val recipe: RecipeDetail? = null, val error: String? = null, val busy: Boolean = false,
@@ -219,8 +213,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     val randomMealRecipes: StateFlow<RandomMealRecipesState> = _randomMealRecipes.asStateFlow()
     private val _mealCopyDestination = MutableStateFlow(MealCopyDestination())
     val mealCopyDestination: StateFlow<MealCopyDestination> = _mealCopyDestination.asStateFlow()
-    private val _weekCopy = MutableStateFlow(WeekCopyState())
-    val weekCopy: StateFlow<WeekCopyState> = _weekCopy.asStateFlow()
     private val cachedWeeks = LinkedHashMap<LocalDate, Menu>()
     private var weekJob: Job? = null
     private var beforeWeekJob: Job? = null
@@ -228,7 +220,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private var visiblePlannerWeek: LocalDate? = null
     private var plannerWriteRevision = 0L
     private var mealEditJob: Job? = null
-    private var copyJob: Job? = null
     private var pickerJob: Job? = null
     private var randomMealRecipesJob: Job? = null
     private var mealCopyDestinationJob: Job? = null
@@ -623,68 +614,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun previewWeekCopy(source: LocalDate, destination: LocalDate) {
-        if (signedInUser()?.canWrite != true || _menu.value.proposal != null || _menu.value.working != null) return
-        copyJob?.cancel()
-        val from = source.weekStart()
-        val to = destination.weekStart()
-        if (from == to) {
-            _weekCopy.value = WeekCopyState(from = from, to = to, error = "Choisissez une autre semaine à copier.")
-            return
-        }
-        _weekCopy.value = WeekCopyState(from = from, to = to, loading = true)
-        copyJob = viewModelScope.launch {
-            try {
-                val preview = session.authed { api, access ->
-                    val week = api.menu(access, from, from.plusDays(6))
-                    api.weekCopy(access, week, from, to)
-                }
-                _weekCopy.update { it.copy(preview = preview, loading = false) }
-            } catch (e: SessionExpiredException) {
-                toLogin("Votre session a expiré : reconnectez-vous.")
-            } catch (e: IOException) {
-                _weekCopy.update { it.copy(loading = false, error = errorMessage(e)) }
-            }
-        }
-    }
-
-    fun setCopyReplace(replace: Boolean) {
-        if (!_weekCopy.value.loading) _weekCopy.update { it.copy(replaceOccupied = replace) }
-    }
-
-    fun closeWeekCopy() {
-        if (_menu.value.working == "week-copy") return
-        copyJob?.cancel()
-        _weekCopy.value = WeekCopyState()
-    }
-
-    fun applyWeekCopy() {
-        val state = _weekCopy.value
-        val preview = state.preview ?: return
-        val to = state.to ?: return
-        val proposal = preview.plan(state.replaceOccupied).proposal ?: return
-        if (state.loading || _menu.value.working != null || signedInUser()?.canWrite != true) return
-        _menu.update { it.copy(working = "week-copy", error = null, undoMove = null) }
-        _weekCopy.update { it.copy(loading = true, error = null) }
-        copyJob = viewModelScope.launch {
-            try {
-                val saved = session.authed { api, access -> api.confirmMenu(access, proposal) }
-                updateSharedPeriod(proposal, saved)
-                _weekCopy.value = WeekCopyState()
-                _menu.update { it.copy(working = null) }
-                showPlannerWeek(to)
-                notice("Repas copiés sur la semaine choisie.")
-            } catch (e: SessionExpiredException) {
-                toLogin("Votre session a expiré : reconnectez-vous.")
-            } catch (e: IOException) {
-                _menu.update { it.copy(working = null) }
-                val conflict = e is ApiException && e.code == "menu_changed"
-                _weekCopy.update { it.copy(preview = if (conflict) null else it.preview, loading = false,
-                    error = if (conflict) "La semaine a changé. Recalculez la copie avant de valider." else errorMessage(e)) }
-            }
-        }
-    }
-
     /**
      * The app comes back to the foreground: what other members changed meanwhile is fetched
      * (FR-SHR-02, no real-time). Nothing runs while the app is in the background.
@@ -907,7 +836,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val snapshot = _plannerWeek.value.snapshot(date)
         val knownToday = listOfNotNull(state.menu?.today, _plannerWeek.value.menu?.today, snapshot?.today).maxOrNull()
         val problem = when {
-            state.working != null || state.generating || state.refreshing || _weekCopy.value.loading ->
+            state.working != null || state.generating || state.refreshing ->
                 "Une opération est en cours. Réessayez dans un instant."
             state.proposalConflict -> "Le menu a changé. Recalculez la proposition avant de la modifier."
             meal != "lunch" && meal != "dinner" -> "Choisissez un créneau de midi ou du soir."
@@ -1625,7 +1554,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         beforeWeekJob?.cancel()
         afterWeekJob?.cancel()
         mealEditJob?.cancel()
-        copyJob?.cancel()
         pickerJob?.cancel()
         randomMealRecipesJob?.cancel()
         mealCopyDestinationJob?.cancel()
@@ -1639,7 +1567,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         _randomMealRecipes.value = RandomMealRecipesState()
         _mealCopyDestination.value = MealCopyDestination()
         _placement.value = null
-        _weekCopy.value = WeekCopyState()
         generationRequest = null
     }
 

@@ -14,10 +14,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Menu
@@ -49,7 +46,6 @@ import app.mijote.RandomMealRecipesState
 import app.mijote.PlacementRecipe
 import app.mijote.PlannerWeekState
 import app.mijote.RecipesState
-import app.mijote.WeekCopyState
 import app.mijote.data.GenerationInfo
 import app.mijote.data.MealPlan
 import app.mijote.data.Menu
@@ -69,59 +65,6 @@ private val plannerShape = RoundedCornerShape(12.dp)
 private fun mealTitle(slot: MenuSlot?, past: Boolean = false) = when {
     slot == null -> if (past) "Aucun repas" else "Libre"
     else -> slot.title ?: slot.recipe?.title ?: "Aucune recette disponible"
-}
-
-@Composable
-private fun PlannerWeekNav(
-    start: LocalDate,
-    pastWeek: Boolean,
-    previous: Boolean,
-    next: Boolean,
-    onPrevious: () -> Unit,
-    onNext: () -> Unit,
-    onHistoryOrCurrent: (() -> Unit)?,
-) {
-    Row(
-        Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        PlannerWeekArrow(previous, "Semaine précédente", onPrevious, pointsLeft = true)
-        Column(
-            Modifier.weight(1f).heightIn(min = 48.dp).clip(plannerShape)
-                .then(if (onHistoryOrCurrent != null) Modifier.clickable(role = Role.Button, onClick = onHistoryOrCurrent) else Modifier)
-                .padding(horizontal = 4.dp),
-            verticalArrangement = Arrangement.Center,
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Text(
-                periodLabel(start, start.plusDays(6)),
-                fontSize = 16.sp, lineHeight = 19.sp, fontWeight = FontWeight.Bold, color = Sunny.Ink,
-            )
-            if (onHistoryOrCurrent != null) {
-                Text(
-                    if (pastWeek) "Revenir à cette semaine" else "Semaines passées",
-                    fontSize = 11.sp, lineHeight = 15.sp, fontWeight = FontWeight.SemiBold, color = Sunny.Ink,
-                )
-            }
-        }
-        PlannerWeekArrow(next, "Semaine suivante", onNext, pointsLeft = false)
-    }
-}
-
-@Composable
-private fun PlannerWeekArrow(enabled: Boolean, label: String, onClick: () -> Unit, pointsLeft: Boolean) {
-    Box(
-        Modifier.size(48.dp).clip(plannerShape).background(Sunny.Card)
-            .border(1.dp, Sunny.Track, plannerShape).clickable(enabled, role = Role.Button, onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) {
-        Icon(
-            if (pointsLeft) Icons.AutoMirrored.Filled.KeyboardArrowLeft else Icons.AutoMirrored.Filled.KeyboardArrowRight,
-            label,
-            tint = if (enabled) Sunny.Ink else Sunny.InkSoft,
-        )
-    }
 }
 
 /** Events shared by the calendar, the recipe picker and the contextual controls. */
@@ -145,16 +88,12 @@ data class PlannerActions(
     val onMove: (MenuSlot, LocalDate, String) -> Unit = { _, _, _ -> },
     val onUndoMove: () -> Unit = {},
     val onSaveMeal: (String, LocalDate, String, SlotVersion?, MenuSlot?) -> Unit = { _, _, _, _, _ -> },
-    val onCopyPreview: (LocalDate, LocalDate) -> Unit = { _, _ -> },
-    val onCopyReplace: (Boolean) -> Unit = {},
-    val onApplyCopy: () -> Unit = {},
-    val onCloseCopy: () -> Unit = {},
     val onRecipes: () -> Unit = {},
     val onAccount: () -> Unit = {},
     val onNotifications: () -> Unit = {},
 )
 
-private enum class PlannerPanel { None, Picker, RandomRecipes, Move, Generate, Copy, CopyPastMeal, Discard }
+private enum class PlannerPanel { None, Picker, RandomRecipes, Move, Generate, CopyPastMeal, Discard }
 internal data class PlannerMoment(val date: LocalDate, val meal: String)
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -165,7 +104,6 @@ fun PlannerScreen(
     week: PlannerWeekState,
     placement: PlacementRecipe?,
     recipes: RecipesState,
-    copy: WeekCopyState,
     unreadNotifications: Int,
     actions: PlannerActions,
     randomRecipes: RandomMealRecipesState = RandomMealRecipesState(),
@@ -175,7 +113,7 @@ fun PlannerScreen(
     val proposal = state.proposal
     val inDraft = proposal != null
     val info = state.menu?.info ?: week.menu?.info
-    val busy = state.working != null || state.generating || copy.loading
+    val busy = state.working != null || state.generating
     val loaded = week.weeks.ifEmpty { week.menu?.let { mapOf((week.start ?: today.weekStart()) to it) }.orEmpty() }
     val fallback = state.menu?.takeIf { loaded.isEmpty() && week.start == today.weekStart() }
     val dates = remember(loaded.keys, fallback?.today, proposal?.from, proposal?.to) {
@@ -193,28 +131,12 @@ fun PlannerScreen(
         if (proposal == null) shared else shared.filterNot { it.date in proposal.from..proposal.to } + proposal.slots
     }
     val indexed = remember(visibleSlots) { visibleSlots.associateBy { PlannerMoment(it.date, it.meal) } }
-    val copyPlan = remember(copy.preview, copy.replaceOccupied) { copy.preview?.plan(copy.replaceOccupied) }
-    val copied = copyPlan?.proposal
-    val displayed = remember(visibleSlots, copied) {
-        val result = if (copied == null) visibleSlots
-            else visibleSlots.filterNot { it.date in copied.from..copied.to } + copied.slots
-        result.associateBy { PlannerMoment(it.date, it.meal) }
-    }
-    val copyChanges = remember(indexed, copied) {
-        copied?.slots.orEmpty().mapNotNull { slot ->
-            val moment = PlannerMoment(slot.date, slot.meal)
-            moment.takeIf { indexed[moment]?.id != slot.id }
-        }.toSet()
-    }
-
     var consumedJump by rememberSaveable { mutableIntStateOf(-1) }
-    var visibleEpoch by rememberSaveable { mutableLongStateOf(today.toEpochDay()) }
     var panel by rememberSaveable { mutableStateOf(PlannerPanel.None) }
     var dayEpoch by rememberSaveable { mutableStateOf<Long?>(null) }
     var mealChoice by rememberSaveable { mutableStateOf<String?>(null) }
     var sourceId by rememberSaveable { mutableStateOf<String?>(null) }
     var moveSnapshot by remember { mutableStateOf<MenuSlot?>(null) }
-    var applyingCopy by rememberSaveable { mutableStateOf(false) }
     var mealDraft by rememberSaveable(stateSaver = PlannerMealDraft.saver) { mutableStateOf<PlannerMealDraft?>(null) }
     var confirmMealRemoval by rememberSaveable { mutableStateOf(false) }
     var confirmPastReplacement by rememberSaveable { mutableStateOf(false) }
@@ -223,17 +145,13 @@ fun PlannerScreen(
     var fromEpoch by rememberSaveable(today) { mutableLongStateOf(today.plusDays(1).toEpochDay()) }
     var duration by rememberSaveable(info?.horizonDays) { mutableIntStateOf((info?.horizonDays ?: 7).coerceIn(1, 21)) }
     var plan by rememberSaveable { mutableStateOf(MealPlan.LUNCH_DINNER) }
-    var copySourceEpoch by rememberSaveable { mutableStateOf<Long?>(null) }
-    var copyTargetEpoch by rememberSaveable { mutableStateOf<Long?>(null) }
     var hadPlacement by rememberSaveable { mutableStateOf(false) }
 
-    val visibleDate = LocalDate.ofEpochDay(visibleEpoch)
     val selected = dayEpoch?.let(LocalDate::ofEpochDay)?.let { date -> mealChoice?.let { PlannerMoment(date, it) } }
     val selectedSlot = selected?.let(indexed::get)
     val draft = mealDraft
     val mealEditorScroll = key(selected) { rememberScrollState() }
     val source = moveSnapshot ?: sourceId?.let { id -> visibleSlots.firstOrNull { it.id == id } }
-    val activeCopy = panel == PlannerPanel.Copy || copy.from != null
     val selecting = placement != null || panel == PlannerPanel.Move
     val isHome = !inDraft && !selecting
     val todayIndex = dates.indexOf(today)
@@ -248,8 +166,6 @@ fun PlannerScreen(
         derivedStateOf { list.layoutInfo.directionToToday(today.toEpochDay(), bottomInset) }
     }
     val todayButtonDirection = todayDirection.takeIf { isHome && focusedHomeDate == today && todayIndex >= 0 }
-    val targetWeek = copyTargetEpoch?.let(LocalDate::ofEpochDay) ?: maxOf(visibleDate.weekStart(), today.weekStart())
-    val sourceWeek = copySourceEpoch?.let(LocalDate::ofEpochDay) ?: targetWeek.minusWeeks(1)
     val pastCopyDate = LocalDate.ofEpochDay(pastCopyEpoch).coerceIn(today.plusDays(1), today.plusDays(20))
     val destinationCheck = copyDestination.takeIf { it.date == pastCopyDate }
     val destinationMenu = destinationCheck?.menu ?: week.snapshot(pastCopyDate)?.takeIf { destinationCheck == null }
@@ -280,7 +196,6 @@ fun PlannerScreen(
         (source == null || kotlin.math.abs(moment.date.toEpochDay() - source.date.toEpochDay()) < 60) &&
         (source == null || source.date != moment.date || source.meal != moment.meal)
     fun closePanel() {
-        if (activeCopy) actions.onCloseCopy()
         panel = PlannerPanel.None
         sourceId = null
         moveSnapshot = null
@@ -327,15 +242,6 @@ fun PlannerScreen(
         select(null)
         panel = PlannerPanel.Move
     }
-    fun startCopy() {
-        val visibleWeek = visibleDate.weekStart()
-        val destination = maxOf(visibleWeek, today.weekStart())
-        copyTargetEpoch = destination.toEpochDay()
-        copySourceEpoch = minOf(visibleWeek, destination.minusWeeks(1)).toEpochDay()
-        select(null)
-        panel = PlannerPanel.Copy
-        if (visibleWeek < destination) actions.onWeek(destination)
-    }
     fun goToToday() {
         if (todayIndex >= 0 && loadedDay(today)) list.requestScrollToItem(todayIndex)
         else actions.onWeek(today)
@@ -349,7 +255,6 @@ fun PlannerScreen(
             }
             if (todayIndex >= 0 && loadedDay(today)) {
                 list.scrollToItem(todayIndex)
-                visibleEpoch = today.toEpochDay()
                 focusedHomeDate = today
                 consumedJump = week.jumpSerial
             } else if (!requestedHomeDate && !week.loading && week.start?.let { it != today.weekStart() } == true) {
@@ -368,14 +273,7 @@ fun PlannerScreen(
         val index = dates.indexOf(destination)
         if (index >= 0) {
             list.scrollToItem(index)
-            visibleEpoch = destination.toEpochDay()
             consumedJump = week.jumpSerial
-        }
-    }
-    LaunchedEffect(copy.from, copy.loading, copy.error) {
-        if (applyingCopy && !copy.loading) {
-            if (copy.from == null) closePanel()
-            applyingCopy = false
         }
     }
     LaunchedEffect(placement?.id) {
@@ -440,7 +338,7 @@ fun PlannerScreen(
             panel == PlannerPanel.Discard -> true
             state.proposalConflict -> false
             selecting -> selected != null
-            panel != PlannerPanel.None || activeCopy -> true
+            panel != PlannerPanel.None -> true
             draft != null && selected != null -> true
             else -> false
         }
@@ -533,21 +431,20 @@ fun PlannerScreen(
                                 modifier = Modifier.fillMaxSize(),
                                 dates = dates,
                                 today = today,
-                                slots = displayed,
+                                slots = indexed,
                                 listState = list,
                                 selected = selected,
-                                copyChanges = copyChanges,
                                 isReadOnly = ::readOnly,
                                 isEnabled = { moment, slot ->
                                     !busy && when {
                                         placement != null -> canPlan(moment.date)
                                         panel == PlannerPanel.Move -> canMove(moment)
-                                        activeCopy || state.proposalConflict -> false
+                                        state.proposalConflict -> false
                                         else -> slot != null || canPlan(moment.date)
                                     }
                                 },
-                                canDrag = { moment, _ -> !busy && !showSheet && !selecting && !activeCopy && editable(moment.date) },
-                                canDrop = { moment -> !busy && !activeCopy && canMove(moment) },
+                                canDrag = { moment, _ -> !busy && !showSheet && !selecting && editable(moment.date) },
+                                canDrop = { moment -> !busy && canMove(moment) },
                                 onSelect = { moment, slot ->
                                     if (isHome && slot?.recipe != null) actions.onOpenRecipe(slot, true)
                                     else if (selecting) select(moment)
@@ -559,10 +456,7 @@ fun PlannerScreen(
                                 onBoundary = { before, retry ->
                                     if (before) actions.onLoadBefore(retry) else actions.onLoadAfter(retry)
                                 },
-                                onVisibleDay = { date ->
-                                    visibleEpoch = date.toEpochDay()
-                                    actions.onVisibleDay(date)
-                                },
+                                onVisibleDay = actions.onVisibleDay,
                                 loadingBefore = !inDraft && week.loadingBefore,
                                 loadingAfter = !inDraft && week.loadingAfter,
                                 beforeError = week.beforeError.takeUnless { inDraft },
@@ -570,7 +464,7 @@ fun PlannerScreen(
                                 isDateLoaded = ::loadedDay,
                                 boundaryEnabled = !inDraft && loaded.isNotEmpty() && !busy && !state.loading && !week.loading,
                                 largeCards = isHome || inDraft,
-                                hasMealOptions = { moment, _ -> !activeCopy && editable(moment.date) },
+                                hasMealOptions = { moment, _ -> editable(moment.date) },
                                 onMealOptions = ::openMeal,
                                 bottomPadding = if (isHome) 80.dp + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() else 18.dp,
                             )
@@ -604,7 +498,7 @@ fun PlannerScreen(
                             canWrite = user.canWrite, canPlan = !busy && dates.isNotEmpty(),
                             unreadNotifications = unreadNotifications,
                             onRecipes = actions.onRecipes, onAccount = actions.onAccount, onNotifications = actions.onNotifications,
-                            onGenerate = { select(null); panel = PlannerPanel.Generate }, onCopy = ::startCopy,
+                            onGenerate = { select(null); panel = PlannerPanel.Generate },
                             modifier = Modifier.align(Alignment.BottomEnd).navigationBarsPadding()
                                 .padding(end = 16.dp, bottom = 12.dp),
                         )
@@ -755,16 +649,6 @@ fun PlannerScreen(
                                 closePanel()
                             }, enabled = !busy && canMove(selected))
                         }
-                        activeCopy -> {
-                            PlannerCopyPanel(targetWeek, sourceWeek, copy, busy, actions.onCopyReplace,
-                                onSource = { copySourceEpoch = it.toEpochDay() })
-                            if (copy.preview == null) {
-                                PlannerFooter("Vérifier la copie", { actions.onCopyPreview(sourceWeek, targetWeek) }, enabled = !busy)
-                            } else {
-                                PlannerFooter("Appliquer à la semaine", { applyingCopy = true; actions.onApplyCopy() },
-                                    enabled = !busy && copied != null)
-                            }
-                        }
                     }
                     if (state.error != null && !state.proposalConflict) PlannerNotice(state.error, error = true)
                 }
@@ -886,7 +770,6 @@ private fun PlannerHomeMenu(
     onAccount: () -> Unit,
     onNotifications: () -> Unit,
     onGenerate: () -> Unit,
-    onCopy: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     fun choose(action: () -> Unit) {
@@ -907,8 +790,6 @@ private fun PlannerHomeMenu(
                 if (canWrite) {
                     DropdownMenuItem(text = { Text("Composer un menu") }, onClick = { choose(onGenerate) },
                         leadingIcon = { Icon(Icons.Filled.Add, null) }, enabled = canPlan)
-                    DropdownMenuItem(text = { Text("Copier une semaine") }, onClick = { choose(onCopy) },
-                        leadingIcon = { Icon(Icons.Filled.DateRange, null) }, enabled = canPlan)
                     DropdownMenuItem(
                         text = { Text(if (unreadNotifications > 0) "Notifications ($unreadNotifications)" else "Notifications") },
                         onClick = { choose(onNotifications) },
@@ -1082,52 +963,5 @@ private fun PlannerGeneration(
                 }
         }
         PlannerSmall("${periodLabel(start, end)} · $meals repas · $kept à conserver, $replaced à revoir.")
-    }
-}
-
-@Composable
-private fun PlannerCopyPanel(
-    destination: LocalDate,
-    source: LocalDate,
-    copy: WeekCopyState,
-    busy: Boolean,
-    onReplace: (Boolean) -> Unit,
-    onSource: (LocalDate) -> Unit,
-) {
-    val preview = copy.preview
-    PlannerCard(if (preview == null) "Copier une semaine" else "Vérifier la copie") {
-        if (preview == null) {
-            PlannerSmall("Semaine source")
-            PlannerWeekNav(
-                source, pastWeek = false, previous = !busy,
-                next = !busy && source.plusWeeks(1) < destination,
-                onPrevious = { onSource(source.minusWeeks(1)) },
-                onNext = { onSource(source.plusWeeks(1)) },
-                onHistoryOrCurrent = null,
-            )
-        } else {
-            PlannerSmall("Source · ${periodLabel(source, source.plusDays(6))}")
-            PlannerNotice("Aperçu · Les cases colorées indiquent les repas à copier.")
-        }
-        PlannerSmall("Destination · ${periodLabel(destination, destination.plusDays(6))}")
-        copy.error?.let { PlannerNotice(it, error = true) }
-        if (copy.loading) PlannerLoading()
-        if (preview != null) {
-            val plan = preview.plan(copy.replaceOccupied)
-            Row(
-                Modifier.fillMaxWidth().heightIn(min = 48.dp).clip(plannerShape).clickable(enabled = !busy) {
-                    onReplace(!copy.replaceOccupied)
-                },
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
-            ) {
-                Text("Remplacer les repas déjà prévus", Modifier.weight(1f), color = Sunny.Ink, fontSize = 13.sp)
-                Switch(checked = copy.replaceOccupied, onCheckedChange = null, enabled = !busy)
-            }
-            PlannerSmall("${plan.added} à ajouter · ${plan.replaced} à remplacer")
-            if (plan.skippedOccupied > 0) PlannerSmall("${plan.skippedOccupied} occupés seront conservés.")
-            if (plan.skippedUnavailable > 0) PlannerSmall("${plan.skippedUnavailable} repas ne peuvent pas être copiés.")
-            if (plan.skippedPast > 0) PlannerSmall("${plan.skippedPast} créneaux passés ne seront pas modifiés.")
-        }
     }
 }

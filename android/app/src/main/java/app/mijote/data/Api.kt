@@ -138,25 +138,6 @@ class Api(private val baseUrl: String, private val http: Http = UrlConnectionHtt
         return parseMenu(call("GET", path, bearer = access))
     }
 
-    /** Prepares a copy from the displayed source and a fresh, versioned destination snapshot. */
-    fun weekCopy(access: String, source: Menu, from: LocalDate, to: LocalDate): WeekCopy {
-        require(from == from.weekStart() && to == to.weekStart() && from != to)
-        val destination = menu(access, to, to.plusDays(6))
-        val sourceSlots = source.slots.filter { it.date in from..from.plusDays(6) }
-        val firstWritableDay = maxOf(destination.today, to)
-        val firstReusableDay = from.plusDays(firstWritableDay.toEpochDay() - to.toEpochDay())
-        val unavailable = sourceSlots.filter { it.date >= firstReusableDay }
-            .mapNotNull { it.recipe?.id }.distinct().filter { id ->
-                try {
-                    recipe(access, id).archived
-                } catch (e: ApiException) {
-                    if (e.status != 404) throw e
-                    true
-                }
-            }.toSet()
-        return WeekCopy(from, to, sourceSlots, destination, unavailable)
-    }
-
     /** Generates [meals] meals from [start] (FR-GEN); answers 409 not_enough_recipes on a too small base. */
     fun generateMenu(access: String, start: java.time.LocalDate, meals: Int, plan: MealPlan): List<MenuSlot> =
         parseGenerated(call("POST", "/api/v1/menu/generate", JSONObject()

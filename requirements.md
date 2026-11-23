@@ -116,7 +116,7 @@ Planning a family's weekly menus is repetitive: finding recipes, avoiding repeat
 | FR-ADJ-07 | Plan a recipe on a chosen day and meal directly from the recipe list (search results included) and from the recipe screen. | Must |
 | FR-ADJ-08 | Use the same Android week calendar whether starting from a recipe or a free slot. Show the occupied meal before confirming a replacement. Preserve the recipe search, filters, and scroll position on return from its detail. | Must |
 | FR-ADJ-09 | Browse previously planned weeks from the Android menu. Past meals are read-only. | Must |
-| FR-ADJ-10 | Preview and copy planned recipes and free-text meals to another week. Keep occupied destination slots by default, skip past destination days and unavailable recipes, and confirm the copy against the latest destination versions. | Must |
+| FR-ADJ-10 | Copy a single past recipe or free-text meal to a future slot from Android and web. Ask for confirmation before replacing an occupied slot and use its latest version for the write. | Must |
 
 ### 4.6 Sharing across family members (SHR)
 | ID | Requirement | Priority |
@@ -390,7 +390,7 @@ id, date, meal (`lunch` / `dinner`), recipe_id (nullable), title (nullable: free
 - One-off changes (e.g. away on Tuesday lunch) are done by adding or removing a slot; no dedicated table.
 - Moving a meal swaps the recipes of two slots.
 - Past slots are kept: they are the history used to avoid recent recipes.
-- The Android planner loads weeks with the existing inclusive `GET /api/v1/menu?from&to` range. Copying a week preserves the source. It prepares a destination proposal with the destination slot versions and submits it to `POST /api/v1/menu/confirm`, like other atomic changes. No server migration is needed.
+- The Android planner loads weeks with the existing inclusive `GET /api/v1/menu?from&to` range. Copying a past meal preserves the source and sends only the destination to `POST /api/v1/menu/confirm`. No server migration is needed.
 
 ## 10. Menu generation algorithm (decided)
 

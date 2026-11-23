@@ -90,7 +90,6 @@ class MainActivity : ComponentActivity() {
             val picker by vm.plannerRecipes.collectAsStateWithLifecycle()
             val randomRecipes by vm.randomMealRecipes.collectAsStateWithLifecycle()
             val copyDestination by vm.mealCopyDestination.collectAsStateWithLifecycle()
-            val copy by vm.weekCopy.collectAsStateWithLifecycle()
             val plannerActor = when (val screen = state.screen) {
                 is Screen.Home -> screen.user.id
                 is Screen.Preferences -> screen.user.id
@@ -166,7 +165,7 @@ class MainActivity : ComponentActivity() {
                             showPlanner -> plannerState.SaveableStateProvider("planner-timeline") {
                                 val displayedWeek = week
                                 PlannerScreen(
-                                    user = s.user, state = menu, week = displayedWeek, placement = placing, recipes = picker, copy = copy,
+                                    user = s.user, state = menu, week = displayedWeek, placement = placing, recipes = picker,
                                     unreadNotifications = notifications.unreadCount,
                                     randomRecipes = randomRecipes, copyDestination = copyDestination,
                                     actions = PlannerActions(
@@ -187,8 +186,6 @@ class MainActivity : ComponentActivity() {
                                         onPublish = vm::validateReview, onDiscard = vm::closeReview, onRebase = vm::rebaseReview,
                                         onMove = { source, date, meal -> vm.movePlannerMeal(source, date, meal, displayedWeek.snapshot(date)) },
                                         onUndoMove = vm::undoMealMove, onSaveMeal = vm::savePlannerMeal,
-                                        onCopyPreview = vm::previewWeekCopy, onCopyReplace = vm::setCopyReplace,
-                                        onApplyCopy = vm::applyWeekCopy, onCloseCopy = vm::closeWeekCopy,
                                         onRecipes = selectRecipes, onAccount = vm::openPreferences,
                                         onNotifications = vm::openNotifications,
                                     ),
