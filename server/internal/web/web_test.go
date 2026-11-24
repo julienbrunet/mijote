@@ -20,6 +20,7 @@ func TestFamilyPlannerRoutes(t *testing.T) {
 		{"/app/", http.StatusOK, "Planning familial"},
 		{"/app/planner.js", http.StatusOK, "/menu/confirm"},
 		{"/app/planner.css", http.StatusOK, ".slots"},
+		{"/app/shell.js", http.StatusOK, "nav-toggle"},
 		{"/app/inter-regular.woff2", http.StatusOK, "wOF2"},
 		{"/app/private", http.StatusNotFound, ""},
 	} {

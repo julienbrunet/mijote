@@ -17,7 +17,7 @@ The project is under active development.
 
 Download an Android APK and the server binary for your Linux machine from [releases](https://github.com/julienbrunet/mijote/releases). The server needs PostgreSQL 13 or later; Android requires version 8.0 or later. Follow the [installation guide](https://julienbrunet.github.io/mijote/#install) to configure the database, server and HTTPS reverse proxy, then connect the app. Back up both PostgreSQL and the server's image directory.
 
-Open `/app/` on your HTTPS instance to use the family planner. Administrators find instance management in the same navigation. The old `/admin/` address redirects to `/app/`.
+Open `/app/` on your HTTPS instance to use the family planner. Administrators find meal management, recipes, users, system settings and security in the Administration menu of the same app. The former `/admin/` address has been retired.
 
 ## Repository
 

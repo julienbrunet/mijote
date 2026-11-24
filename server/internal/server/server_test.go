@@ -125,15 +125,15 @@ func TestPlannerBrowserSession(t *testing.T) {
 	srv := httptest.NewServer(h)
 	defer srv.Close()
 	browser := newClient(t, srv.URL)
-	for path, destination := range map[string]string{
-		"/app/": "/app/admin/setup", "/admin/": "/app/", "/admin/system?x=1": "/app/admin/system?x=1",
-	} {
+	for _, path := range []string{"/admin", "/admin/", "/admin/system?x=1"} {
 		res, _ := browser.do("GET", path, "", "")
-		if res.Header.Get("Location") != destination {
-			t.Fatalf("%s redirects to %q, want %q", path, res.Header.Get("Location"), destination)
-		}
+		expect(t, res, http.StatusNotFound, path)
 	}
-	res, _ := browser.form("/app/admin/setup", url.Values{"username": {"julien"}, "password": {"secret-pass"}, "confirm": {"secret-pass"}})
+	res, _ := browser.do("GET", "/app/", "", "")
+	if loc := res.Header.Get("Location"); loc != "/app/admin/setup" {
+		t.Fatalf("fresh instance redirects to %q", loc)
+	}
+	res, _ = browser.form("/app/admin/setup", url.Values{"username": {"julien"}, "password": {"secret-pass"}, "confirm": {"secret-pass"}})
 	expect(t, res, http.StatusSeeOther, "setup")
 	credentials := map[string]string{"username": "julien", "password": "secret-pass"}
 	res, _ = browser.json("/app/session/login", credentials)
@@ -1191,7 +1191,7 @@ func TestAdminMealList(t *testing.T) {
 	res, page = web.do("GET", "/app/admin/", "", "")
 	expect(t, res, http.StatusOK, "meal list")
 	if !strings.Contains(page, "Pique-nique") || !strings.Contains(page, "Léa") || !strings.Contains(page, "Aujourd&#39;hui") ||
-		strings.Count(page, `href="/app/admin/recipes/`) != 2 || !strings.Contains(page, `class="on" aria-current="page">Accueil</a>`) {
+		strings.Count(page, `href="/app/admin/recipes/`) != 2 || !strings.Contains(page, `aria-current="page">Repas du foyer</a>`) {
 		t.Fatalf("upcoming meals incomplete:\n%s", page)
 	}
 	leaUser, _ := st.UserByUsername(ctx, "lea")
@@ -1225,7 +1225,7 @@ func TestAdminHomeSystemAndNavigation(t *testing.T) {
 	web.form("/app/admin/setup", url.Values{"username": {"julien"}, "password": {"secret-pass"}, "confirm": {"secret-pass"}})
 	_, page := web.do("GET", "/app/admin/login", "", "")
 	if strings.Contains(page, "1.2.3") || !strings.Contains(page, "https://github.com/julienbrunet/mijote") ||
-		!strings.Contains(page, "/app/admin/wordmark.svg?v=") {
+		!strings.Contains(page, `src="/app/admin/wordmark.svg"`) || strings.Contains(page, `class="management-nav"`) {
 		t.Fatal("login page footer and brand")
 	}
 	web.form("/app/admin/login", url.Values{"password": {"secret-pass"}})
@@ -1241,7 +1241,7 @@ func TestAdminHomeSystemAndNavigation(t *testing.T) {
 
 	// Every page of the navigation renders, with its section highlighted and its tabs.
 	for path, want := range map[string][]string{
-		"/app/admin/":              {`aria-current="page">Accueil</a>`, "Prochains repas"},
+		"/app/admin/":              {`aria-current="page">Repas du foyer</a>`, "Prochains repas"},
 		"/app/admin/recipes":       {`aria-current="page">Recettes</a>`, `href="/app/admin/recipes/stats"`},
 		"/app/admin/tags":          {`aria-current="page">Étiquettes</a>`},
 		"/app/admin/recipes/stats": {`aria-current="page">Statistiques</a>`, "Équilibre des types de plat"},
@@ -1255,7 +1255,8 @@ func TestAdminHomeSystemAndNavigation(t *testing.T) {
 	} {
 		res, page := web.do("GET", path, "", "")
 		expect(t, res, http.StatusOK, path)
-		for _, w := range append(want, "serveur 1.2.3", "Code source sur GitHub") {
+		for _, w := range append(want, "serveur 1.2.3", "Code source sur GitHub", `class="app-shell"`,
+			`class="management-nav" open`, `href="/app/?view=recipes"`, `href="/app/?view=account"`, `src="/app/shell.js"`) {
 			if !strings.Contains(page, w) {
 				t.Fatalf("%s: missing %q", path, w)
 			}

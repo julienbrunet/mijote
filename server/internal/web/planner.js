@@ -2,7 +2,6 @@
 
 const main = document.getElementById("main");
 const nav = document.getElementById("nav");
-const navToggle = document.getElementById("nav-toggle");
 const profile = document.getElementById("profile");
 const panel = document.getElementById("panel");
 const statusBox = document.getElementById("status");
@@ -16,12 +15,7 @@ const monthFormatter = new Intl.DateTimeFormat("fr-FR", { day: "numeric", month:
 const weekLayout = matchMedia("(min-width: 960px)");
 const roleLabels = { admin: "Administrateur", member: "Membre du foyer", readonly: "Lecture seule" };
 const icons = {
-    calendar: "M3 5h18v16H3z M3 9h18 M7 3v4 M17 3v4 M7 13h2 M12 13h2 M7 17h2 M12 17h2",
-    book: "M12 5v15 M12 5C9 3 5 3 3 5v14c3-1 6-1 9 1 3-2 6-2 9-1V5c-3-2-6-2-9 0Z",
-    inbox: "M3 13l3-6h12l3 6v6H3z M3 13h6l1 2h4l1-2h6",
-    user: "M16 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0Z M4 21v-2a5 5 0 0 1 5-5h6a5 5 0 0 1 5 5v2",
-    shield: "M12 22s7-4 7-11V5l-7-3-7 3v6c0 7 7 11 7 11Z M9 12l2 2 4-4",
-    menu: "M4 6h16 M4 12h16 M4 18h16", pencil: "M4 16l-1 5 5-1L20 8l-4-4z M14 6l4 4",
+    pencil: "M4 16l-1 5 5-1L20 8l-4-4z M14 6l4 4",
     eye: "M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z",
     left: "m15 5-7 7 7 7", right: "m9 5 7 7-7 7", up: "m5 15 7-7 7 7", down: "m5 9 7 7 7-7",
     plus: "M12 5v14 M5 12h14", lunch: "M12 3v2 M12 19v2 M3 12h2 M19 12h2 M5.6 5.6 7 7 M17 17l1.4 1.4 M5.6 18.4 7 17 M17 7l1.4-1.4 M16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0Z",
@@ -77,20 +71,6 @@ function iconButton(label, symbol, action, className = "") {
     control.title = label;
     return control;
 }
-
-function setMobileMenu(open) {
-    navToggle.setAttribute("aria-expanded", String(open));
-    navToggle.setAttribute("aria-label", open ? "Fermer le menu" : "Ouvrir le menu");
-}
-
-navToggle.append(icon("menu"));
-navToggle.addEventListener("click", () => setMobileMenu(navToggle.getAttribute("aria-expanded") !== "true"));
-document.addEventListener("keydown", event => {
-    if (event.key === "Escape" && !panel.open && navToggle.getAttribute("aria-expanded") === "true") {
-        setMobileMenu(false);
-        navToggle.focus();
-    }
-});
 
 function notice(message, error = false) {
     statusBox.textContent = message;
@@ -195,7 +175,7 @@ function bindLogin() {
             user = session.user;
             form.reset();
             showNavigation();
-            await openAgenda(true);
+            await openInitialView();
         } catch (error) {
             notice(error.message, true);
             if (user) renderAgenda();
@@ -214,8 +194,8 @@ function showLogin() {
     todayObserver?.disconnect();
     closePanel();
     document.body.classList.remove("signed-in");
-    setMobileMenu(false);
-    nav.replaceChildren();
+    nav.dispatchEvent(new Event("close-menu"));
+    nav.querySelector(".management-nav")?.remove();
     profile.replaceChildren();
     unobserveArt(main);
     main.replaceChildren(loginTemplate.cloneNode(true));
@@ -224,42 +204,52 @@ function showLogin() {
 
 function showNavigation() {
     document.body.classList.add("signed-in");
-    function item(label, symbol, action, destination) {
-        const control = button([icon(symbol), label], action, "nav-item");
-        control.dataset.page = destination;
-        return control;
-    }
-    nav.replaceChildren(...[
-        item("Menus", "calendar", () => openAgenda().catch(error => notice(error.message, true)), "agenda"),
-        item("Recettes", "book", openRecipes, "recipes"),
-        writable() ? item("Notifications", "inbox", () => { setMobileMenu(false); openNotices(); }, "notifications") : null,
-        item("Compte", "user", openAccount, "account"),
-    ].filter(Boolean));
-    if (writable()) nav.append(button([icon("plus"), "Composer un menu"], async () => {
-        if (!today || proposal) return;
-        setMobileMenu(false);
-        if (page !== "agenda") await openAgenda();
-        composeMenu();
-    }, "nav-item mobile-compose"));
-    if (user.role === "admin") {
-        nav.append(node("div", { class: "nav-divider", "aria-hidden": "true" }));
-        for (const [path, label, symbol] of [["", "Administration", "shield"], ["accounts", "Utilisateurs", "user"],
-            ["system", "Système", "calendar"]]) {
-            nav.append(node("a", { class: "nav-item", href: "/app/admin/" + path }, icon(symbol), label));
-        }
-    }
+    for (const item of nav.querySelectorAll("[data-write]")) item.hidden = !writable();
+    nav.querySelector(".management-nav")?.remove();
+    if (user.role === "admin") nav.append(document.getElementById("management-menu").content.cloneNode(true));
     const name = user.displayName || user.username;
-    profile.replaceChildren(button([node("span", { class: "avatar", "aria-hidden": "true" }, name.charAt(0).toUpperCase()),
-        node("span", {}, node("strong", {}, name), node("small", {}, roleLabels[user.role]))], openAccount, "profile-link"));
+    profile.replaceChildren(node("a", { class: "profile-link", href: "/app/?view=account", "data-page": "account" },
+        node("span", { class: "avatar", "aria-hidden": "true" }, Array.from(name)[0].toUpperCase()),
+        node("span", {}, node("strong", {}, name), node("small", {}, roleLabels[user.role]))));
     markNavigation();
 }
 
 function markNavigation() {
-    setMobileMenu(false);
     for (const item of nav.querySelectorAll("[data-page]")) {
         if (item.dataset.page === page) item.setAttribute("aria-current", "page");
         else item.removeAttribute("aria-current");
     }
+}
+
+async function showFamilyView(destination) {
+    switch (destination) {
+        case "recipes": openRecipes(); break;
+        case "account": openAccount(); break;
+        case "notifications": if (writable()) await openNotices(); break;
+        case "compose":
+            if (!writable() || !today || proposal) break;
+            if (page !== "agenda") await openAgenda();
+            composeMenu();
+            break;
+        case "agenda": await openAgenda(); break;
+    }
+}
+
+async function openInitialView() {
+    const destination = new URLSearchParams(location.search).get("view");
+    await openAgenda(true);
+    if (destination) await showFamilyView(destination);
+}
+
+for (const container of [nav, profile]) {
+    container.addEventListener("click", event => {
+        const link = event.target.closest("a[data-page]");
+        if (!user || !link || event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+        event.preventDefault();
+        const destination = link.dataset.page;
+        if (["recipes", "account", "agenda"].includes(destination)) history.replaceState(null, "", link.href);
+        showFamilyView(destination).catch(error => notice(error.message, true));
+    });
 }
 
 function applyMenu(menu, from, to) {
@@ -1211,7 +1201,7 @@ resumeSession().then(async pair => {
     session = pair;
     user = pair.user;
     showNavigation();
-    await openAgenda(true);
+    await openInitialView();
 }).catch(error => {
     if (error.status !== 401) notice(error.message, true);
 });

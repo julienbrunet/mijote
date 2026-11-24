@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -58,15 +57,6 @@ func New(ctx context.Context, pool *pgxpool.Pool, proxies auth.Proxies, imageDir
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
-	})
-	for _, path := range []string{"/admin", "/admin/{$}"} {
-		mux.Handle("GET "+path, http.RedirectHandler("/app/", http.StatusPermanentRedirect))
-	}
-	mux.HandleFunc("GET /admin/{rest...}", func(w http.ResponseWriter, r *http.Request) {
-		destination := *r.URL
-		destination.Path = "/app/admin/" + strings.TrimPrefix(r.URL.Path, "/admin/")
-		destination.RawPath = ""
-		http.Redirect(w, r, destination.RequestURI(), http.StatusPermanentRedirect)
 	})
 	appAPI := &api.API{Store: st, Tokens: &auth.Tokens{Key: jwtKey}, Guard: guard, Proxies: proxies, Images: imgs}
 	appAPI.Routes(mux)
