@@ -96,6 +96,7 @@ li + li { margin-top: .5rem; }
   border-right: 1px solid var(--line);
 }
 body:not(.signed-in) .sidebar { align-items: center; height: auto; border: 0; background: transparent; }
+body:not(.signed-in) .main-nav, body:not(.signed-in) .sidebar-profile { display: none; }
 .brand { display: flex; gap: 10px; align-items: center; width: fit-content; margin-left: 6px; text-decoration: none; }
 .brand img { display: block; object-fit: contain; }
 .brand-caption { display: block; color: var(--muted); font-size: .77rem; font-weight: 600; }
@@ -118,7 +119,21 @@ body:not(.signed-in) .sidebar { align-items: center; height: auto; border: 0; ba
 }
 .nav-item[aria-current="page"] { border-color: #efc683; background: var(--butter-light); font-weight: 700; }
 .nav-item:hover, .profile-link:hover { background: #fff8eb; }
-.nav-divider { height: 1px; background: var(--line); margin: 5px 3px; }
+.management-nav { border-top: 1px solid var(--line); margin-top: 5px; padding-top: 7px; }
+.management-nav summary { cursor: pointer; list-style: none; }
+.management-nav summary::-webkit-details-marker { display: none; }
+.management-nav summary::after {
+  content: "";
+  margin-inline-start: auto;
+  width: 7px;
+  height: 7px;
+  border: solid currentColor;
+  border-width: 0 1.5px 1.5px 0;
+  transform: rotate(45deg);
+}
+.management-nav[open] summary::after { transform: rotate(225deg); }
+.management-links { display: grid; gap: 3px; padding: 3px 0 3px 10px; }
+.management-links .nav-item { min-height: 39px; }
 .mobile-compose { display: none; }
 .sidebar-profile { margin-top: auto; border-top: 1px solid var(--line); padding-top: 7px; }
 .profile-link strong, .profile-link small { display: block; }
@@ -273,12 +288,15 @@ dialog::backdrop { background: #39292175; }
   }
   .main-nav { display: none; }
   .mobile-compose { display: flex; }
-  .sidebar:has(.nav-toggle[aria-expanded="true"]) .main-nav {
+  .signed-in .sidebar:has(.nav-toggle[aria-expanded="true"]) .main-nav {
     position: fixed;
     display: grid;
     bottom: calc(max(14px, env(safe-area-inset-bottom)) + 61px);
     right: 14px;
     width: min(254px, 90vw);
+    max-height: min(75vh, 615px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
     padding: 7px;
     border: 1px solid var(--line);
     border-radius: 16px;

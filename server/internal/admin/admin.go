@@ -23,6 +23,7 @@ import (
 	"github.com/julienbrunet/mijote/server/internal/images"
 	"github.com/julienbrunet/mijote/server/internal/store"
 	"github.com/julienbrunet/mijote/server/internal/sysinfo"
+	"github.com/julienbrunet/mijote/server/internal/web"
 )
 
 //go:embed templates/*.html
@@ -184,9 +185,17 @@ type Admin struct {
 func New(st *store.Store, guard *auth.Guard, proxies auth.Proxies, key []byte, imgs images.Dir, version string, cpu *sysinfo.Sampler) (*Admin, error) {
 	a := &Admin{Store: st, Guard: guard, Proxies: proxies, Key: key, Images: imgs, Version: version, CPU: cpu,
 		pages: map[string]*template.Template{}}
+	base, err := web.ParseShell(template.New("management").Funcs(funcs))
+	if err != nil {
+		return nil, err
+	}
 	for _, p := range []string{"setup", "login", "login_2fa", "home", "meal", "account", "sessions", "journal", "accounts",
 		"invitations", "invite", "tokens", "recipes", "recipe", "recipe_stats", "tags", "system", "error"} {
-		t, err := template.New("layout.html").Funcs(funcs).ParseFS(templateFS, "templates/layout.html", "templates/partials.html", "templates/"+p+".html")
+		t, err := base.Clone()
+		if err != nil {
+			return nil, err
+		}
+		t, err = t.ParseFS(templateFS, "templates/layout.html", "templates/partials.html", "templates/"+p+".html")
 		if err != nil {
 			return nil, err
 		}
@@ -271,49 +280,6 @@ func serveStatic(name string) http.HandlerFunc {
 	}
 }
 
-// navItem is an entry of the main navigation; a section groups sub-pages,
-// shown as tabs under the page title.
-type navItem struct {
-	Key, Label, Href string
-	Subs             []navItem
-}
-
-// navigation is the main menu of the admin (requirements.md §4.8).
-var navigation = []navItem{
-	{Key: "home", Label: "Accueil", Href: "/app/admin/"},
-	{Key: "recipes", Label: "Recettes", Href: "/app/admin/recipes", Subs: []navItem{
-		{Key: "recipes", Label: "Recettes", Href: "/app/admin/recipes"},
-		{Key: "tags", Label: "Étiquettes", Href: "/app/admin/tags"},
-		{Key: "stats", Label: "Statistiques", Href: "/app/admin/recipes/stats"},
-	}},
-	{Key: "users", Label: "Utilisateurs", Href: "/app/admin/accounts", Subs: []navItem{
-		{Key: "accounts", Label: "Comptes", Href: "/app/admin/accounts"},
-		{Key: "invitations", Label: "Invitations", Href: "/app/admin/invitations"},
-		{Key: "sessions", Label: "Sessions", Href: "/app/admin/sessions"},
-		{Key: "journal", Label: "Journal des connexions", Href: "/app/admin/journal"},
-	}},
-	{Key: "system", Label: "Système", Href: "/app/admin/system"},
-	{Key: "profile", Label: "Profil admin", Href: "/app/admin/account", Subs: []navItem{
-		{Key: "account", Label: "Mon compte", Href: "/app/admin/account"},
-		{Key: "tokens", Label: "Jetons d'API", Href: "/app/admin/tokens"},
-	}},
-}
-
-// section returns the navigation section holding the page key.
-func section(page string) (navItem, bool) {
-	for _, s := range navigation {
-		if s.Key == page {
-			return s, true
-		}
-		for _, sub := range s.Subs {
-			if sub.Key == page {
-				return s, true
-			}
-		}
-	}
-	return navItem{}, false
-}
-
 // view is the data passed to every page.
 type view struct {
 	Title  string
@@ -326,27 +292,32 @@ type view struct {
 	Wide   bool // the page uses the whole width of the screen
 
 	// Filled by render.
-	Navigation []navItem
-	Section    navItem
-	Version    string
-	RepoURL    string
+	Shell   web.Shell
+	Section web.NavItem
+	Version string
+	RepoURL string
 }
 
 func (a *Admin) render(w http.ResponseWriter, r *http.Request, page string, status int, v view) {
+	v.Section = web.ManagementSection(v.Nav)
+	v.Shell = web.Shell{Management: true, Wide: v.Wide, AdminSection: v.Section.Key}
 	if s, ok := currentSession(r); ok {
 		v.User, v.CSRF = &s.user, a.csrfToken(s.sessionID)
+		v.Shell.AdminName = s.user.DisplayName
+		if v.Shell.AdminName == "" {
+			v.Shell.AdminName = s.user.Username
+		}
 		// The version is only disclosed to the signed-in admin.
 		v.Version = a.Version
 	}
-	v.Navigation, v.RepoURL = navigation, RepoURL
-	v.Section, _ = section(v.Nav)
+	v.RepoURL = RepoURL
 	if v.Notice == "" {
 		v.Notice = notices[r.URL.Query().Get("ok")]
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(status)
-	if err := a.pages[page].Execute(w, v); err != nil {
+	if err := a.pages[page].ExecuteTemplate(w, "shell", v); err != nil {
 		slog.Error("render", "page", page, "err", err)
 	}
 }
